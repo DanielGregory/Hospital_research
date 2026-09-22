@@ -96,6 +96,30 @@ async function main() {
         const r5 = await page.getByTestId('result').textContent();
         if (r5 !== 'Goals met') fail(`level 5 with the reference plan: expected pass, got "${r5}"`);
 
+        // Layout editor: draw an extra acute room, test the plan, watch a shift on the grid view.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('layout-editor').click();
+        const grid = page.getByTestId('layout-grid');
+        const box = (await grid.boundingBox())!;
+        const at = (cx: number, cy: number) => ({ x: box.x + ((cx + 0.5) / 24) * box.width, y: box.y + ((cy + 0.5) / 14) * box.height });
+        await page.getByTestId('tool-acute').click();
+        const a = at(18, 8);
+        const b = at(21, 11);
+        await page.mouse.move(a.x, a.y);
+        await page.mouse.down();
+        await page.mouse.move(b.x, b.y, { steps: 5 });
+        await page.mouse.up();
+        if (!(await page.getByText('Acute beds (4×4)').count())) fail('dragging on the grid did not add a room');
+        await page.getByTestId('test-layout').click();
+        await page.getByTestId('layout-score').waitFor();
+        await shot(page, `layout-editor-${scheme}`);
+        await page.getByTestId('play-layout').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(3000);
+        await shot(page, `play-grid-${scheme}`);
+        await page.getByTestId('skip').click();
+        if ((await page.getByTestId('result').textContent()) !== 'Shift complete') fail('sandbox run did not finish');
+
         // Mobile width: no horizontal scroll on the menu.
         await page.setViewportSize({ width: 375, height: 800 });
         await page.goto(`http://localhost:${PORT}/`);

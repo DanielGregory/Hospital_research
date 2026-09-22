@@ -7,6 +7,7 @@
 
 import { PARAMS } from './params.js';
 import { checkLevel, type LevelSpec } from './levels.js';
+import { checkLayoutForSim, checkLayoutShape, resolveLayout, type LayoutSpec, type ResolvedLayout } from './layout.js';
 import { checkPipeline, defaultPipeline, makeStep, STEP_KINDS, type RoutingRule, type StepDef } from './pipeline.js';
 import {
   ACUITIES,
@@ -34,7 +35,7 @@ export const MODULE_PHASE: Record<ModuleName, number> = {
   process: 5,
   budget: 5,
 };
-export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout'];
+export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout'];
 
 export type ServiceDistribution = 'exponential' | 'lognormal';
 
@@ -144,6 +145,8 @@ export interface SimConfig {
     escalation?: boolean;
   };
   shocks?: ShockSpec[];
+  /** Floor plan, used when the `layout` module is on (beds then come from its rooms). */
+  layout?: LayoutSpec;
   /** Custom step graph, used when the `process` module is on. */
   process?: { steps: StepInput[]; routing?: RoutingRule[] };
   commands?: TimedCommand[];
@@ -196,6 +199,9 @@ export interface ResolvedConfig {
   burnout: typeof PARAMS.burnout;
   shocks: ShockSpec[];
   conditions: readonly ConditionSpec[];
+  /** Floor plan in use (layout module on), else null. */
+  layout: ResolvedLayout | null;
+  walking: { minutesPerCell: number; disabledTransferMinutes: number };
   /** The step graph in use (default pipeline unless the process module is on). */
   pipeline: StepDef[];
   /** Routing rules from the process module; empty = fast-track settings decide. */
@@ -351,6 +357,8 @@ export function validateConfig(raw: unknown): SimConfig {
       }
     }
   }
+
+  if (c.layout !== undefined) p.push(...checkLayoutShape(c.layout));
 
   if (c.commands !== undefined) {
     if (!Array.isArray(c.commands)) p.push('commands: must be an array');
@@ -566,8 +574,23 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
   const inpatientBeds = c.boarding?.inpatientBeds ?? PARAMS.boarding.inpatientBeds;
   if (initialOccupied > inpatientBeds) problems.push('boarding.initialOccupied: more than inpatientBeds');
 
+  let layout: ResolvedLayout | null = null;
+  if (modules.layout) {
+    if (!c.layout) problems.push('modules.layout: needs a layout section');
+    else {
+      const r = resolveLayout(c.layout);
+      problems.push(...r.problems);
+      if (r.layout) {
+        layout = r.layout;
+        problems.push(...checkLayoutForSim(layout, pipeline.some((s) => s.kind === 'triage')));
+      }
+    }
+    if (c.commands?.some((tc) => tc.command.type === 'setBeds')) problems.push('commands: setBeds is not available with the layout module (beds come from rooms)');
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
 
+  const roomBeds = (type: 'acute' | 'fastTrack') => layout!.rooms.filter((r) => r.type === type).reduce((s, r) => s + r.capacity, 0);
   const bedCount = (v: number | null | undefined, d: number | null) => (v === undefined ? d : v) ?? Infinity;
 
   return {
@@ -602,7 +625,11 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       doctorsTakeOverflow: c.fastTrack?.doctorsTakeOverflow ?? true,
     },
     lwbs: { enabled: c.lwbs?.enabled ?? true, patienceMeanByAcuity, patienceCv: PARAMS.lwbs.patienceCv },
-    beds: { main: bedCount(c.beds?.main, PARAMS.beds.main), fastTrack: bedCount(c.beds?.fastTrack, PARAMS.beds.fastTrack) },
+    beds: layout
+      ? { main: roomBeds('acute'), fastTrack: roomBeds('fastTrack') }
+      : { main: bedCount(c.beds?.main, PARAMS.beds.main), fastTrack: bedCount(c.beds?.fastTrack, PARAMS.beds.fastTrack) },
+    layout,
+    walking: { ...PARAMS.layout },
     workup,
     disposition,
     deterioration: {

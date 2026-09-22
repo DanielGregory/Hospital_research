@@ -14,8 +14,11 @@ export interface Rect {
 export type AreaId = 'waiting' | 'triage' | 'main' | 'fastTrack';
 
 export interface Area extends Rect {
-  id: AreaId;
+  /** Area id, or a room id in grid (layout) view. */
+  id: string;
   label: string;
+  /** Room type in grid view (for colouring). */
+  kind?: string;
 }
 
 export interface BedMark extends Rect {
@@ -54,6 +57,8 @@ export interface WaitingLine {
 }
 
 export interface FloorPlan {
+  /** Grid view (layout module): footprint cells to draw under the rooms. */
+  grid?: { cells: Rect[]; entrance: Rect };
   areas: Area[];
   beds: BedMark[];
   staff: StaffMark[];

@@ -18,9 +18,14 @@ export type SetupValues = Partial<Record<PlayerControl, unknown>>;
 
 /** Current value of each unlocked control, falling back to the resolved default. */
 export function initialValues(level: LevelConfig): SetupValues {
-  const resolved = resolveConfig(level);
+  return valuesFor(level, level.level.playerControls);
+}
+
+/** Current values of the given controls for any config. */
+export function valuesFor(config: unknown, controls: readonly PlayerControl[]): SetupValues {
+  const resolved = resolveConfig(config);
   const out: SetupValues = {};
-  for (const ctl of level.level.playerControls) out[ctl] = getPath(level, ctl) ?? defaultFor(ctl, resolved);
+  for (const ctl of controls) out[ctl] = getPath(config, ctl) ?? defaultFor(ctl, resolved);
   return out;
 }
 

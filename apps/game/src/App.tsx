@@ -1,20 +1,26 @@
-import { evaluateGoals, type Metrics } from '@er/sim';
+import { evaluateGoals, type LayoutSpec, type Metrics } from '@er/sim';
 import { useState } from 'react';
-import { buildConfig, initialValues, type SetupValues } from './controls';
+import { buildConfig, initialValues, valuesFor, type SetupValues } from './controls';
 import { LEVELS, type LevelConfig } from './levels';
 import type { GameRunner } from './runner';
+import type { GameConfig } from './sandbox';
 import { Briefing } from './screens/Briefing';
 import { Debrief } from './screens/Debrief';
+import { LayoutEditor } from './screens/LayoutEditor';
 import { Menu } from './screens/Menu';
-import { Play } from './screens/Play';
+import { Play, SANDBOX_LIVE } from './screens/Play';
 import { Setup } from './screens/Setup';
+
+/** Where a run came from, so "try again" returns there. */
+type Origin = { kind: 'level'; level: LevelConfig; values: SetupValues } | { kind: 'layout'; layout: LayoutSpec };
 
 type Screen =
   | { name: 'menu' }
   | { name: 'briefing'; level: LevelConfig }
   | { name: 'setup'; level: LevelConfig; values: SetupValues }
-  | { name: 'play'; level: LevelConfig; values: SetupValues; run: number }
-  | { name: 'debrief'; level: LevelConfig; values: SetupValues; metrics: Metrics };
+  | { name: 'layout'; layout?: LayoutSpec }
+  | { name: 'play'; config: GameConfig; seed: number; values: SetupValues; origin: Origin; run: number }
+  | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin };
 
 const RESULTS_KEY = 'er-shift-results';
 
@@ -38,18 +44,23 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'menu' });
   const [results, setResults] = useState(loadResults);
 
-  const finish = (level: LevelConfig, values: SetupValues, runner: GameRunner) => {
+  const finish = (config: GameConfig, origin: Origin, runner: GameRunner) => {
     const metrics = runner.sim.metrics();
-    const passed = evaluateGoals(metrics, level.level.goals).passed;
-    const next = { ...results, [level.id]: results[level.id] === true || passed };
-    setResults(next);
-    saveResults(next);
-    setScreen({ name: 'debrief', level, values, metrics });
+    if (origin.kind === 'level') {
+      const passed = evaluateGoals(metrics, origin.level.level.goals).passed;
+      const next = { ...results, [origin.level.id]: results[origin.level.id] === true || passed };
+      setResults(next);
+      saveResults(next);
+    }
+    setScreen({ name: 'debrief', config, metrics, origin });
   };
+
+  const back = (origin: Origin): Screen =>
+    origin.kind === 'level' ? { name: 'setup', level: origin.level, values: origin.values } : { name: 'layout', layout: origin.layout };
 
   switch (screen.name) {
     case 'menu':
-      return <Menu results={results} onPick={(level) => setScreen({ name: 'briefing', level })} />;
+      return <Menu results={results} onPick={(level) => setScreen({ name: 'briefing', level })} onLayout={() => setScreen({ name: 'layout' })} />;
     case 'briefing':
       return (
         <Briefing
@@ -65,29 +76,50 @@ export function App() {
           values={screen.values}
           onChange={(values) => setScreen({ ...screen, values })}
           onBack={() => setScreen({ name: 'briefing', level: screen.level })}
-          onStart={() => setScreen({ name: 'play', level: screen.level, values: screen.values, run: Date.now() })}
+          onStart={() =>
+            setScreen({
+              name: 'play',
+              config: buildConfig(screen.level, screen.values),
+              seed: screen.level.level.seed ?? 1,
+              values: screen.values,
+              origin: { kind: 'level', level: screen.level, values: screen.values },
+              run: Date.now(),
+            })
+          }
+        />
+      );
+    case 'layout':
+      return (
+        <LayoutEditor
+          initial={screen.layout}
+          onBack={() => setScreen({ name: 'menu' })}
+          onPlay={(config) =>
+            setScreen({ name: 'play', config, seed: 1, values: valuesFor(config, SANDBOX_LIVE), origin: { kind: 'layout', layout: config.layout! }, run: Date.now() })
+          }
         />
       );
     case 'play':
       return (
         <Play
           key={screen.run}
-          config={buildConfig(screen.level, screen.values)}
-          seed={screen.level.level.seed ?? 1}
+          config={screen.config}
+          seed={screen.seed}
           values={screen.values}
-          onFinish={(runner) => finish(screen.level, screen.values, runner)}
+          onFinish={(runner) => finish(screen.config, screen.origin, runner)}
           onQuit={() => setScreen({ name: 'menu' })}
         />
       );
     case 'debrief': {
-      const idx = LEVELS.findIndex((l) => l.id === screen.level.id);
-      const next = LEVELS[idx + 1];
+      const o = screen.origin;
+      const idx = o.kind === 'level' ? LEVELS.findIndex((l) => l.id === o.level.id) : -1;
+      const next = idx >= 0 ? LEVELS[idx + 1] : undefined;
       return (
         <Debrief
-          level={screen.level}
+          level={screen.config.level}
           metrics={screen.metrics}
           onMenu={() => setScreen({ name: 'menu' })}
-          onRetry={() => setScreen({ name: 'setup', level: screen.level, values: screen.values })}
+          onRetry={() => setScreen(back(o))}
+          retryLabel={o.kind === 'layout' ? 'Back to the layout' : undefined}
           onNext={next ? () => setScreen({ name: 'briefing', level: next }) : undefined}
         />
       );

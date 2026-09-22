@@ -1,0 +1,70 @@
+{
+  "id": "layout-compact",
+  "name": "Compact floor: acute rooms beside the staff station",
+  "durationMinutes": 20160,
+  "warmupMinutes": 1440,
+  "modules": {
+    "layout": true
+  },
+  "layout": {
+    "footprint": {
+      "preset": "rectangle",
+      "width": 24,
+      "height": 14
+    },
+    "entrance": {
+      "x": 0,
+      "y": 7
+    },
+    "rooms": [
+      {
+        "id": "waiting",
+        "type": "waiting",
+        "x": 1,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      {
+        "id": "triage",
+        "type": "triage",
+        "x": 1,
+        "y": 9,
+        "w": 4,
+        "h": 3
+      },
+      {
+        "id": "station",
+        "type": "station",
+        "x": 10,
+        "y": 6,
+        "w": 3,
+        "h": 2
+      },
+      {
+        "id": "acute-a",
+        "type": "acute",
+        "x": 9,
+        "y": 1,
+        "w": 7,
+        "h": 4
+      },
+      {
+        "id": "acute-b",
+        "type": "acute",
+        "x": 9,
+        "y": 9,
+        "w": 7,
+        "h": 4
+      },
+      {
+        "id": "fast",
+        "type": "fastTrack",
+        "x": 18,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      }
+    ]
+  }
+}

@@ -14,6 +14,7 @@
   --untriaged: #9aa0a6;
   --boarding: #7b4bd6;
   --bed: #ecebe6;
+  --corridor: #e2e0d8;
   --esi-1: #c62828;
   --esi-2: #ef6c00;
   --esi-3: #d4a200;
@@ -38,6 +39,7 @@
     --untriaged: #7c7f84;
     --boarding: #b197fc;
     --bed: #34322e;
+    --corridor: #2c2a27;
     --esi-1: #ff6b6b;
     --esi-2: #ffa94d;
     --esi-3: #ffd43b;
@@ -62,6 +64,7 @@
   --untriaged: #7c7f84;
   --boarding: #b197fc;
   --bed: #34322e;
+  --corridor: #2c2a27;
   --esi-1: #ff6b6b;
   --esi-2: #ffa94d;
   --esi-3: #ffd43b;
@@ -165,4 +168,36 @@ button.icon { min-width: 36px; padding: 0; }
   h1 { font-size: 1.6rem; }
   .floor canvas { height: 420px; }
   .progress { width: 140px; }
+}
+
+.editor-bar { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; margin: 12px 0; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tools button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.grid-wrap { overflow-x: auto; }
+.grid { width: 100%; min-width: 480px; height: auto; display: block; touch-action: none; user-select: none; background: var(--canvas-bg); border-radius: 8px; }
+.grid .cell { fill: var(--corridor); stroke: var(--canvas-bg); stroke-width: 1; }
+.grid .outside { fill: transparent; }
+.grid .room { stroke: var(--ink); stroke-opacity: 0.25; }
+.grid .room-label { font-size: 7px; fill: var(--ink); pointer-events: none; }
+.grid .door { fill: var(--ink); opacity: 0.6; }
+.grid .entrance { fill: var(--accent); }
+.grid .drag { opacity: 0.5; }
+.room-waiting { fill: #f1e6c8; background: #f1e6c8; }
+.room-triage { fill: #f6d3c4; background: #f6d3c4; }
+.room-acute { fill: #cfe1f7; background: #cfe1f7; }
+.room-fastTrack { fill: #cdeccf; background: #cdeccf; }
+.room-station { fill: #e3d7f5; background: #e3d7f5; }
+.room-imaging, .room-lab { fill: #e5e5e5; background: #e5e5e5; }
+.room-list ul { list-style: none; padding: 0; display: grid; gap: 6px; }
+.room-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.score { margin-top: 16px; }
+.metrics thead td { text-align: right; font-size: 0.85rem; color: var(--muted); padding: 6px 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .room-waiting { fill: #5a4d2a; background: #5a4d2a; }
+  :root:not([data-theme='light']) .room-triage { fill: #5c3a2e; background: #5c3a2e; }
+  :root:not([data-theme='light']) .room-acute { fill: #2a4263; background: #2a4263; }
+  :root:not([data-theme='light']) .room-fastTrack { fill: #2d5132; background: #2d5132; }
+  :root:not([data-theme='light']) .room-station { fill: #463861; background: #463861; }
+  :root:not([data-theme='light']) .room-imaging, :root:not([data-theme='light']) .room-lab { fill: #444; background: #444; }
 }

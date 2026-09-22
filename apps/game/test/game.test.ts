@@ -106,3 +106,38 @@ describe('floor plan with beds and boarding', () => {
     expect(plan.beds.filter((b) => b.lane === 'main')).toHaveLength(12);
   });
 });
+
+describe('grid view and layout sandbox', () => {
+  it('draws bedded patients inside their own room', async () => {
+    const { exampleLayout, resolveConfig } = await import('@er/sim');
+    const { layoutConfig } = await import('../src/screens/LayoutEditor');
+    const { layoutGrid } = await import('../src/render/gridPlan');
+    const cfg = layoutConfig(exampleLayout());
+    const sim = new Simulation(cfg, 1);
+    sim.runUntil(2 * 1440 + 14 * 60);
+    const s = sim.snapshot();
+    const plan = layoutGrid(s, resolveConfig(cfg).layout!, 960, 560);
+    const rooms = new Map(plan.areas.map((a) => [a.id, a]));
+    const byId = new Map(plan.patients.map((d) => [d.id, d]));
+    const inBeds = s.patients.filter((p) => p.location === 'bed');
+    expect(inBeds.length).toBeGreaterThan(0);
+    for (const p of inBeds) {
+      const d = byId.get(p.id)!;
+      const r = rooms.get(p.room!)!;
+      expect(d.x).toBeGreaterThan(r.x);
+      expect(d.x).toBeLessThan(r.x + r.w);
+      expect(d.y).toBeGreaterThan(r.y);
+      expect(d.y).toBeLessThan(r.y + r.h);
+    }
+    expect(plan.grid!.cells.length).toBe(24 * 14);
+  });
+
+  it('quick score is deterministic and reports walking', async () => {
+    const { exampleLayout } = await import('@er/sim');
+    const { layoutConfig } = await import('../src/screens/LayoutEditor');
+    const { quickScore } = await import('../src/sandbox');
+    const a = quickScore(layoutConfig(exampleLayout()), [1]);
+    expect(quickScore(layoutConfig(exampleLayout()), [1])).toEqual(a);
+    expect(a.doctorWalkingShare).toBeGreaterThan(0);
+  });
+});

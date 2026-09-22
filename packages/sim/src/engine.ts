@@ -53,6 +53,7 @@ type SimEvent =
   | { kind: 'specialArrival'; spec: ArrivalSpec }
   | { kind: 'taskEnd'; staffId: number }
   | { kind: 'turnaroundEnd'; patientId: number; step: number }
+  | { kind: 'transferEnd'; patientId: number }
   | { kind: 'abandon'; patientId: number }
   | { kind: 'deteriorate'; patientId: number; token: number }
   | { kind: 'shift'; role: Role; version: number }
@@ -64,6 +65,7 @@ type SimEvent =
 const PRIORITY: Record<SimEvent['kind'], number> = {
   taskEnd: 0,
   turnaroundEnd: 0,
+  transferEnd: 0,
   shift: 1,
   handover: 1,
   inpatientDischarge: 2,
@@ -90,6 +92,7 @@ interface Runtime {
   status: StepStatus[];
   taskIds: (number | undefined)[];
   bedRequested: boolean;
+  /** In the bed (after walking there). */
   hasBed: boolean;
   activeTasks: number;
   wantsToLeave: boolean;
@@ -113,6 +116,8 @@ interface Staff {
   shiftStart: number;
   busyMinutes: number;
   taskStart?: number;
+  /** Home base (layout module): location index, 0 = entrance, i + 1 = room i. */
+  loc: number;
 }
 
 /** Where a patient is, for renderers. */
@@ -126,6 +131,8 @@ export interface PatientView {
   waitingFor?: string;
   lane?: Lane;
   bed?: number;
+  /** Room id of their bed (layout module). */
+  room?: string;
   boarding: boolean;
   /** Undefined until triaged. */
   assignedAcuity?: Acuity;
@@ -141,7 +148,7 @@ export interface SimSnapshot {
   finished: boolean;
   /** Everyone currently in the department, in id order. */
   patients: PatientView[];
-  staff: { id: number; role: Role; busy: boolean; retiring: boolean; fatigue: number; patientId?: number }[];
+  staff: { id: number; role: Role; busy: boolean; retiring: boolean; fatigue: number; patientId?: number; room?: string }[];
   beds: Record<Lane, { capacity: number | null; occupied: number }>;
   /** Inpatient beds for admissions (boarding module), else null. */
   inpatient: { capacity: number; occupied: number; boarders: number; escalated: boolean } | null;
@@ -194,6 +201,13 @@ export class Simulation {
   private readonly staff: Staff[] = [];
   private nextStaffId = 0;
   private readonly fatigueLog: FatigueRecord[] = [];
+  /** Layout: location index of every bed, per lane; home location per role. */
+  private readonly bedLoc: Record<Lane, number[]> = { main: [], fastTrack: [] };
+  private readonly waitingLoc: number = 0;
+  private readonly triageLocs: number[] = [];
+  private readonly stationLoc: number = 0;
+  /** Minutes spent walking, by role (inside the measurement window). */
+  readonly walkingMinutes: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 };
 
   private inpatientOccupied: number;
   private readonly boarders: number[] = [];
@@ -262,6 +276,20 @@ export class Simulation {
       busy: perRole(),
       onDuty: perRole(),
     };
+
+    if (c.layout) {
+      const locOf = (type: string) => c.layout!.rooms.flatMap((r, i) => (r.type === type ? [i + 1] : []));
+      for (const [lane, type] of [
+        ['main', 'acute'],
+        ['fastTrack', 'fastTrack'],
+      ] as const)
+        c.layout.rooms.forEach((r, i) => {
+          if (r.type === type) for (let k = 0; k < r.capacity; k++) this.bedLoc[lane].push(i + 1);
+        });
+      this.waitingLoc = locOf('waiting')[0]!;
+      this.triageLocs = locOf('triage');
+      this.stationLoc = locOf('station')[0] ?? this.bedLoc.main[0]!;
+    }
 
     for (const role of ROLES) {
       this.reconcileStaff(role);
@@ -345,6 +373,7 @@ export class Simulation {
     const problems = checkCommand(cmd, 'command');
     if (problems.length > 0) throw new ConfigError(problems);
     if (cmd.type === 'setSchedule' && !this.config.modules.staffing) throw new ConfigError(['command: setSchedule needs the staffing module on']);
+    if (cmd.type === 'setBeds' && this.config.layout) throw new ConfigError(['command: setBeds is not available with the layout module (beds come from rooms)']);
     this.apply(JSON.parse(JSON.stringify(cmd)) as Command);
   }
 
@@ -399,6 +428,7 @@ export class Simulation {
       if (staffIds.length === 0 && p.boardingStartTime === undefined) {
         const queued = r.status.findIndex((st) => st === 'queued');
         if (queued >= 0) waitingFor = this.pipeline[queued]!.kind;
+        else if (this.holdsBed(p) && !r.hasBed) waitingFor = 'transfer';
         else if (r.bedRequested && !r.hasBed) waitingFor = 'bed';
       }
       patients.push({
@@ -407,6 +437,7 @@ export class Simulation {
         waitingFor,
         lane: p.lane,
         bed: p.bed,
+        room: this.config.layout && r.hasBed ? this.config.layout.rooms[this.bedLoc[p.lane!][p.bed!]! - 1]!.id : undefined,
         boarding: p.boardingStartTime !== undefined,
         assignedAcuity: p.assignedAcuity,
         trueAcuity: p.trueAcuity,
@@ -431,6 +462,7 @@ export class Simulation {
         retiring: s.retiring,
         fatigue: this.fatigue(s),
         patientId: s.taskId === null ? undefined : this.tasks.get(s.taskId)!.patientId,
+        room: this.config.layout && s.loc > 0 ? this.config.layout.rooms[s.loc - 1]!.id : undefined,
       })),
       beds: { main: bedInfo('main'), fastTrack: bedInfo('fastTrack') },
       inpatient: this.config.modules.boarding
@@ -467,6 +499,15 @@ export class Simulation {
       case 'turnaroundEnd':
         this.completeStep(this.patients[ev.patientId]!, ev.step);
         break;
+      case 'transferEnd': {
+        const p = this.patients[ev.patientId]!;
+        const r = this.rt[p.id]!;
+        if (!r.finished) {
+          r.hasBed = true;
+          this.advance(p);
+        }
+        break;
+      }
       case 'abandon':
         this.onAbandon(ev.patientId);
         break;
@@ -749,7 +790,7 @@ export class Simulation {
       this.tasks.delete(tid);
     });
     if (p.lane !== undefined) this.bedQueues[p.lane].remove(p.id);
-    if (r.hasBed) this.releaseBed(p);
+    if (this.holdsBed(p)) this.releaseBed(p);
   }
 
   private leaveWithoutBeingSeen(p: Patient): void {
@@ -844,8 +885,14 @@ export class Simulation {
       used[idx] = id;
       p.bed = idx;
       p.bedTime = this.clock;
-      this.rt[id]!.hasBed = true;
-      this.advance(p);
+      // Walk (or be wheeled) from the waiting room to the bed.
+      const c = this.config;
+      const walk = c.layout ? c.layout.dist[this.waitingLoc]![this.bedLoc[lane][idx]!]! * c.walking.minutesPerCell : c.walking.disabledTransferMinutes;
+      if (walk > 0) this.push(this.clock + walk, { kind: 'transferEnd', patientId: id });
+      else {
+        this.rt[id]!.hasBed = true;
+        this.advance(p);
+      }
     }
   }
 
@@ -854,6 +901,11 @@ export class Simulation {
     this.bedsUsed[lane][p.bed!] = null;
     this.rt[p.id]!.hasBed = false;
     this.fillBeds(lane);
+  }
+
+  /** Holds a bed (in it, or on the way to it). */
+  private holdsBed(p: Patient): boolean {
+    return p.lane !== undefined && p.bed !== undefined && this.bedsUsed[p.lane][p.bed] === p.id;
   }
 
   /** Patients still waiting for a bed are re-routed when fast track opens or closes. */
@@ -925,7 +977,22 @@ export class Simulation {
     }
     if (c.modules.burnout) minutes *= 1 + c.burnout.timeEffect * fatigue;
     if (s.role === 'fastTrackClinician') minutes *= c.fastTrack.serviceFactor;
+    if (c.layout) {
+      // Staff work from a home base (station, or their triage room) and make a round trip for each task:
+      // out to the patient and back to document. Triage nurses fetch the patient from the waiting room.
+      const where = step.kind === 'triage' ? this.waitingLoc : this.taskLocation(s, p, step);
+      const walk = 2 * c.layout.dist[s.loc]![where]! * c.walking.minutesPerCell;
+      minutes += walk;
+      if (this.clock >= c.warmupMinutes) this.walkingMinutes[s.role] += walk;
+    }
     this.push(this.clock + minutes, { kind: 'taskEnd', staffId: s.id });
+  }
+
+  /** Where a task happens (layout module). */
+  private taskLocation(s: Staff, p: Patient, step: StepDef): number {
+    if (this.holdsBed(p)) return this.bedLoc[p.lane!][p.bed!]!;
+    if (step.kind === 'triage' && this.triageLocs.length) return this.triageLocs[s.id % this.triageLocs.length]!;
+    return this.waitingLoc;
   }
 
   private onTaskEnd(staffId: number): void {
@@ -958,7 +1025,16 @@ export class Simulation {
   }
 
   private addStaff(role: Role, occ: string | undefined, shiftStart: number): void {
-    this.staff.push({ id: this.nextStaffId++, role, taskId: null, retiring: false, occ, shiftStart, busyMinutes: 0 });
+    const id = this.nextStaffId++;
+    // Staff start at their base: triage room for triage nurses, the staff station for everyone else.
+    const loc = !this.config.layout
+      ? 0
+      : role === 'triageNurse' && this.triageLocs.length
+        ? this.triageLocs[id % this.triageLocs.length]!
+        : role === 'fastTrackClinician' && this.bedLoc.fastTrack.length
+          ? this.bedLoc.fastTrack[0]!
+          : this.stationLoc;
+    this.staff.push({ id, role, taskId: null, retiring: false, occ, shiftStart, busyMinutes: 0, loc });
   }
 
   private removeStaff(s: Staff): void {

@@ -156,6 +156,13 @@ export const PARAMS = {
     handoverHours: 12,
   },
 
+  layout: {
+    /** Walking time per grid cell (about 2.5 m at ~1 m/s including stops). */
+    minutesPerCell: 0.04, // PLACEHOLDER
+    /** Waiting room to bed when the layout module is off. Zero keeps earlier phases' results unchanged. */
+    disabledTransferMinutes: 0, // PLACEHOLDER
+  },
+
   staffing: {
     doctors: 4, // PLACEHOLDER (~60% busy at default arrivals incl. dispositions)
     triageNurses: 1, // PLACEHOLDER

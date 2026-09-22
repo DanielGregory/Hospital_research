@@ -58,7 +58,7 @@ describe('main', () => {
   it('returns non-zero on a bad config', () => {
     const dir = mkdtempSync(join(tmpdir(), 'er-headless-'));
     const bad = join(dir, 'bad.json');
-    writeFileSync(bad, JSON.stringify({ id: 'x', modules: { layout: true } }));
+    writeFileSync(bad, JSON.stringify({ id: 'x', modules: { process: true } }));
     expect(main(['run', '--config', bad], root)).toBe(1);
   });
 });

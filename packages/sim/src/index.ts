@@ -45,3 +45,20 @@ export function runSimulation(config: unknown, seed: number) {
 export { hourlyLoad, onDutyByHour, meanDoctorMinutes, type HourLoad } from './analytic/load.js';
 export { defaultPipeline, checkPipeline, makeStep, STEP_KINDS, DIAGNOSTIC_KINDS, type StepDef, type StepKind, type RoutingRule } from './pipeline.js';
 export { balanceReport, type BalanceReport, type BalanceRow } from './balance.js';
+export {
+  resolveLayout,
+  checkLayoutShape,
+  checkLayoutForSim,
+  footprintPreset,
+  defaultCapacity,
+  exampleLayout,
+  ROOM_TYPES,
+  FOOTPRINT_PRESETS,
+  type LayoutSpec,
+  type RoomSpec,
+  type RoomType,
+  type ResolvedLayout,
+  type ResolvedRoom,
+  type Cell,
+  type FootprintPreset,
+} from './layout.js';

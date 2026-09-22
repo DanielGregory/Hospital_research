@@ -2,11 +2,15 @@ import type { Acuity, Command, PlayerControl, QueueDiscipline, SimSnapshot } fro
 import { useEffect, useRef, useState } from 'react';
 import type { SetupValues } from '../controls';
 import { clockLabel } from '../format';
-import type { LevelConfig } from '../levels';
+import type { GameConfig } from '../sandbox';
 import { drawFloor } from '../render/draw';
 import { layoutFloor } from '../render/floorPlan';
+import { layoutGrid } from '../render/gridPlan';
 import { GameRunner, SPEEDS, type Speed } from '../runner';
 import { SimpleControl } from './Setup';
+
+/** In a sandbox run the player may use every live control. */
+export const SANDBOX_LIVE: PlayerControl[] = ['queue.discipline', 'staffing.doctors', 'staffing.triageNurses', 'fastTrack.enabled', 'beds.main'];
 
 /** Controls that can change mid-shift, and the command each one sends. */
 const LIVE: Partial<Record<PlayerControl, (v: unknown, all: SetupValues) => Command>> = {
@@ -21,7 +25,7 @@ const LIVE: Partial<Record<PlayerControl, (v: unknown, all: SetupValues) => Comm
   'boarding.escalation': (v) => ({ type: 'setEscalation', enabled: v === true }),
 };
 
-export function Play(props: { config: LevelConfig; seed: number; values: SetupValues; onFinish: (runner: GameRunner) => void; onQuit: () => void }) {
+export function Play(props: { config: GameConfig; seed: number; values: SetupValues; onFinish: (runner: GameRunner) => void; onQuit: () => void }) {
   const { config, seed, onFinish, onQuit } = props;
   const runnerRef = useRef<GameRunner | null>(null);
   runnerRef.current ??= new GameRunner(config, seed);
@@ -34,7 +38,12 @@ export function Play(props: { config: LevelConfig; seed: number; values: SetupVa
   const onFinishRef = useRef(onFinish);
   onFinishRef.current = onFinish;
 
-  const showFastTrack = runner.sim.config.fastTrack.enabled || runner.sim.config.staff.fastTrackClinician > 0 || !!runner.sim.config.schedule.fastTrackClinician || config.level.playerControls.some((c) => c.startsWith('fastTrack'));
+  const controls = config.level?.playerControls ?? SANDBOX_LIVE;
+  const showFastTrack =
+    runner.sim.config.fastTrack.enabled ||
+    runner.sim.config.staff.fastTrackClinician > 0 ||
+    !!runner.sim.config.schedule.fastTrackClinician ||
+    controls.some((c) => c.startsWith('fastTrack'));
 
   useEffect(() => {
     let raf = 0;
@@ -56,7 +65,8 @@ export function Play(props: { config: LevelConfig; seed: number; values: SetupVa
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          drawFloor(ctx, layoutFloor(s, w, h, showFastTrack), w, h);
+          const layout = runner.sim.config.layout;
+          drawFloor(ctx, layout ? layoutGrid(s, layout, w, h) : layoutFloor(s, w, h, showFastTrack), w, h);
         }
       }
       if (t - lastUi > 100 || s.finished) {
@@ -90,13 +100,13 @@ export function Play(props: { config: LevelConfig; seed: number; values: SetupVa
   const boarding = snap.patients.filter((p) => p.boarding).length;
   const c = runner.sim.config;
   const progress = snap.now / snap.durationMinutes;
-  const live = config.level.playerControls.filter((ctl) => LIVE[ctl]);
+  const live = controls.filter((ctl) => LIVE[ctl] && !(ctl.startsWith('beds.') && c.layout));
 
   return (
     <main className="screen play">
       <header className="hud">
         <div>
-          <p className="eyebrow">Simulation {config.level.number}</p>
+          <p className="eyebrow">{config.level ? `Simulation ${config.level.number}` : 'Sandbox'}</p>
           <strong className="clock" data-testid="clock">
             {clockLabel(c.startDayOfWeek, c.startHour, snap.now)}
           </strong>

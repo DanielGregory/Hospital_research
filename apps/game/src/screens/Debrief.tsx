@@ -1,10 +1,10 @@
 import { evaluateGoals, type Metrics } from '@er/sim';
 import { metricValue, minutes, percent } from '../format';
-import type { LevelConfig } from '../levels';
+import type { LevelSpec } from '@er/sim';
 
-export function Debrief(props: { level: LevelConfig; metrics: Metrics; onRetry: () => void; onNext?: () => void; onMenu: () => void }) {
+export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: () => void; onNext?: () => void; onMenu: () => void; retryLabel?: string }) {
   const { level, metrics: m, onRetry, onNext, onMenu } = props;
-  const { passed, results } = evaluateGoals(m, level.level.goals);
+  const { passed, results } = evaluateGoals(m, level?.goals ?? []);
   const rows: [string, string][] = [
     ['Patients arrived', String(m.arrivals)],
     ['Seen by a doctor', String(m.seenByDoctor)],
@@ -23,12 +23,13 @@ export function Debrief(props: { level: LevelConfig; metrics: Metrics; onRetry: 
         ] as [string, string][])
       : []),
     ['Doctors busy', percent(m.utilizationByRole.doctor)],
+    ...(m.walking ? ([["Doctors' busy time spent walking", percent(m.walking.shareOfBusyByRole.doctor)]] as [string, string][]) : []),
     ['Triage accuracy (now revealed)', percent(m.triage.accuracy)],
   ];
   return (
     <main className="screen debrief">
-      <p className="eyebrow">Simulation {level.level.number} · debrief</p>
-      <h1 data-testid="result">{passed ? 'Goals met' : 'Goals not met'}</h1>
+      <p className="eyebrow">{level ? `Simulation ${level.number} · debrief` : 'Sandbox · results'}</p>
+      <h1 data-testid="result">{!level ? 'Shift complete' : passed ? 'Goals met' : 'Goals not met'}</h1>
       <ul className="goals results">
         {results.map((r) => (
           <li key={r.metric} className={r.passed ? 'pass' : 'fail'}>
@@ -40,7 +41,7 @@ export function Debrief(props: { level: LevelConfig; metrics: Metrics; onRetry: 
           </li>
         ))}
       </ul>
-      {(passed ? level.level.debrief.pass : level.level.debrief.fail).map((p, i) => (
+      {(level ? (passed ? level.debrief.pass : level.debrief.fail) : []).map((p, i) => (
         <p key={i} className="narrative">
           {p}
         </p>
@@ -58,7 +59,7 @@ export function Debrief(props: { level: LevelConfig; metrics: Metrics; onRetry: 
       <div className="actions">
         <button onClick={onMenu}>Menu</button>
         <button onClick={onRetry} data-testid="retry">
-          Try again
+          {props.retryLabel ?? 'Try again'}
         </button>
         {passed && onNext && (
           <button className="primary" onClick={onNext} data-testid="next">

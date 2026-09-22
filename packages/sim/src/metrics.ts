@@ -80,6 +80,8 @@ export interface Metrics {
   /** Time-average number in the department not yet seen by a doctor. */
   timeAverageWaiting: number;
   utilizationByRole: Record<Role, number | null>;
+  /** Layout module: minutes staff spent walking, and walking as a share of their busy time. */
+  walking: { minutesByRole: Record<Role, number>; shareOfBusyByRole: Record<Role, number | null> } | null;
   staffHoursByRole: Record<Role, number>;
   /** End-of-shift fatigue (burnout module); null when the module is off. */
   staffFatigue: { mean: number; max: number; byRole: Record<Role, number | null> } | null;
@@ -167,6 +169,17 @@ export function computeMetrics(sim: Simulation): Metrics {
     staffHoursByRole[role] = duty / 60;
   }
 
+  let walking: Metrics['walking'] = null;
+  if (c.layout) {
+    const minutesByRole = { ...sim.walkingMinutes };
+    const shareOfBusyByRole = {} as Record<Role, number | null>;
+    for (const role of ROLES) {
+      const busy = sim.tw.busy[role].integral(end);
+      shareOfBusyByRole[role] = busy > 0 ? minutesByRole[role] / busy : null;
+    }
+    walking = { minutesByRole, shareOfBusyByRole };
+  }
+
   let staffFatigue: Metrics['staffFatigue'] = null;
   if (c.modules.burnout) {
     const recs = sim.fatigueRecords().filter((r) => r.end > start && r.end - r.start > 0);
@@ -238,6 +251,7 @@ export function computeMetrics(sim: Simulation): Metrics {
     timeAverageInSystem: span > 0 ? sim.tw.inSystem.integral(end) / span : 0,
     timeAverageWaiting: span > 0 ? sim.tw.waiting.integral(end) / span : 0,
     utilizationByRole,
+    walking,
     staffHoursByRole,
     staffFatigue,
     notYetModeled: NOT_YET_MODELED,

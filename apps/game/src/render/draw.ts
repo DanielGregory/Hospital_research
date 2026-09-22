@@ -26,6 +26,15 @@ export function drawFloor(ctx: CanvasRenderingContext2D, plan: FloorPlan, width:
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
+  if (plan.grid) {
+    // Corridors: the footprint, lightly gridded; the entrance marked.
+    ctx.fillStyle = css('--corridor', '#e2e0d8');
+    for (const c of plan.grid.cells) ctx.fillRect(c.x, c.y, c.w, c.h);
+    ctx.fillStyle = css('--accent', '#2f5bd3');
+    const e = plan.grid.entrance;
+    ctx.fillRect(e.x, e.y, e.w, e.h);
+  }
+
   ctx.font = '600 13px system-ui, sans-serif';
   for (const a of plan.areas) {
     ctx.fillStyle = areaBg;
@@ -36,8 +45,12 @@ export function drawFloor(ctx: CanvasRenderingContext2D, plan: FloorPlan, width:
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = ink;
-    ctx.fillText(a.label, a.x + 12, a.y + 20);
+    if (plan.grid) {
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillText(a.label, a.x + 5, a.y + 12, Math.max(10, a.w - 8));
+    } else ctx.fillText(a.label, a.x + 12, a.y + 20);
   }
+  ctx.font = '600 13px system-ui, sans-serif';
 
   ctx.font = '12px system-ui, sans-serif';
   ctx.fillStyle = muted;

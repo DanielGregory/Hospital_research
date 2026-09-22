@@ -106,7 +106,7 @@ Every module toggle exposed. Presets include "layout only" (just design the floo
 - Keep the params file as the single source of truth for numbers.
 
 ## Repo status & commands
-- **Phases 0–3: done.**
+- **Phases 0–4: done.**
 - `pnpm install` / `pnpm test` / `pnpm typecheck`
 - `pnpm game`: run the browser game (Vite dev server). `pnpm e2e`: build it and play levels 1–2 in headless Chromium (light + dark, mobile width). `SCREENSHOTS=dir pnpm e2e` saves screenshots.
 - `pnpm headless run --config configs/examples/basic.json --seed 42 --out results.json` (`--format csv` for CSV)
@@ -116,6 +116,8 @@ Every module toggle exposed. Presets include "layout only" (just design the floo
 - Modules that are not built yet are rejected by config validation with the phase they belong to, so a config never silently enables something that does nothing.
 
 ## Implementation decisions (keep consistent)
+- **Layout module (Phase 4, `layout.ts`):** a grid footprint (rows of `#`/`.` or a preset: rectangle, lShape, uShape, narrow) holding typed rooms (waiting, triage, acute, fastTrack, station, imaging, lab) with capacities. Corridors are footprint cells outside rooms. Doors default to the edge cell nearest the entrance. Distances are corridor BFS, door to door. With the module on, bed counts come from acute/fastTrack rooms (`setBeds` is rejected). Patients walk from the waiting room to their bed before in-bed work starts. Staff work from a home base (station; triage nurses from their triage room) and make a round trip per task, including walking back to document; triage nurses fetch patients from the waiting room. `PARAMS.layout.minutesPerCell` sets walking speed. Off: transfers take `disabledTransferMinutes` (0), so earlier results are unchanged.
+- **Game sandbox:** the Layout editor (menu → Sandbox) draws rooms on an SVG grid and validates live. "Test this layout" averages three headless weeks and tracks the best found this session; "Export config" downloads a runnable JSON; "Watch a shift" plays it in the grid view (`render/gridPlan.ts`). Sandbox runs have no level: every live control is available and there are no goals.
 - **Step graph (Phase 3):** a visit is a DAG of steps (`pipeline.ts`). The default, used while `process` is off, is triage → [bed] → doctorEval → workup (results; bed held, no staff) → disposition (a short second doctor contact). A step starts when its `after` steps are done; several can run in parallel. Doctor steps for fast-track patients go to fast-track clinicians. Disposition runs last and decides admit or discharge. Each patient draws all their randomness from their own stream (`walkIn:n`, `massCasualty:i:k`, `bounceBack:id`), so one patient's draws never shift another's.
 - **Beds:** `beds.main` / `beds.fastTrack` (null = unlimited; params default 20 / 6). The patient takes a bed before their first in-bed step and keeps it until departure, or until an inpatient bed frees up if they are boarding. Bed queues follow the queue discipline.
 - **Conditions:** hidden `conditionId` per patient from `PARAMS.conditions` (sets admission chance and how easy it is to miss). Metrics group by *initial* true acuity.

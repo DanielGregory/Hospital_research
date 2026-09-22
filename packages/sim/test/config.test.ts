@@ -5,7 +5,7 @@ import { PARAMS } from '../src/params.js';
 describe('config', () => {
   it('fills defaults from PARAMS', () => {
     const c = resolveConfig({ id: 'x' });
-    expect(c.doctors).toBe(PARAMS.staffing.doctors);
+    expect(c.staff.doctor).toBe(PARAMS.staffing.doctors);
     expect(c.hourlyRates).toEqual(PARAMS.arrivals.hourlyRates);
     expect(Object.values(c.modules).every((on) => on === false)).toBe(true);
   });

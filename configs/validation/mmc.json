@@ -1,13 +1,26 @@
 {
   "id": "validation-mm3",
-  "name": "M/M/3 at 80% utilisation (Erlang C check)",
+  "name": "M/M/3 at 80% utilisation (Erlang C check): no triage, FIFO, no LWBS",
   "durationMinutes": 2000000,
   "warmupMinutes": 10000,
   "arrivals": {
-    "hourlyRates": [4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8,
-                    4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8],
+    "hourlyRates": [4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8, 4.8],
     "dayOfWeekMultipliers": [1, 1, 1, 1, 1, 1, 1]
   },
-  "staffing": { "doctors": 3 },
-  "service": { "distribution": "exponential", "meanMinutes": 30 }
+  "staffing": {
+    "doctors": 3
+  },
+  "service": {
+    "distribution": "exponential",
+    "meanMinutes": 30
+  },
+  "triage": {
+    "enabled": false
+  },
+  "queue": {
+    "discipline": "fifo"
+  },
+  "lwbs": {
+    "enabled": false
+  }
 }

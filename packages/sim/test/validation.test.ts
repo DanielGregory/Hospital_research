@@ -28,9 +28,12 @@ describe('determinism', () => {
     const cfg = { ...basic, commands: [] };
     const live = new Simulation(cfg, 5);
     live.runUntil(2000);
-    live.command({ type: 'setDoctors', count: 4 });
+    live.command({ type: 'setStaff', role: 'doctor', count: 4 });
+    live.command({ type: 'setFastTrack', enabled: true });
+    live.command({ type: 'setStaff', role: 'fastTrackClinician', count: 1 });
     live.runUntil(5000.5);
-    live.command({ type: 'setDoctors', count: 1 });
+    live.command({ type: 'setStaff', role: 'doctor', count: 1 });
+    live.command({ type: 'setQueueDiscipline', discipline: 'fifo' });
     const liveResult = live.run();
 
     const replay = new Simulation({ ...cfg, commands: liveResult.commandLog }, 5).run();
@@ -53,18 +56,25 @@ describe('Erlang C (M/M/3, rho = 0.8)', () => {
   });
 
   it('utilization and queue length match', () => {
-    expect(rel(avg((m) => m.doctorUtilization!), theory.utilization)).toBeLessThan(0.01);
+    expect(rel(avg((m) => m.utilizationByRole.doctor!), theory.utilization)).toBeLessThan(0.01);
     expect(rel(avg((m) => m.timeAverageWaiting), theory.meanQueueLength)).toBeLessThan(0.06);
     expect(rel(avg((m) => m.lengthOfStay.mean!), theory.meanTimeInSystem)).toBeLessThan(0.03);
   });
 });
 
 describe("Little's Law", () => {
-  it('L ≈ λW with time-varying arrivals', () => {
-    const cfg = { ...basic, durationMinutes: 8 * 7 * 1440, commands: [] };
+  it('L ≈ λW with time-varying arrivals, triage, fast track and LWBS', () => {
+    const cfg = {
+      ...basic,
+      durationMinutes: 8 * 7 * 1440,
+      commands: [],
+      staffing: { doctors: 2, fastTrackClinicians: 1 },
+      fastTrack: { enabled: true },
+    };
     const m = new Simulation(cfg, 11).run().metrics;
+    expect(m.lwbsCount).toBeGreaterThan(0);
     const L = m.timeAverageInSystem;
-    const lambdaW = m.arrivalRatePerMinute * m.lengthOfStay.mean!;
+    const lambdaW = m.arrivalRatePerMinute * m.meanTimeInSystem!;
     expect(rel(lambdaW, L)).toBeLessThan(0.02);
   });
 
@@ -75,8 +85,8 @@ describe("Little's Law", () => {
 });
 
 describe('monotonicity', () => {
-  it('more doctors never increase any patient’s wait (common random numbers)', () => {
-    const base = { ...basic, commands: [], durationMinutes: 3 * 1440 };
+  it('more doctors never increase any patient’s wait (FIFO, no triage/LWBS; common random numbers)', () => {
+    const base = { ...basic, commands: [], durationMinutes: 3 * 1440, triage: { enabled: false }, queue: { discipline: 'fifo' }, lwbs: { enabled: false } };
     for (const seed of [1, 2, 3]) {
       let prevWaits: number[] | undefined;
       let prevMean = Infinity;
@@ -92,6 +102,20 @@ describe('monotonicity', () => {
         prevWaits = waits;
         prevMean = metrics.doorToDoctor.mean!;
       }
+    }
+  });
+
+  it('with the full default pipeline, more doctors lower mean wait and LWBS (averaged over seeds)', () => {
+    const base = { ...basic, commands: [], durationMinutes: 14 * 1440 };
+    const seeds = [1, 2, 3, 4];
+    let prev = { wait: Infinity, lwbs: Infinity };
+    for (let doctors = 2; doctors <= 6; doctors++) {
+      const ms = seeds.map((s) => new Simulation({ ...base, staffing: { doctors } }, s).run().metrics);
+      const wait = ms.reduce((a, m) => a + m.doorToDoctor.mean!, 0) / ms.length;
+      const lwbs = ms.reduce((a, m) => a + m.lwbsRate, 0) / ms.length;
+      expect(wait).toBeLessThanOrEqual(prev.wait);
+      expect(lwbs).toBeLessThanOrEqual(prev.lwbs);
+      prev = { wait, lwbs };
     }
   });
 });

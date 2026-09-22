@@ -2,30 +2,35 @@
 /**
  * Headless runner: runs a config at full speed and writes metrics as JSON or CSV.
  *
- *   run --config <file.json> [--seed 42 | --seeds 1-10] [--out results.json] [--format json|csv]
+ *   run --config <file.json> [--seed 42 | --seeds 1-10] [--set path=value ...] [--out results.json] [--format json|csv]
  *
- * Output schema (JSON): { configPath, configId, runs: [{ seed, metrics, commandLog }] }
- * CSV: one row per seed, metric keys flattened with dots.
+ * Output schema (JSON): { configPath, configId, overrides, limitProblems, level?, runs: [{ seed, metrics, commandLog, goals? }] }
+ * CSV: one row per seed, metric keys flattened with dots, plus goal results for levels.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ConfigError, Simulation, type Metrics, type TimedCommand } from '@er/sim';
+import { checkLimits, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
 
 export const USAGE = `Usage:
-  run --config <file.json> [--seed <n> | --seeds <a-b>] [--out <file>] [--format json|csv]
+  run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
 
 Options:
   --config   Level or sandbox config (JSON). Required.
-  --seed     Single seed (default 1).
+  --seed     Single seed (default: the level's seed, else 1).
   --seeds    Inclusive seed range for replications, e.g. 1-20.
+  --set      Override a config value (repeatable). Value is JSON, or a bare string:
+             --set staffing.doctors=4  --set queue.discipline=fifo
+             --set 'staffing.schedule.doctor=[{"startHour":8,"hours":12,"count":3}]'
   --out      Output file. Defaults to stdout.
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
   config: string;
+  /** Empty = use the level's seed, else 1. */
   seeds: number[];
+  overrides: [string, unknown][];
   out?: string;
   format: 'json' | 'csv';
 }
@@ -36,12 +41,14 @@ export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
   if (cmd !== 'run') throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   const opts: Record<string, string> = {};
+  const overrides: [string, unknown][] = [];
   for (let i = 0; i < rest.length; i++) {
     const key = rest[i]!;
     if (!key.startsWith('--')) throw new UsageError(`Unexpected argument '${key}'`);
     const val = rest[i + 1];
     if (val === undefined || val.startsWith('--')) throw new UsageError(`Missing value for ${key}`);
-    opts[key.slice(2)] = val;
+    if (key === '--set') overrides.push(parseOverride(val));
+    else opts[key.slice(2)] = val;
     i++;
   }
   const known = new Set(['config', 'seed', 'seeds', 'out', 'format']);
@@ -55,29 +62,78 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     if (!m || Number(m[1]) > Number(m[2])) throw new UsageError('--seeds must look like 1-10');
     seeds = [];
     for (let s = Number(m[1]); s <= Number(m[2]); s++) seeds.push(s);
-  } else {
-    const s = opts.seed ?? '1';
-    if (!/^\d+$/.test(s)) throw new UsageError('--seed must be a non-negative integer');
-    seeds = [Number(s)];
-  }
+  } else if (opts.seed !== undefined) {
+    if (!/^\d+$/.test(opts.seed)) throw new UsageError('--seed must be a non-negative integer');
+    seeds = [Number(opts.seed)];
+  } else seeds = [];
 
   const format = opts.format ?? (opts.out?.endsWith('.csv') ? 'csv' : 'json');
   if (format !== 'json' && format !== 'csv') throw new UsageError('--format must be json or csv');
-  return { config: opts.config, seeds, out: opts.out, format };
+  return { config: opts.config, seeds, overrides, out: opts.out, format };
+}
+
+function parseOverride(arg: string): [string, unknown] {
+  const eq = arg.indexOf('=');
+  if (eq <= 0) throw new UsageError(`--set expects path=value, got '${arg}'`);
+  const path = arg.slice(0, eq);
+  const raw = arg.slice(eq + 1);
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    value = raw; // bare string, e.g. queue.discipline=fifo
+  }
+  return [path, value];
+}
+
+/** Return a copy of `config` with each dot-path override applied (creating objects as needed). */
+export function applyOverrides(config: unknown, overrides: readonly [string, unknown][]): unknown {
+  const out = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+  for (const [path, value] of overrides) {
+    const keys = path.split('.');
+    let cur = out;
+    for (const k of keys.slice(0, -1)) {
+      const next = cur[k];
+      if (typeof next !== 'object' || next === null || Array.isArray(next)) cur[k] = {};
+      cur = cur[k] as Record<string, unknown>;
+    }
+    cur[keys[keys.length - 1]!] = value;
+  }
+  return out;
 }
 
 export interface RunOutput {
   configPath: string;
   configId: string;
-  runs: { seed: number; metrics: Metrics; commandLog: TimedCommand[] }[];
+  overrides: Record<string, unknown>;
+  /** Starting config versus the level's staffing limits; empty when within limits or not a level. */
+  limitProblems: string[];
+  level?: { number: number; title: string; passRate: number };
+  runs: { seed: number; metrics: Metrics; commandLog: TimedCommand[]; goals?: { passed: boolean; results: GoalResult[] } }[];
 }
 
-export function runConfig(config: unknown, configPath: string, seeds: readonly number[]): RunOutput {
+export function runConfig(config: unknown, configPath: string, seeds: readonly number[], overrides: readonly [string, unknown][] = []): RunOutput {
+  const resolved = resolveConfig(config);
+  const goals = resolved.level?.goals;
+  if (seeds.length === 0) seeds = [resolved.level?.seed ?? 1];
   const runs = seeds.map((seed) => {
     const { metrics, commandLog } = new Simulation(config, seed).run();
-    return { seed, metrics, commandLog };
+    return { seed, metrics, commandLog, ...(goals ? { goals: evaluateGoals(metrics, goals) } : {}) };
   });
-  return { configPath, configId: runs[0]?.metrics.configId ?? '', runs };
+  const out: RunOutput = {
+    configPath,
+    configId: resolved.id,
+    overrides: Object.fromEntries(overrides),
+    limitProblems: checkLimits(resolved),
+    runs,
+  };
+  if (resolved.level)
+    out.level = {
+      number: resolved.level.number,
+      title: resolved.level.title,
+      passRate: runs.filter((r) => r.goals!.passed).length / runs.length,
+    };
+  return out;
 }
 
 /** Flatten nested objects to dot keys; arrays are skipped (they don't fit a CSV cell). */
@@ -92,7 +148,14 @@ export function flatten(obj: Record<string, unknown>, prefix = '', out: Record<s
 }
 
 export function toCsv(output: RunOutput): string {
-  const rows = output.runs.map((r) => flatten(r.metrics as unknown as Record<string, unknown>));
+  const rows = output.runs.map((r) => {
+    const row = flatten(r.metrics as unknown as Record<string, unknown>);
+    if (r.goals) {
+      row['goals.passed'] = r.goals.passed ? 1 : 0;
+      for (const g of r.goals.results) row[`goal.${g.metric}`] = g.passed ? 1 : 0;
+    }
+    return row;
+  });
   const header = Object.keys(rows[0] ?? {});
   const cell = (v: number | string | null | undefined) => {
     if (v === null || v === undefined) return '';
@@ -106,13 +169,16 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
   try {
     const args = parseArgs(argv);
     const configPath = resolve(cwd, args.config);
-    const config: unknown = JSON.parse(readFileSync(configPath, 'utf8'));
-    const output = runConfig(config, args.config, args.seeds);
+    const config = applyOverrides(JSON.parse(readFileSync(configPath, 'utf8')), args.overrides);
+    const output = runConfig(config, args.config, args.seeds, args.overrides);
+    const seedCount = output.runs.length;
     const text = args.format === 'csv' ? toCsv(output) : JSON.stringify(output, null, 2) + '\n';
     if (args.out) {
       writeFileSync(resolve(cwd, args.out), text);
-      process.stderr.write(`Wrote ${args.seeds.length} run(s) to ${args.out}\n`);
+      process.stderr.write(`Wrote ${seedCount} run(s) to ${args.out}\n`);
     } else process.stdout.write(text);
+    for (const p of output.limitProblems) process.stderr.write(`Level limit exceeded: ${p}\n`);
+    if (output.level) process.stderr.write(`Level ${output.level.number} (${output.level.title}): goals met in ${Math.round(output.level.passRate * 100)}% of runs\n`);
     return 0;
   } catch (e) {
     if (e instanceof UsageError) {

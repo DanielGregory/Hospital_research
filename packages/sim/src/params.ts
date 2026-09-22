@@ -35,8 +35,34 @@ export const PARAMS = {
     lognormalCv: 0.8, // PLACEHOLDER
   },
 
+  triage: {
+    meanMinutes: 6, // PLACEHOLDER
+    /** Triage time is lognormal with this CV. */
+    cv: 0.5, // PLACEHOLDER
+    /** Probability triage assigns the true ESI level. Published ESI accuracy is roughly 60–80%. */
+    accuracy: 0.72, // PLACEHOLDER
+    /** Of mistriaged patients, share assigned a less urgent level (under-triage); the rest are over-triaged. */
+    underTriageShare: 0.5, // PLACEHOLDER
+  },
+
+  fastTrack: {
+    /** Assigned acuity at or above this goes to fast track when it is open. */
+    minAcuity: 4 as Acuity, // PLACEHOLDER
+    /** Fast-track treatment time relative to the main ED (focused lane, simpler workups). */
+    serviceFactor: 0.85, // PLACEHOLDER
+  },
+
+  lwbs: {
+    /** Mean patience before leaving without being seen, by true acuity. Infinity = never leaves. */
+    patienceMeanMinutesByAcuity: { 1: Infinity, 2: Infinity, 3: 240, 4: 180, 5: 150 } as Record<Acuity, number>, // PLACEHOLDER
+    /** Patience is lognormal with this CV, so few leave after short waits. */
+    patienceCv: 0.6, // PLACEHOLDER
+  },
+
   staffing: {
-    doctors: 2, // PLACEHOLDER
+    doctors: 3, // PLACEHOLDER (~72% utilisation at default arrivals)
+    triageNurses: 1, // PLACEHOLDER
+    fastTrackClinicians: 0,
   },
 
   run: {

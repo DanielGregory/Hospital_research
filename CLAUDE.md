@@ -106,10 +106,20 @@ Every module toggle exposed. Presets include "layout only" (just design the floo
 - Keep the params file as the single source of truth for numbers.
 
 ## Repo status & commands
-- **Phase 0 is done.** Next up: Phase 1.
-- `pnpm install` — install workspace deps
-- `pnpm test` — all Vitest suites (includes the validation tests in `packages/sim/test/validation.test.ts`)
-- `pnpm typecheck` — TypeScript across all packages
+- **Phase 0: done.** **Phase 2: done (engine, configs, headless).**
+- **Phase 1 was skipped at the owner's request** and is still open: the game view (`apps/game`) and Level 1. Level 1 has no config yet. With one lever (queue order) and ~11 patients a night, pass/fail was mostly luck (acuity order raised the pass rate only ~5 points over 60 seeds). Design it together with the view, e.g. a fixed night containing a clear "urgent patient behind a queue" moment.
+- `pnpm install` / `pnpm test` / `pnpm typecheck`
 - `pnpm headless run --config configs/examples/basic.json --seed 42 --out results.json` (`--format csv` for CSV)
-- Params file: `packages/sim/src/params.ts`. Config schema: `packages/sim/src/config.ts`.
+- `pnpm headless run --config configs/levels/level-03-fast-track.json --seeds 1-40 --set fastTrack.enabled=true` prints the level pass rate. `--set path=value` overrides any config value (JSON or bare string).
+- Params file: `packages/sim/src/params.ts`. Config schema: `packages/sim/src/config.ts`. Levels: `packages/sim/src/levels.ts`, `configs/levels/`.
 - Modules that are not built yet are rejected by config validation with the phase they belong to, so a config never silently enables something that does nothing.
+
+## Implementation decisions (keep consistent)
+- **Default pipeline** (used while `process` is off): arrival → triage queue (FIFO) → triage nurse → doctor queue → doctor → discharge. Its knobs are plain config sections, not modules: `triage` (enabled, time, accuracy), `queue.discipline` (`acuity` | `fifo`), `fastTrack`, `lwbs`. The Phase 5 `process` module replaces this with the node graph.
+- **Roles:** `triageNurse`, `doctor`, `fastTrackClinician`. Fast-track clinicians see only the fast-track lane. Free main-ED doctors take fast-track overflow (`fastTrack.doctorsTakeOverflow`, default true). Without overflow, a fast track splits capacity and does worse than no fast track.
+- **Triage** errors are off by one ESI level (under/over split in params). Queue priority uses *assigned* acuity; metrics group by *true* acuity.
+- **LWBS** landed in Phase 2 because queue priority and fast track only show a measurable effect when low-acuity patients can leave. Patience is lognormal, and ESI 1–2 never leave by default. Deterioration while waiting is still not modeled.
+- **Staffing module:** shift schedules per role; staff finish their current patient after their shift ends. `setStaff` holds until that role's next shift boundary. `setSchedule` replaces future shifts. With the module off, schedules are ignored and fixed counts are used.
+- **Commands:** `setStaff`, `setSchedule`, `setQueueDiscipline`, `setFastTrack`. Live commands are logged, and the log replays byte-identically.
+- **Common random numbers:** every per-patient draw (acuity, service, triage time and result, patience) happens at arrival from its own stream, whatever the config.
+- **Levels:** `level` block in the config: narrative, goals (metric dot-paths with max/min), `playerControls` (everything else is locked), `limits` (staff-hours/day, max on duty), and a fixed `seed` (story mode replays one specific day). `packages/sim/test/levelBalance.ts` holds a reference solution per level. The balance tests check that the shipped setup fails, the reference passes on the level seed, and the reference beats the shipped setup by ≥25 points across other seeds. After changing params or engine behavior, re-run them and re-tune goals if needed.

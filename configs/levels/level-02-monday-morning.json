@@ -1,0 +1,82 @@
+{
+  "id": "level-02-monday-morning",
+  "name": "Monday Morning",
+  "durationMinutes": 1440,
+  "startDayOfWeek": 0,
+  "startHour": 0,
+  "modules": {
+    "staffing": true
+  },
+  "staffing": {
+    "triageNurses": 1,
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 6,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 18,
+          "hours": 12,
+          "count": 5
+        }
+      ]
+    }
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "level": {
+    "number": 2,
+    "title": "Monday Morning",
+    "seed": 1,
+    "briefing": [
+      "Simulation two. The rota you inherit was written by someone who has never worked a Monday.",
+      "Monday is the busiest day of the week. Everyone who got sick over the weekend and waited arrives between nine and noon, and they keep coming until evening.",
+      "You have the same number of doctor-hours as the last director. Move them to where the patients are."
+    ],
+    "debrief": {
+      "pass": [
+        "Same doctor-hours, different outcome. Staffing to the arrival curve costs nothing.",
+        "Notice what happened in the hours you left thin: the waiting line did not just grow, it kept growing after the rush ended."
+      ],
+      "fail": [
+        "The doctors were there. They were there at the wrong time.",
+        "Look at when patients arrived and when doctors were on shift. Line those up and run it again."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "lwbsRate",
+        "max": 0.03,
+        "label": "Fewer than 3% leave without being seen"
+      },
+      {
+        "metric": "doorToDoctor.median",
+        "max": 15,
+        "label": "Median door-to-doctor under 15 minutes"
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.mean",
+        "max": 18,
+        "label": "ESI 1–2 seen within 18 minutes on average",
+        "passIfNoData": true
+      }
+    ],
+    "playerControls": [
+      "staffing.schedule.doctor"
+    ],
+    "limits": {
+      "staffHoursPerDay": {
+        "doctor": 84
+      },
+      "maxOnDuty": {
+        "doctor": 5
+      }
+    }
+  }
+}

@@ -10,6 +10,7 @@ pnpm test          # unit + validation tests (determinism, Erlang C, Little's La
 pnpm typecheck
 pnpm headless run --config configs/examples/basic.json --seed 42 --out results.json
 pnpm headless run --config configs/validation/mmc.json --seeds 1-8 --out results.csv
+pnpm headless run --config configs/levels/level-02-monday-morning.json --seeds 1-40   # prints level pass rate
 ```
 
-Layout: `packages/sim` (engine, no DOM), `tools/headless` (CLI), `configs/` (JSON scenarios). `apps/game` arrives in Phase 1.
+Layout: `packages/sim` (engine, no DOM), `tools/headless` (CLI), `configs/` (JSON scenarios). `configs/levels/` holds story levels 2–4. `apps/game` arrives in Phase 1.

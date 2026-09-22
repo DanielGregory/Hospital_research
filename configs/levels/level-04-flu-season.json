@@ -1,0 +1,122 @@
+{
+  "id": "level-04-flu-season",
+  "name": "Flu Season",
+  "durationMinutes": 10080,
+  "startDayOfWeek": 0,
+  "startHour": 0,
+  "modules": {
+    "staffing": true
+  },
+  "arrivals": {
+    "rateMultiplier": 1.45,
+    "acuityMix": {
+      "1": 0.01,
+      "2": 0.12,
+      "3": 0.5,
+      "4": 0.3,
+      "5": 0.07
+    }
+  },
+  "staffing": {
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 22,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 7,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 11,
+          "hours": 12,
+          "count": 2
+        }
+      ],
+      "triageNurse": [
+        {
+          "startHour": 0,
+          "hours": 24,
+          "count": 1
+        }
+      ],
+      "fastTrackClinician": [
+        {
+          "startHour": 10,
+          "hours": 12,
+          "count": 1
+        }
+      ]
+    }
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "fastTrack": {
+    "enabled": true,
+    "minAcuity": 4
+  },
+  "level": {
+    "number": 4,
+    "title": "Flu Season",
+    "seed": 1,
+    "briefing": [
+      "Simulation four. One week in January. Nearly half again as many patients as normal, and more of them are moderately sick.",
+      "The rota from last time is loaded. Every lever you have used so far is unlocked, and you have more staff-hours to spend.",
+      "Watch the waiting room when doctors get close to fully busy. Queues do not grow in a straight line."
+    ],
+    "debrief": {
+      "pass": [
+        "You kept doctors below the point where queues run away. Past about 85% busy, each extra patient adds more waiting than the last one did.",
+        "That spare capacity is not waste. It is what lets you absorb a bad hour."
+      ],
+      "fail": [
+        "When doctors are almost always busy, a small rise in arrivals causes a large rise in waiting. The line never gets the chance to clear.",
+        "Look at utilisation hour by hour, then find the hours where you need slack."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "lwbsRate",
+        "max": 0.03,
+        "label": "Fewer than 3% leave without being seen"
+      },
+      {
+        "metric": "doorToDoctor.median",
+        "max": 15,
+        "label": "Median door-to-doctor under 15 minutes"
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 15,
+        "label": "ESI 1–2: median door-to-doctor under 15 minutes"
+      }
+    ],
+    "playerControls": [
+      "queue.discipline",
+      "staffing.schedule.doctor",
+      "staffing.schedule.triageNurse",
+      "staffing.schedule.fastTrackClinician",
+      "fastTrack.enabled",
+      "fastTrack.minAcuity"
+    ],
+    "limits": {
+      "staffHoursPerDay": {
+        "doctor": 96,
+        "triageNurse": 36,
+        "fastTrackClinician": 24
+      },
+      "maxOnDuty": {
+        "doctor": 6,
+        "triageNurse": 2,
+        "fastTrackClinician": 2
+      }
+    }
+  }
+}

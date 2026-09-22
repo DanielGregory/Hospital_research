@@ -1,6 +1,7 @@
 import { LEVELS, type LevelConfig } from '../levels';
 
-export function Menu({ onPick, onLayout, results }: { onPick: (l: LevelConfig) => void; onLayout: () => void; results: Record<string, boolean> }) {
+export function Menu(props: { onPick: (l: LevelConfig) => void; onLayout: () => void; onSandbox: () => void; results: Record<string, boolean> }) {
+  const { onPick, onLayout, onSandbox, results } = props;
   return (
     <main className="screen menu">
       <h1>ER Shift</h1>
@@ -18,6 +19,9 @@ export function Menu({ onPick, onLayout, results }: { onPick: (l: LevelConfig) =
       </ol>
       <h2>Sandbox</h2>
       <div className="actions">
+        <button onClick={onSandbox} data-testid="sandbox">
+          Build your own ED
+        </button>
         <button onClick={onLayout} data-testid="layout-editor">
           Layout editor
         </button>

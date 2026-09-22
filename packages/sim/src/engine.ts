@@ -232,6 +232,9 @@ export class Simulation {
     waiting: TimeWeighted;
     boarding: TimeWeighted;
     bedsOccupied: Record<Lane, TimeWeighted>;
+    /** Beds paid for: capacity, or occupied beds when unlimited. */
+    bedsCosted: Record<Lane, TimeWeighted>;
+    escalated: TimeWeighted;
     busy: Record<Role, TimeWeighted>;
     onDuty: Record<Role, TimeWeighted>;
   };
@@ -273,6 +276,8 @@ export class Simulation {
       waiting: new TimeWeighted(w0, w1),
       boarding: new TimeWeighted(w0, w1),
       bedsOccupied: { main: new TimeWeighted(w0, w1), fastTrack: new TimeWeighted(w0, w1) },
+      bedsCosted: { main: new TimeWeighted(w0, w1), fastTrack: new TimeWeighted(w0, w1) },
+      escalated: new TimeWeighted(w0, w1),
       busy: perRole(),
       onDuty: perRole(),
     };
@@ -559,6 +564,7 @@ export class Simulation {
       patienceMinutes,
       deteriorations: 0,
       arrivalTime: this.clock,
+      steps: {},
     };
     this.patients.push(p);
     this.rt.push({
@@ -649,6 +655,7 @@ export class Simulation {
       return;
     }
     // Unstaffed (or zero-time) step: straight to its turnaround, if any.
+    p.steps[s.id] = { start: this.clock };
     if (s.kind === 'doctorEval') this.markSeen(p, undefined, 0);
     this.startTurnaround(p, i);
   }
@@ -675,6 +682,7 @@ export class Simulation {
     if (r.finished) return;
     const s = this.pipeline[i]!;
     r.status[i] = 'done';
+    p.steps[s.id] = { start: p.steps[s.id]?.start ?? this.clock, end: this.clock };
     if (DIAGNOSTIC_KINDS.includes(s.kind)) r.thoroughness.push(s.thoroughness);
     if (s.kind === 'triage') {
       p.triageEndTime = this.clock;
@@ -961,6 +969,7 @@ export class Simulation {
     s.taskId = task.id;
     s.taskStart = this.clock;
     r.status[task.step] = 'active';
+    p.steps[step.id] = { start: this.clock };
     r.activeTasks++;
     if (step.kind === 'triage') {
       p.triageStartTime = this.clock;
@@ -1159,7 +1168,12 @@ export class Simulation {
     // "Waiting" = in the department and not yet seen by a doctor.
     this.tw.waiting.set(t, this.notSeen);
     this.tw.boarding.set(t, this.boarders.length);
-    for (const lane of ['main', 'fastTrack'] as const) this.tw.bedsOccupied[lane].set(t, this.bedsUsed[lane].filter((x) => x !== null).length);
+    for (const lane of ['main', 'fastTrack'] as const) {
+      const occupied = this.bedsUsed[lane].filter((x) => x !== null).length;
+      this.tw.bedsOccupied[lane].set(t, occupied);
+      this.tw.bedsCosted[lane].set(t, Number.isFinite(this.bedCapacity[lane]) ? this.bedCapacity[lane] : occupied);
+    }
+    this.tw.escalated.set(t, this.config.modules.boarding && this.escalated ? 1 : 0);
     for (const role of ROLES) {
       let busy = 0;
       let duty = 0;

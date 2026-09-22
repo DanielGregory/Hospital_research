@@ -7,6 +7,7 @@
 
 import { PARAMS } from './params.js';
 import { checkLevel, type LevelSpec } from './levels.js';
+import { checkScoreTerms } from './score.js';
 import { checkLayoutForSim, checkLayoutShape, resolveLayout, type LayoutSpec, type ResolvedLayout } from './layout.js';
 import { checkPipeline, defaultPipeline, makeStep, STEP_KINDS, type RoutingRule, type StepDef } from './pipeline.js';
 import {
@@ -17,6 +18,7 @@ import {
   type Lane,
   type QueueDiscipline,
   type Role,
+  type ScoreTerm,
   type Shift,
   type TimedCommand,
 } from './types.js';
@@ -35,7 +37,7 @@ export const MODULE_PHASE: Record<ModuleName, number> = {
   process: 5,
   budget: 5,
 };
-export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout'];
+export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget'];
 
 export type ServiceDistribution = 'exponential' | 'lognormal';
 
@@ -145,6 +147,10 @@ export interface SimConfig {
     escalation?: boolean;
   };
   shocks?: ShockSpec[];
+  /** Budget module: cap on the planned cost per day of the starting setup. */
+  budget?: { capPerDay?: number | null };
+  /** Composite score terms (default: PARAMS.score.terms). */
+  score?: { terms: ScoreTerm[] };
   /** Floor plan, used when the `layout` module is on (beds then come from its rooms). */
   layout?: LayoutSpec;
   /** Custom step graph, used when the `process` module is on. */
@@ -199,6 +205,9 @@ export interface ResolvedConfig {
   burnout: typeof PARAMS.burnout;
   shocks: ShockSpec[];
   conditions: readonly ConditionSpec[];
+  budgetCapPerDay: number | null;
+  budgetRates: typeof PARAMS.budget;
+  scoreTerms: ScoreTerm[];
   /** Floor plan in use (layout module on), else null. */
   layout: ResolvedLayout | null;
   walking: { minutesPerCell: number; disabledTransferMinutes: number };
@@ -359,6 +368,11 @@ export function validateConfig(raw: unknown): SimConfig {
   }
 
   if (c.layout !== undefined) p.push(...checkLayoutShape(c.layout));
+  section(c, 'budget', p, (b) => field(b, 'budget', 'capPerDay', (x) => x === null || nonNeg(x), 'non-negative number or null', p));
+  if (c.score !== undefined) {
+    if (!isObj(c.score)) p.push('score: { terms: [...] }');
+    else p.push(...checkScoreTerms(c.score.terms, 'score.terms'));
+  }
 
   if (c.commands !== undefined) {
     if (!Array.isArray(c.commands)) p.push('commands: must be an array');
@@ -588,6 +602,16 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     if (c.commands?.some((tc) => tc.command.type === 'setBeds')) problems.push('commands: setBeds is not available with the layout module (beds come from rooms)');
   }
 
+  // Every role a step needs must have someone to do it (or the patient waits forever).
+  const staffFor = (role: Role) => {
+    const fixed = { doctor: c.staffing?.doctors, triageNurse: c.staffing?.triageNurses, fastTrackClinician: c.staffing?.fastTrackClinicians, nurse: c.staffing?.nurses, tech: c.staffing?.techs }[role];
+    const count = fixed ?? { doctor: PARAMS.staffing.doctors, triageNurse: PARAMS.staffing.triageNurses, fastTrackClinician: PARAMS.staffing.fastTrackClinicians, nurse: PARAMS.staffing.nurses, tech: PARAMS.staffing.techs }[role];
+    return count > 0 || (modules.staffing && (c.staffing?.schedule?.[role]?.length ?? 0) > 0);
+  };
+  if (modules.process)
+    for (const role of new Set(pipeline.map((s) => s.role).filter((r): r is Role => r !== null && r !== 'fastTrackClinician')))
+      if (!staffFor(role)) problems.push(`process: steps need a ${role} but staffing has none`);
+
   if (problems.length > 0) throw new ConfigError(problems);
 
   const roomBeds = (type: 'acute' | 'fastTrack') => layout!.rooms.filter((r) => r.type === type).reduce((s, r) => s + r.capacity, 0);
@@ -630,6 +654,9 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       : { main: bedCount(c.beds?.main, PARAMS.beds.main), fastTrack: bedCount(c.beds?.fastTrack, PARAMS.beds.fastTrack) },
     layout,
     walking: { ...PARAMS.layout },
+    budgetCapPerDay: modules.budget ? (c.budget?.capPerDay ?? null) : null,
+    budgetRates: PARAMS.budget,
+    scoreTerms: copy(c.score?.terms ?? [...PARAMS.score.terms]),
     workup,
     disposition,
     deterioration: {

@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { applySettings, balanceReport, checkLimits, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
+import { applySettings, balanceReport, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
@@ -116,7 +116,7 @@ export function runConfig(config: unknown, configPath: string, seeds: readonly n
     configPath,
     configId: resolved.id,
     overrides: Object.fromEntries(overrides),
-    limitProblems: checkLimits(resolved),
+    limitProblems: checkSetup(resolved),
     runs,
   };
   if (resolved.level)

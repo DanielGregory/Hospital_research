@@ -5,12 +5,14 @@ import level3 from '../../../configs/levels/level-03-fast-track.json';
 import level4 from '../../../configs/levels/level-04-flu-season.json';
 import level5 from '../../../configs/levels/level-05-boarding-crisis.json';
 import level6 from '../../../configs/levels/level-06-mass-casualty.json';
+import level7 from '../../../configs/levels/level-07-budget-mode.json';
 import { resolveConfig, validateConfig } from '../src/config.js';
 import { Simulation } from '../src/engine.js';
 import { checkLimits, evaluateGoals, getMetric, staffingSummary } from '../src/levels.js';
 import { applySettings } from '../src/settings.js';
+import { checkSetup } from '../src/budget.js';
 
-const LEVELS: readonly any[] = [level1, level2, level3, level4, level5, level6];
+const LEVELS: readonly any[] = [level1, level2, level3, level4, level5, level6, level7];
 
 describe('goal evaluation', () => {
   const metrics = new Simulation({ id: 'x', durationMinutes: 600 }, 1).run().metrics;
@@ -66,8 +68,9 @@ describe.each(LEVELS.map((l) => [l.id as string, l] as const))('%s', (id, level)
 
   it('is valid, within its limits, and every goal metric exists', () => {
     const c = resolveConfig(level);
-    expect(checkLimits(c)).toEqual([]);
-    expect(checkLimits(resolveConfig(ref))).toEqual([]);
+    expect(checkSetup(c)).toEqual([]);
+    expect(checkSetup(resolveConfig(ref))).toEqual([]);
+    if (level.level.trap) expect(checkSetup(resolveConfig(applySettings(level, level.level.trap)))).toEqual([]);
     const m = new Simulation(level, seed).run().metrics;
     for (const g of goals) expect(getMetric(m, g.metric), g.metric).not.toBeUndefined();
   });

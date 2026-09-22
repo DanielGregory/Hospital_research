@@ -9,16 +9,18 @@ import { Debrief } from './screens/Debrief';
 import { LayoutEditor } from './screens/LayoutEditor';
 import { Menu } from './screens/Menu';
 import { Play, SANDBOX_LIVE } from './screens/Play';
+import { defaultSandbox, Sandbox, type SandboxState } from './screens/Sandbox';
 import { Setup } from './screens/Setup';
 
 /** Where a run came from, so "try again" returns there. */
-type Origin = { kind: 'level'; level: LevelConfig; values: SetupValues } | { kind: 'layout'; layout: LayoutSpec };
+type Origin = { kind: 'level'; level: LevelConfig; values: SetupValues } | { kind: 'layout'; layout: LayoutSpec } | { kind: 'sandbox' };
 
 type Screen =
   | { name: 'menu' }
   | { name: 'briefing'; level: LevelConfig }
   | { name: 'setup'; level: LevelConfig; values: SetupValues }
   | { name: 'layout'; layout?: LayoutSpec }
+  | { name: 'sandbox' }
   | { name: 'play'; config: GameConfig; seed: number; values: SetupValues; origin: Origin; run: number }
   | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin };
 
@@ -43,6 +45,7 @@ function saveResults(r: Record<string, boolean>) {
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'menu' });
   const [results, setResults] = useState(loadResults);
+  const [sandbox, setSandbox] = useState<SandboxState>(defaultSandbox);
 
   const finish = (config: GameConfig, origin: Origin, runner: GameRunner) => {
     const metrics = runner.sim.metrics();
@@ -56,11 +59,32 @@ export function App() {
   };
 
   const back = (origin: Origin): Screen =>
-    origin.kind === 'level' ? { name: 'setup', level: origin.level, values: origin.values } : { name: 'layout', layout: origin.layout };
+    origin.kind === 'level'
+      ? { name: 'setup', level: origin.level, values: origin.values }
+      : origin.kind === 'layout'
+        ? { name: 'layout', layout: origin.layout }
+        : { name: 'sandbox' };
 
   switch (screen.name) {
     case 'menu':
-      return <Menu results={results} onPick={(level) => setScreen({ name: 'briefing', level })} onLayout={() => setScreen({ name: 'layout' })} />;
+      return (
+        <Menu
+          results={results}
+          onPick={(level) => setScreen({ name: 'briefing', level })}
+          onLayout={() => setScreen({ name: 'layout' })}
+          onSandbox={() => setScreen({ name: 'sandbox' })}
+        />
+      );
+    case 'sandbox':
+      return (
+        <Sandbox
+          state={sandbox}
+          onChange={setSandbox}
+          onBack={() => setScreen({ name: 'menu' })}
+          onLayout={() => setScreen({ name: 'layout' })}
+          onPlay={(config) => setScreen({ name: 'play', config, seed: 1, values: valuesFor(config, SANDBOX_LIVE), origin: { kind: 'sandbox' }, run: Date.now() })}
+        />
+      );
     case 'briefing':
       return (
         <Briefing
@@ -119,7 +143,7 @@ export function App() {
           metrics={screen.metrics}
           onMenu={() => setScreen({ name: 'menu' })}
           onRetry={() => setScreen(back(o))}
-          retryLabel={o.kind === 'layout' ? 'Back to the layout' : undefined}
+          retryLabel={o.kind === 'layout' ? 'Back to the layout' : o.kind === 'sandbox' ? 'Back to the sandbox' : undefined}
           onNext={next ? () => setScreen({ name: 'briefing', level: next }) : undefined}
         />
       );

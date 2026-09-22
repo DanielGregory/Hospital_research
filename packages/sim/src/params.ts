@@ -7,7 +7,7 @@
  * anything they leave out comes from here.
  */
 
-import type { Acuity, ConditionSpec } from './types.js';
+import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm } from './types.js';
 
 export const PARAMS = {
   arrivals: {
@@ -161,6 +161,28 @@ export const PARAMS = {
     minutesPerCell: 0.04, // PLACEHOLDER
     /** Waiting room to bed when the layout module is off. Zero keeps earlier phases' results unchanged. */
     disabledTransferMinutes: 0, // PLACEHOLDER
+  },
+
+  budget: {
+    /** Cost per staffed hour, by role (currency units; think dollars). */
+    hourlyWage: { doctor: 150, triageNurse: 55, fastTrackClinician: 90, nurse: 50, tech: 40 } as Record<Role, number>, // PLACEHOLDER
+    /** Running cost of one treatment space per day (equipment, cleaning, overhead). */
+    bedPerDay: { main: 180, fastTrack: 90 } as Record<Lane, number>, // PLACEHOLDER
+    /** Hospital full-capacity protocol, per hour in force (ward overtime, transport). */
+    escalationPerHour: 400, // PLACEHOLDER
+    /** Floor space per grid cell per day (layout module). */
+    spacePerCellPerDay: 6, // PLACEHOLDER
+  },
+
+  /** Default composite score terms (a config or level can set its own). */
+  score: {
+    terms: [
+      { metric: 'doorToDoctor.median', weight: 2, target: 10, worst: 60 }, // PLACEHOLDER
+      { metric: 'doorToDoctorByGroup.urgent.median', weight: 2, target: 5, worst: 30 }, // PLACEHOLDER
+      { metric: 'lwbsRate', weight: 2, target: 0.01, worst: 0.1 }, // PLACEHOLDER
+      { metric: 'lengthOfStay.median', weight: 1, target: 120, worst: 360 }, // PLACEHOLDER
+      { metric: 'deterioration.per100Arrivals', weight: 1, target: 0, worst: 5 }, // PLACEHOLDER
+    ] as readonly ScoreTerm[],
   },
 
   staffing: {

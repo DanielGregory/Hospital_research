@@ -5,6 +5,18 @@ export const ACUITIES: readonly Acuity[] = [1, 2, 3, 4, 5];
 export type Role = 'triageNurse' | 'doctor' | 'fastTrackClinician' | 'nurse' | 'tech';
 export const ROLES: readonly Role[] = ['triageNurse', 'doctor', 'fastTrackClinician', 'nurse', 'tech'];
 
+/**
+ * One part of a composite score: 1 at or better than `target`, 0 at or worse than `worst`,
+ * linear between. Works for lower-is-better (target < worst) and higher-is-better (target > worst).
+ */
+export interface ScoreTerm {
+  /** Dot path into Metrics. */
+  metric: string;
+  weight: number;
+  target: number;
+  worst: number;
+}
+
 export interface ConditionSpec {
   id: string;
   label: string;
@@ -62,6 +74,8 @@ export interface Patient {
   boardingStartTime?: number;
   departureTime?: number;
   outcome?: Outcome;
+  /** Per step id: when its work started (staff arrived, or the wait began) and when it finished. */
+  steps: Record<string, { start: number; end?: number }>;
   misdiagnosed?: boolean;
   /** Minute the misdiagnosed patient will return (may be after the run ends). */
   returnsAt?: number;

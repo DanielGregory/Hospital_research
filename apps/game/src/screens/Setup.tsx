@@ -1,4 +1,4 @@
-import type { Acuity, PlayerControl, QueueDiscipline, Shift } from '@er/sim';
+import { plannedDailyCost, resolveConfig, type Acuity, type PlayerControl, type QueueDiscipline, type Shift } from '@er/sim';
 import { buildConfig, scheduleRole, setupProblems, type SetupValues } from '../controls';
 import type { LevelConfig } from '../levels';
 import { ScheduleEditor, Stepper } from './ScheduleEditor';
@@ -19,6 +19,9 @@ export function Setup(props: { level: LevelConfig; values: SetupValues; onChange
         if (role) return <ScheduleEditor key={ctl} role={role} shifts={(values[ctl] as Shift[]) ?? []} config={config} onChange={(s) => set(ctl, s)} />;
         return <SimpleControl key={ctl} control={ctl} value={values[ctl]} onChange={(v) => set(ctl, v)} />;
       })}
+      {config.modules?.budget && (
+        <BudgetLine planned={plannedCost(config)} cap={config.budget?.capPerDay ?? null} />
+      )}
       {problems.length > 0 && (
         <ul className="problems" role="alert">
           {problems.map((p) => (
@@ -33,6 +36,32 @@ export function Setup(props: { level: LevelConfig; values: SetupValues; onChange
         </button>
       </div>
     </main>
+  );
+}
+
+function plannedCost(config: unknown): number | null {
+  try {
+    return plannedDailyCost(resolveConfig(config)).total;
+  } catch {
+    return null;
+  }
+}
+
+function BudgetLine({ planned, cap }: { planned: number | null; cap: number | null }) {
+  if (planned === null) return null;
+  const share = cap ? Math.min(1, planned / cap) : 0;
+  const over = cap !== null && planned > cap;
+  return (
+    <div className="budget" data-testid="budget-line">
+      <p className={over ? 'over' : 'muted'}>
+        Planned cost {Math.round(planned).toLocaleString('en-US')} per day{cap !== null ? ` of ${cap.toLocaleString('en-US')}` : ''}
+      </p>
+      {cap !== null && (
+        <div className="progress budget-bar" aria-hidden>
+          <span style={{ width: `${share * 100}%` }} className={over ? 'over-bar' : ''} />
+        </div>
+      )}
+    </div>
   );
 }
 

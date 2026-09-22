@@ -4,12 +4,14 @@
  * same window up to the current clock.
  */
 
+import { actualCost, type CostBreakdown } from './budget.js';
 import type { Simulation } from './engine.js';
+import { compositeScore, type ScoreBreakdown } from './score.js';
 import { summarize, type Summary } from './stats.js';
 import { ACUITIES, ROLES, type Acuity, type Patient, type Role } from './types.js';
 
 /** Spec metrics that need modules not built yet. Listed so output never implies they are zero. */
-export const NOT_YET_MODELED = ['cost', 'compositeScore'] as const;
+export const NOT_YET_MODELED: readonly string[] = [];
 
 /** ESI groups used by level goals: urgent = 1–2, standard = 3, minor = 4–5 (by true acuity at arrival). */
 export type AcuityGroup = 'urgent' | 'standard' | 'minor';
@@ -85,6 +87,11 @@ export interface Metrics {
   staffHoursByRole: Record<Role, number>;
   /** End-of-shift fatigue (burnout module); null when the module is off. */
   staffFatigue: { mean: number; max: number; byRole: Record<Role, number | null> } | null;
+  /** Money spent in the measurement window (see budget.ts). */
+  cost: CostBreakdown & { perDay: number; perPatient: number | null };
+  /** 0–100 from the config's score terms (higher is better). */
+  compositeScore: number;
+  scoreBreakdown: ScoreBreakdown['terms'];
   notYetModeled: readonly string[];
 }
 
@@ -198,7 +205,11 @@ export function computeMetrics(sim: Simulation): Metrics {
   };
   const boardSum = boardingHours.reduce((a, b) => a + b, 0);
 
-  return {
+  const staffMinutes = Object.fromEntries(ROLES.map((r) => [r, sim.tw.onDuty[r].integral(end)])) as Record<Role, number>;
+  const bedMinutes = { main: sim.tw.bedsCosted.main.integral(end), fastTrack: sim.tw.bedsCosted.fastTrack.integral(end) };
+  const spent = actualCost(c, staffMinutes, bedMinutes, sim.tw.escalated.integral(end), span);
+
+  const m: Omit<Metrics, 'compositeScore' | 'scoreBreakdown'> = {
     configId: c.id,
     seed: sim.seed,
     simMinutes: end,
@@ -254,6 +265,9 @@ export function computeMetrics(sim: Simulation): Metrics {
     walking,
     staffHoursByRole,
     staffFatigue,
+    cost: { ...spent, perDay: span > 0 ? (spent.total * 1440) / span : 0, perPatient: inWindow.length > 0 ? spent.total / inWindow.length : null },
     notYetModeled: NOT_YET_MODELED,
   };
+  const score = compositeScore(m, c.scoreTerms);
+  return { ...m, compositeScore: score.score, scoreBreakdown: score.terms };
 }

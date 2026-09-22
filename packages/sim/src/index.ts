@@ -62,3 +62,5 @@ export {
   type Cell,
   type FootprintPreset,
 } from './layout.js';
+export { plannedDailyCost, checkBudget, checkSetup, actualCost, type CostBreakdown } from './budget.js';
+export { compositeScore, type ScoreBreakdown } from './score.js';

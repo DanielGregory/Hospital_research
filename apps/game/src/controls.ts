@@ -4,7 +4,7 @@
  */
 import {
   applySettings,
-  checkLimits,
+  checkSetup,
   getPath,
   resolveConfig,
   type PlayerControl,
@@ -65,7 +65,7 @@ export function buildConfig(level: LevelConfig, values: SetupValues): LevelConfi
 /** Problems that stop the shift from starting (limits, invalid settings). */
 export function setupProblems(level: LevelConfig, values: SetupValues): string[] {
   try {
-    return checkLimits(resolveConfig(buildConfig(level, values)));
+    return checkSetup(resolveConfig(buildConfig(level, values)));
   } catch (e) {
     return [e instanceof Error ? e.message : String(e)];
   }

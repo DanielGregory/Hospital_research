@@ -2,6 +2,16 @@ import { evaluateGoals, type Metrics } from '@er/sim';
 import { metricValue, minutes, percent } from '../format';
 import type { LevelSpec } from '@er/sim';
 
+const SCORE_LABEL: Record<string, string> = {
+  'doorToDoctor.median': 'Door to doctor, median',
+  'doorToDoctorByGroup.urgent.median': 'ESI 1–2 door to doctor',
+  lwbsRate: 'Left without being seen',
+  'lengthOfStay.median': 'Length of stay, median',
+  'deterioration.per100Arrivals': 'Got worse while waiting (per 100)',
+  'diagnosis.bounceBackRate72h': 'Came back within 72 h',
+  'boarding.meanHours': 'Boarding time (hours)',
+};
+
 export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: () => void; onNext?: () => void; onMenu: () => void; retryLabel?: string }) {
   const { level, metrics: m, onRetry, onNext, onMenu } = props;
   const { passed, results } = evaluateGoals(m, level?.goals ?? []);
@@ -23,6 +33,7 @@ export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: (
         ] as [string, string][])
       : []),
     ['Doctors busy', percent(m.utilizationByRole.doctor)],
+    ['Cost per day', Math.round(m.cost.perDay).toLocaleString('en-US')],
     ...(m.walking ? ([["Doctors' busy time spent walking", percent(m.walking.shareOfBusyByRole.doctor)]] as [string, string][]) : []),
     ['Triage accuracy (now revealed)', percent(m.triage.accuracy)],
   ];
@@ -46,6 +57,26 @@ export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: (
           {p}
         </p>
       ))}
+      <h2>
+        Balanced score: <span data-testid="composite">{Math.round(m.compositeScore)}</span> / 100
+      </h2>
+      <table className="metrics score-breakdown">
+        <tbody>
+          {m.scoreBreakdown.map((t) => (
+            <tr key={t.metric}>
+              <th scope="row">
+                {SCORE_LABEL[t.metric] ?? t.metric} <span className="muted">×{t.weight}</span>
+              </th>
+              <td>{t.value === null ? '—' : metricValue(t.metric, t.value)}</td>
+              <td>
+                <span className="meter" aria-label={`${Math.round(t.subscore * 100)}% of full marks`}>
+                  <span style={{ width: `${t.subscore * 100}%` }} />
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <table className="metrics">
         <tbody>
           {rows.map(([k, v]) => (

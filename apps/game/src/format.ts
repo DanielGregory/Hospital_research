@@ -21,7 +21,7 @@ export function percent(v: number | null | undefined): string {
 /** Format a metric by its path: rates and utilisation as %, everything else as minutes. */
 export function metricValue(path: string, v: number | null | undefined): string {
   if (/rate|Rate|utilization|accuracy|share/.test(path)) return percent(v);
-  if (/count|Count|arrivals|treated|Hours/.test(path)) return v === null || v === undefined ? '—' : String(Math.round(v * 10) / 10);
+  if (/count|Count|arrivals|treated|Hours|per100|events|Score|cost/.test(path)) return v === null || v === undefined ? '—' : String(Math.round(v * 10) / 10);
   return minutes(v);
 }
 

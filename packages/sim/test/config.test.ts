@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, resolveConfig, validateConfig } from '../src/config.js';
+import { ConfigError, IMPLEMENTED_MODULES, MODULES, resolveConfig, validateConfig } from '../src/config.js';
 import { PARAMS } from '../src/params.js';
 
 describe('config', () => {
@@ -30,10 +30,10 @@ describe('config', () => {
     }
   });
 
-  it('rejects unknown modules and modules not built yet', () => {
+  it('rejects unknown modules; every spec module is built', () => {
     expect(() => validateConfig({ id: 'x', modules: { teleport: true } })).toThrow(/unknown module/);
-    expect(() => validateConfig({ id: 'x', modules: { process: true } })).toThrow(/Phase 5/);
-    expect(() => validateConfig({ id: 'x', modules: { process: false } })).not.toThrow();
+    expect([...IMPLEMENTED_MODULES].sort()).toEqual([...MODULES].sort());
+    expect(() => resolveConfig({ id: 'x', modules: { process: true } })).toThrow(/needs a process section/);
   });
 
   it('rejects bad commands', () => {

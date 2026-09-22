@@ -141,3 +141,24 @@ describe('grid view and layout sandbox', () => {
     expect(a.doctorWalkingShare).toBeGreaterThan(0);
   });
 });
+
+describe('sandbox', () => {
+  it('every preset resolves to a runnable config within its checks', async () => {
+    const { resolveConfig, checkSetup } = await import('@er/sim');
+    const { PRESETS, defaultSandbox, sandboxConfig } = await import('../src/screens/Sandbox');
+    for (const [name, p] of Object.entries(PRESETS)) {
+      const cfg = sandboxConfig({ ...defaultSandbox(), ...p.state, days: 1 });
+      const r = resolveConfig(cfg);
+      expect(checkSetup(r), name).toEqual([]);
+      const m = new Simulation(cfg, 1).run().metrics;
+      expect(m.arrivals, name).toBeGreaterThan(50);
+      expect(m.compositeScore, name).toBeGreaterThan(0);
+    }
+  });
+
+  it('lays the process graph out left to right by dependency depth', async () => {
+    const { detailedProcess, graphLayers } = await import('../src/screens/ProcessEditor');
+    const layers = graphLayers(detailedProcess());
+    expect(Object.fromEntries(layers)).toEqual({ triage: 0, vitals: 1, doctorEval: 2, labs: 2, imaging: 2, disposition: 3 });
+  });
+});

@@ -120,6 +120,28 @@ async function main() {
         await page.getByTestId('skip').click();
         if ((await page.getByTestId('result').textContent()) !== 'Shift complete') fail('sandbox run did not finish');
 
+        // Sandbox: everything on, with the process editor; test and watch.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('sandbox').click();
+        await page.getByTestId('preset-everything').click();
+        await page.getByTestId('process-editor').waitFor();
+        await page.getByTestId('sandbox-test').click();
+        await page.getByTestId('sandbox-score').waitFor({ timeout: 20_000 });
+        await shot(page, `sandbox-${scheme}`);
+        await page.getByTestId('sandbox-play').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(1500);
+        await page.getByTestId('skip').click();
+        if ((await page.getByTestId('result').textContent()) !== 'Shift complete') fail('sandbox (everything on) did not finish');
+        await shot(page, `sandbox-debrief-${scheme}`);
+
+        // Level 7 shows the budget line and blocks an over-budget plan.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('level-7').click();
+        await page.getByTestId('continue').click();
+        await page.getByTestId('budget-line').waitFor();
+        await shot(page, `setup-budget-${scheme}`);
+
         // Mobile width: no horizontal scroll on the menu.
         await page.setViewportSize({ width: 375, height: 800 });
         await page.goto(`http://localhost:${PORT}/`);

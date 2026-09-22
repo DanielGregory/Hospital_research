@@ -201,3 +201,30 @@ button.icon { min-width: 36px; padding: 0; }
   :root:not([data-theme='light']) .room-station { fill: #463861; background: #463861; }
   :root:not([data-theme='light']) .room-imaging, :root:not([data-theme='light']) .room-lab { fill: #444; background: #444; }
 }
+
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.modules { list-style: none; padding: 0; display: grid; gap: 6px; }
+.knobs { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; }
+.knob { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.knob input[type='range'] { accent-color: var(--accent); }
+.budget { margin: 12px 0; }
+.budget-bar { width: 100%; max-width: 360px; height: 6px; }
+.budget-bar .over-bar { background: var(--fail); }
+.meter { display: inline-block; width: 80px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; vertical-align: middle; }
+.meter span { display: block; height: 100%; background: var(--pass); }
+.score-breakdown td:last-child { width: 96px; }
+.process-editor { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+.process-graph { width: 100%; height: auto; max-height: 260px; display: block; margin: 8px 0 12px; }
+.process-graph .node { fill: var(--bg); stroke: var(--line); }
+.process-graph .node.in-bed { fill: color-mix(in srgb, var(--staff) 14%, var(--bg)); }
+.process-graph .node-label { font-size: 11px; fill: var(--ink); }
+.process-graph .edge { stroke: var(--muted); stroke-width: 1.2; }
+.process-graph .arrowhead { fill: var(--muted); }
+.steps { list-style: none; padding: 0; display: grid; gap: 8px; }
+.step-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.step-head { display: flex; align-items: center; gap: 8px; }
+.step-head .icon { margin-left: auto; }
+.step-fields { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0; align-items: center; }
+.step-fields input[type='number'] { width: 64px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.step-fields .thorough { display: inline-flex; align-items: center; gap: 6px; }
+.step-after { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.9rem; color: var(--muted); }

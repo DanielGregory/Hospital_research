@@ -1,0 +1,20 @@
+{
+  "dims": [
+    { "path": "staffing.schedule.doctor", "values": [
+      [{ "startHour": 0, "hours": 24, "count": 2 }],
+      [{ "startHour": 0, "hours": 24, "count": 2 }, { "startHour": 10, "hours": 12, "count": 1 }],
+      [{ "startHour": 22, "hours": 12, "count": 2 }, { "startHour": 10, "hours": 12, "count": 3 }],
+      [{ "startHour": 0, "hours": 24, "count": 3 }],
+      [{ "startHour": 22, "hours": 12, "count": 2 }, { "startHour": 8, "hours": 12, "count": 2 }, { "startHour": 10, "hours": 12, "count": 2 }],
+      [{ "startHour": 22, "hours": 12, "count": 3 }, { "startHour": 10, "hours": 12, "count": 4 }]
+    ] },
+    { "path": "staffing.schedule.triageNurse", "values": [
+      [{ "startHour": 0, "hours": 24, "count": 1 }],
+      [{ "startHour": 0, "hours": 24, "count": 1 }, { "startHour": 9, "hours": 12, "count": 1 }],
+      [{ "startHour": 0, "hours": 24, "count": 2 }]
+    ] },
+    { "path": "fastTrack.enabled", "values": [false, true] },
+    { "path": "beds.main", "values": [12, 14, 16, 18, 20, 22, 24] },
+    { "path": "diagnosis.thoroughness", "values": [0.3, 0.4, 0.5, 0.6, 0.7, 0.8] }
+  ]
+}

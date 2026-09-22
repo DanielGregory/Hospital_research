@@ -107,3 +107,30 @@ describe('overrides and levels', () => {
     expect(JSON.parse(readFileSync(out, 'utf8')).limitProblems[0]).toMatch(/exceeds the limit of 84/);
   });
 });
+
+describe('research commands', () => {
+  it('policy runs a baseline in the loop', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'er-headless-'));
+    const out = join(dir, 'p.json');
+    expect(main(['run', '--config', 'configs/examples/basic.json'], root)).toBe(0);
+    expect(main(['policy', '--config', 'configs/examples/basic.json', '--policy', 'surge-staffing', '--seeds', '1-2', '--out', out], root)).toBe(0);
+    const r = JSON.parse(readFileSync(out, 'utf8'));
+    expect(r.runs).toHaveLength(2);
+    expect(r.policy).toMatch(/surge-staffing/);
+    expect(main(['policy', '--config', 'configs/examples/basic.json', '--policy', 'magic'], root)).toBe(2);
+  });
+
+  it('optimize writes the best setup found', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'er-headless-'));
+    const space = join(dir, 'space.json');
+    writeFileSync(space, JSON.stringify({ dims: [{ path: 'staffing.doctors', values: [1, 2, 3, 4] }] }));
+    const out = join(dir, 'best.json');
+    const cfg = join(dir, 'c.json');
+    writeFileSync(cfg, JSON.stringify({ id: 'o', durationMinutes: 2880, staffing: { doctors: 1 } }));
+    expect(main(['optimize', '--config', cfg, '--space', space, '--iterations', '10', '--seeds', '1-1', '--out', out], root)).toBe(0);
+    const r = JSON.parse(readFileSync(out, 'utf8'));
+    expect(r.bestFound.settings['staffing.doctors']).toBeGreaterThan(1);
+    expect(r.bestConfig.staffing.doctors).toBe(r.bestFound.settings['staffing.doctors']);
+    expect(JSON.stringify(r)).not.toMatch(/optimal/i);
+  });
+});

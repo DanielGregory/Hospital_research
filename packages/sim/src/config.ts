@@ -136,7 +136,11 @@ export interface SimConfig {
   /** Treatment spaces by lane. null = unlimited. */
   beds?: { main?: number | null; fastTrack?: number | null };
   workup?: { enabled?: boolean; meanMinutesByAcuity?: AcuityMap };
-  disposition?: { doctorMinutes?: number };
+  disposition?: {
+    doctorMinutes?: number;
+    /** Calibration override: chance of admission by true acuity at arrival (replaces the per-condition values). */
+    admitProbabilityByAcuity?: AcuityMap;
+  };
   deterioration?: { enabled?: boolean; scaleMinutesByAcuity?: AcuityMap };
   diagnosis?: { thoroughness?: number; bounceBackProbability?: number };
   boarding?: {
@@ -183,7 +187,7 @@ export interface ResolvedConfig {
   lwbs: { enabled: boolean; patienceMeanByAcuity: Record<Acuity, number>; patienceCv: number };
   beds: Record<Lane, number>;
   workup: { enabled: boolean; meanMinutesByAcuity: Record<Acuity, number>; cv: number };
-  disposition: { doctorMinutes: number; cv: number };
+  disposition: { doctorMinutes: number; cv: number; admitProbabilityByAcuity: Partial<Record<Acuity, number>> };
   deterioration: { enabled: boolean; scaleMinutesByAcuity: Record<Acuity, number>; shape: number };
   diagnosis: {
     thoroughness: number;
@@ -330,7 +334,10 @@ export function validateConfig(raw: unknown): SimConfig {
     field(w, 'workup', 'enabled', bool, 'true or false', p);
     if (w.meanMinutesByAcuity !== undefined) p.push(...checkAcuityMap(w.meanMinutesByAcuity, 'workup.meanMinutesByAcuity', nonNeg, 'non-negative'));
   });
-  section(c, 'disposition', p, (d) => field(d, 'disposition', 'doctorMinutes', nonNeg, 'non-negative number', p));
+  section(c, 'disposition', p, (d) => {
+    field(d, 'disposition', 'doctorMinutes', nonNeg, 'non-negative number', p);
+    if (d.admitProbabilityByAcuity !== undefined) p.push(...checkAcuityMap(d.admitProbabilityByAcuity, 'disposition.admitProbabilityByAcuity', prob, 'a probability'));
+  });
   section(c, 'deterioration', p, (d) => {
     field(d, 'deterioration', 'enabled', bool, 'true or false', p);
     if (d.scaleMinutesByAcuity !== undefined) p.push(...checkAcuityMap(d.scaleMinutesByAcuity, 'deterioration.scaleMinutesByAcuity', positive, 'positive'));
@@ -561,7 +568,13 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     meanMinutesByAcuity: acuityMapOr({ ...PARAMS.workup.meanMinutesByAcuity }, c.workup?.meanMinutesByAcuity),
     cv: PARAMS.workup.cv,
   };
-  const disposition = { doctorMinutes: c.disposition?.doctorMinutes ?? PARAMS.disposition.doctorMinutes, cv: PARAMS.disposition.cv };
+  const disposition = {
+    doctorMinutes: c.disposition?.doctorMinutes ?? PARAMS.disposition.doctorMinutes,
+    cv: PARAMS.disposition.cv,
+    admitProbabilityByAcuity: Object.fromEntries(
+      Object.entries(c.disposition?.admitProbabilityByAcuity ?? {}).map(([k, v]) => [Number(k), v]),
+    ) as Partial<Record<Acuity, number>>,
+  };
   const diagnosis = {
     thoroughness: c.diagnosis?.thoroughness ?? PARAMS.diagnosis.thoroughness,
     baselineThoroughness: PARAMS.diagnosis.thoroughness,

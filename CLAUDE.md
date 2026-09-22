@@ -106,16 +106,18 @@ Every module toggle exposed. Presets include "layout only" (just design the floo
 - Keep the params file as the single source of truth for numbers.
 
 ## Repo status & commands
-- **Phases 0–5: done.**
+- **Phases 0–6: done.** Calibration code exists but has not been run on real data (MIMIC-IV-ED needs credentialed access); all numbers in `params.ts` are still PLACEHOLDER.
 - `pnpm install` / `pnpm test` / `pnpm typecheck`
 - `pnpm game`: run the browser game (Vite dev server). `pnpm e2e`: build it and play levels 1–2 in headless Chromium (light + dark, mobile width). `SCREENSHOTS=dir pnpm e2e` saves screenshots.
 - `pnpm headless run --config configs/examples/basic.json --seed 42 --out results.json` (`--format csv` for CSV)
 - `pnpm headless run --config configs/levels/level-03-fast-track.json --seeds 1-40 --set fastTrack.enabled=true` prints the level pass rate. `--set path=value` overrides any config value (JSON or bare string).
 - `pnpm headless balance --config configs/levels/<level>.json` shows how often the shipped setup, the level's reference solution and its trap meet the goals across 40 days, plus the days that separate them (candidates for `level.seed`).
+- Research: `pnpm headless policy --config <c> --policy all-heuristics --seeds 1-10`, `pnpm headless optimize --config configs/levels/level-07-budget-mode.json --space configs/research/space-level7.json --iterations 200`, `pnpm headless serve` (JSON lines). Python: `python/README.md`; `pnpm test:python`.
 - Params file: `packages/sim/src/params.ts`. Config schema: `packages/sim/src/config.ts`. Levels: `packages/sim/src/levels.ts`, `configs/levels/`.
 - Modules that are not built yet are rejected by config validation with the phase they belong to, so a config never silently enables something that does nothing.
 
 ## Implementation decisions (keep consistent)
+- **Research (Phase 6, `packages/research`):** baseline policies are `Policy.decide(snapshot) → commands`, run every N minutes (`runWithPolicy`); their command logs replay exactly. The optimizer is simulated annealing over discrete dimensions (dot paths + ordered values), scoring every candidate on the same seeds; setups that fail `checkSetup` are infeasible. Output says "best found", never "optimal". `Session` implements the JSON-lines protocol behind `headless serve` and the Python `SimClient`/`ErEnv`. Calibration (`python/er_sim/calibrate.py`, stdlib only) fits arrivals, acuity mix and admission by acuity (`disposition.admitProbabilityByAcuity`), and optionally workup times to median LOS.
 - **Process module (Phase 5):** `process.steps` (StepInput JSON: role, meanMinutes or meanMinutesByAcuity, turnaroundMinutes, thoroughness, after, inBed, acuity range, lanes) plus `process.routing` rules (assigned acuity → lane). Config validation requires staff for every role a step uses. Writing the default pipeline out as a process gives byte-identical results (tested). Per-step times are recorded in `patient.steps`.
 - **Cost (every run) and budget module:** rates in `PARAMS.budget` (placeholder currency). `metrics.cost` = staff-hours × wage + treatment spaces × daily rate (occupied beds when unlimited) + escalation hours + floor space (layout). The budget module caps the *planned* daily cost of the starting setup (`checkBudget`; `checkSetup` = level limits + budget). The game and CLI block or flag setups over the cap.
 - **Composite score (every run):** `score.terms` (metric, weight, target, worst; default `PARAMS.score.terms`) → 0–100. Missing data counts as on target. Level 7's goal is the score plus cost per day.

@@ -5,10 +5,11 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p packages/sim && tsc -p tools/headless && tsc -p apps/game",
+    "typecheck": "tsc -p packages/sim && tsc -p packages/research && tsc -p tools/headless && tsc -p apps/game",
     "headless": "tsx tools/headless/src/cli.ts",
     "e2e": "pnpm --filter @er/game build && tsx apps/game/e2e/smoke.ts",
-    "game": "pnpm --filter @er/game dev"
+    "game": "pnpm --filter @er/game dev",
+    "test:python": "python3 -m unittest discover python/tests"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

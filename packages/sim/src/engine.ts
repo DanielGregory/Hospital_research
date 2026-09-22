@@ -752,7 +752,8 @@ export class Simulation {
         return;
       }
     }
-    if (uAdmit >= r.condition.admit) {
+    const admitChance = c.disposition.admitProbabilityByAcuity[p.initialAcuity] ?? r.condition.admit;
+    if (uAdmit >= admitChance) {
       this.depart(p, 'discharged');
       return;
     }

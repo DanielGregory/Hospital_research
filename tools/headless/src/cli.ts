@@ -10,13 +10,23 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { BASELINES, optimize, runWithPolicy, Session, type SearchSpace } from '@er/research';
 import { applySettings, balanceReport, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
   balance --config <level.json> [--seeds <a-b>] [--set <path=value> ...]
       Goal pass rates for the shipped setup and the level's reference solution.
+  policy --config <file.json> --policy <name> [--seeds <a-b>] [--out <file>]
+      Run with a baseline policy in the loop: static, surge-staffing, fast-track-when-busy,
+      escalate-when-boarding, all-heuristics.
+  optimize --config <file.json> --space <space.json> [--iterations 200] [--seeds 1-5]
+           [--objective compositeScore | --objective doorToDoctor.mean:min] [--out best.json]
+      Simulated annealing over the settings in the space file. Reports the best setup found.
+  serve
+      JSON-lines protocol on stdin/stdout for other languages (see packages/research/src/serve.ts).
 
 Options:
   --config   Level or sandbox config (JSON). Required.
@@ -29,7 +39,11 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve';
+  policy?: string;
+  space?: string;
+  iterations?: number;
+  objective?: string;
   config: string;
   /** Empty = use the level's seed, else 1. */
   seeds: number[];
@@ -42,7 +56,9 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance') throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve')
+    throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
+  if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
   const overrides: [string, unknown][] = [];
   for (let i = 0; i < rest.length; i++) {
@@ -54,7 +70,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     else opts[key.slice(2)] = val;
     i++;
   }
-  const known = new Set(['config', 'seed', 'seeds', 'out', 'format']);
+  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective']);
   for (const k of Object.keys(opts)) if (!known.has(k)) throw new UsageError(`Unknown option --${k}`);
   if (!opts.config) throw new UsageError('--config is required');
   if (opts.seed && opts.seeds) throw new UsageError('Use --seed or --seeds, not both');
@@ -72,7 +88,21 @@ export function parseArgs(argv: readonly string[]): RunArgs {
 
   const format = opts.format ?? (opts.out?.endsWith('.csv') ? 'csv' : 'json');
   if (format !== 'json' && format !== 'csv') throw new UsageError('--format must be json or csv');
-  return { command: cmd, config: opts.config, seeds, overrides, out: opts.out, format };
+  if (cmd === 'policy' && !opts.policy) throw new UsageError('--policy is required');
+  if (cmd === 'optimize' && !opts.space) throw new UsageError('--space is required');
+  if (opts.iterations !== undefined && !/^\d+$/.test(opts.iterations)) throw new UsageError('--iterations must be a positive integer');
+  return {
+    command: cmd,
+    config: opts.config,
+    seeds,
+    overrides,
+    out: opts.out,
+    format,
+    policy: opts.policy,
+    space: opts.space,
+    iterations: opts.iterations ? Number(opts.iterations) : undefined,
+    objective: opts.objective,
+  };
 }
 
 function parseOverride(arg: string): [string, unknown] {
@@ -157,11 +187,62 @@ export function toCsv(output: RunOutput): string {
   return [header.join(','), ...rows.map((r) => header.map((h) => cell(r[h])).join(','))].join('\n') + '\n';
 }
 
+/** JSON-lines server: one request per stdin line, one response per stdout line. */
+export async function serve(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout): Promise<void> {
+  const session = new Session();
+  const rl = createInterface({ input, crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let req: unknown;
+    try {
+      req = JSON.parse(line);
+    } catch {
+      output.write(JSON.stringify({ ok: false, error: 'invalid JSON' }) + '\n');
+      continue;
+    }
+    output.write(JSON.stringify(session.handle(req)) + '\n');
+    if ((req as { op?: string }).op === 'close') break;
+  }
+  rl.close();
+}
+
 export function main(argv: readonly string[], cwd = process.cwd()): number {
   try {
     const args = parseArgs(argv);
     const configPath = resolve(cwd, args.config);
     const config = applyOverrides(JSON.parse(readFileSync(configPath, 'utf8')), args.overrides);
+    const write = (text: string) => {
+      if (args.out) writeFileSync(resolve(cwd, args.out), text);
+      else process.stdout.write(text);
+    };
+    if (args.command === 'policy') {
+      const make = BASELINES[args.policy!];
+      if (!make) throw new UsageError(`Unknown policy '${args.policy}' (known: ${Object.keys(BASELINES).join(', ')})`);
+      const seeds = args.seeds.length ? args.seeds : [1];
+      const runs = seeds.map((seed) => ({ seed, ...runWithPolicy(config, seed, make()) }));
+      write(JSON.stringify({ configPath: args.config, policy: make().name, runs }, null, 2) + '\n');
+      return 0;
+    }
+    if (args.command === 'optimize') {
+      const space = JSON.parse(readFileSync(resolve(cwd, args.space!), 'utf8')) as SearchSpace;
+      const [metric, dir] = (args.objective ?? 'compositeScore').split(':');
+      const objective = { metric: metric!, direction: dir === 'min' ? ('min' as const) : ('max' as const) };
+      const seeds = args.seeds.length ? args.seeds : [1, 2, 3, 4, 5];
+      const iterations = args.iterations ?? 200;
+      const r = optimize({
+        base: config,
+        space,
+        objective,
+        seeds,
+        iterations,
+        onProgress: (i, _cur, best) => {
+          if ((i + 1) % 25 === 0) process.stderr.write(`iteration ${i + 1}/${iterations}: best found ${best.toFixed(2)}\n`);
+        },
+      });
+      process.stderr.write(`Best found ${objective.metric}: ${r.bestFound.value.toFixed(2)} (start ${r.start.value.toFixed(2)}, ${r.evaluations} setups tried)\n`);
+      write(JSON.stringify({ objective, seeds, iterations, bestFound: r.bestFound, start: r.start, evaluations: r.evaluations, bestConfig: applySettings(config, r.bestFound.settings) }, null, 2) + '\n');
+      return 0;
+    }
     if (args.command === 'balance') {
       const seeds = args.seeds.length ? args.seeds : Array.from({ length: 40 }, (_, i) => i + 1);
       const r = balanceReport(config, seeds);
@@ -200,6 +281,7 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  if (process.argv[2] === 'serve') void serve().then(() => process.exit(0));
   // pnpm runs scripts from the workspace root; INIT_CWD is where the user actually ran the command.
-  process.exitCode = main(process.argv.slice(2), process.env.INIT_CWD ?? process.cwd());
+  else process.exitCode = main(process.argv.slice(2), process.env.INIT_CWD ?? process.cwd());
 }

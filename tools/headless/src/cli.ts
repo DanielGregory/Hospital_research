@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { BASELINES, optimize, runWithPolicy, Session, type SearchSpace } from '@er/research';
+import { BASELINES, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
 import { applySettings, balanceReport, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
 
 export const USAGE = `Usage:
@@ -25,6 +25,8 @@ export const USAGE = `Usage:
   optimize --config <file.json> --space <space.json> [--iterations 200] [--seeds 1-5]
            [--objective compositeScore | --objective doorToDoctor.mean:min] [--out best.json]
       Simulated annealing over the settings in the space file. Reports the best setup found.
+  calibrate --config <base.json> --targets <targets.json> [--seeds 1-3] [--out fitted.json]
+      Fit admission, patience and workup scales so the sim matches published aggregates.
   serve
       JSON-lines protocol on stdin/stdout for other languages (see packages/research/src/serve.ts).
 
@@ -39,7 +41,8 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate';
+  targets?: string;
   policy?: string;
   space?: string;
   iterations?: number;
@@ -56,7 +59,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve')
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate')
     throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
@@ -70,7 +73,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     else opts[key.slice(2)] = val;
     i++;
   }
-  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective']);
+  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets']);
   for (const k of Object.keys(opts)) if (!known.has(k)) throw new UsageError(`Unknown option --${k}`);
   if (!opts.config) throw new UsageError('--config is required');
   if (opts.seed && opts.seeds) throw new UsageError('Use --seed or --seeds, not both');
@@ -90,6 +93,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
   if (format !== 'json' && format !== 'csv') throw new UsageError('--format must be json or csv');
   if (cmd === 'policy' && !opts.policy) throw new UsageError('--policy is required');
   if (cmd === 'optimize' && !opts.space) throw new UsageError('--space is required');
+  if (cmd === 'calibrate' && !opts.targets) throw new UsageError('--targets is required');
   if (opts.iterations !== undefined && !/^\d+$/.test(opts.iterations)) throw new UsageError('--iterations must be a positive integer');
   return {
     command: cmd,
@@ -102,6 +106,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     space: opts.space,
     iterations: opts.iterations ? Number(opts.iterations) : undefined,
     objective: opts.objective,
+    targets: opts.targets,
   };
 }
 
@@ -221,6 +226,14 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       const seeds = args.seeds.length ? args.seeds : [1];
       const runs = seeds.map((seed) => ({ seed, ...runWithPolicy(config, seed, make()) }));
       write(JSON.stringify({ configPath: args.config, policy: make().name, runs }, null, 2) + '\n');
+      return 0;
+    }
+    if (args.command === 'calibrate') {
+      const raw = JSON.parse(readFileSync(resolve(cwd, args.targets!), 'utf8')) as { targets: AggregateTargets };
+      const seeds = args.seeds.length ? args.seeds : [1, 2, 3];
+      const fit = fitToTargets(config, raw.targets ?? (raw as AggregateTargets), seeds);
+      process.stderr.write(`Fitted scales: admission ×${fit.scales.admission.toFixed(2)}, patience ×${fit.scales.patience.toFixed(2)}, workup ×${fit.scales.workup.toFixed(2)}\n`);
+      write(JSON.stringify({ targetsFile: args.targets, seeds, ...fit }, null, 2) + '\n');
       return 0;
     }
     if (args.command === 'optimize') {

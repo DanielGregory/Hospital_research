@@ -82,3 +82,32 @@ describe('stdio session', () => {
     expect(s.handle({ op: 'fly' })).toMatchObject({ ok: false, error: /unknown op/ });
   });
 });
+
+describe('fit to aggregate targets', () => {
+  it('recovers known admission, patience and workup scales from their aggregates', async () => {
+    const { fitToTargets, defaultAdmitByAcuity } = await import('../src/calibrateTargets.js');
+    const { PARAMS, applySettings } = await import('@er/sim');
+    const base = { id: 'fit', durationMinutes: 10 * 1440, warmupMinutes: 1440, staffing: { doctors: 3 } };
+    // "Truth": admission ×1.4, patience ×0.5, workup ×1.6. Measure its aggregates, then fit from scratch.
+    const admit = defaultAdmitByAcuity();
+    const truth = applySettings(base, {
+      'disposition.admitProbabilityByAcuity': Object.fromEntries([1, 2, 3, 4, 5].map((a) => [`${a}`, Math.min(1, admit[a as 1] * 1.4)])),
+      'lwbs.patienceMeanMinutesByAcuity': Object.fromEntries([1, 2, 3, 4, 5].map((a) => { const v = PARAMS.lwbs.patienceMeanMinutesByAcuity[a as 1]; return [`${a}`, Number.isFinite(v) ? v * 0.5 : null]; })),
+      'workup.meanMinutesByAcuity': Object.fromEntries([1, 2, 3, 4, 5].map((a) => [`${a}`, PARAMS.workup.meanMinutesByAcuity[a as 1] * 1.6])),
+    });
+    const ms = [1, 2, 3].map((s) => new Simulation(truth, s).run().metrics);
+    const avg = (f: (m: (typeof ms)[number]) => number) => ms.reduce((a, m) => a + f(m), 0) / ms.length;
+    const targets = {
+      admissionRate: avg((m) => m.admitted / m.arrivals),
+      lwbsRate: avg((m) => m.lwbsRate),
+      losMedianDischargedMinutes: avg((m) => m.lengthOfStayDischarged.median!),
+    };
+    const fit = fitToTargets(base, targets, [1, 2, 3]);
+    expect(fit.achieved.admissionRate).toBeCloseTo(targets.admissionRate, 2);
+    expect(Math.abs(fit.achieved.lwbsRate - targets.lwbsRate)).toBeLessThan(0.01);
+    expect(Math.abs(fit.achieved.losMedianDischargedMinutes! - targets.losMedianDischargedMinutes) / targets.losMedianDischargedMinutes).toBeLessThan(0.05);
+    expect(fit.scales.admission).toBeGreaterThan(1.2);
+    expect(fit.scales.patience).toBeLessThan(0.7);
+    expect(fit.scales.workup).toBeGreaterThan(1.3);
+  }, 60_000);
+});

@@ -5,6 +5,10 @@
  * Calibration targets: MIMIC-IV-ED, CMS ED measures, NHS A&E statistics.
  * Configs (levels / sandbox presets) may override scenario-specific values;
  * anything they leave out comes from here.
+ *
+ * A fit to US national aggregates exists in configs/calibration/us-aggregates.fitted.json
+ * but is NOT applied: its targets are unverified (see that folder). Once verified, fold the
+ * fitted admission, patience and workup values in here and cite the sources.
  */
 
 import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm } from './types.js';

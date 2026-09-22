@@ -1,0 +1,1 @@
+{ "id": "calibration-base", "name": "Default ED, two weeks (base for aggregate calibration)", "durationMinutes": 20160, "warmupMinutes": 1440 }

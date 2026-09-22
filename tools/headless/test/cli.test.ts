@@ -134,3 +134,18 @@ describe('research commands', () => {
     expect(JSON.stringify(r)).not.toMatch(/optimal/i);
   });
 });
+
+describe('calibrate command', () => {
+  it('fits to a targets file and reports what it achieved', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'er-headless-'));
+    const cfg = join(dir, 'c.json');
+    const targets = join(dir, 't.json');
+    const out = join(dir, 'fit.json');
+    writeFileSync(cfg, JSON.stringify({ id: 'c', durationMinutes: 4 * 1440, warmupMinutes: 1440 }));
+    writeFileSync(targets, JSON.stringify({ targets: { admissionRate: 0.15 } }));
+    expect(main(['calibrate', '--config', cfg, '--targets', targets, '--seeds', '1-1', '--out', out], root)).toBe(0);
+    const r = JSON.parse(readFileSync(out, 'utf8'));
+    expect(r.achieved.admissionRate).toBeCloseTo(0.15, 2);
+    expect(r.fragment['disposition.admitProbabilityByAcuity']).toBeDefined();
+  }, 30_000);
+});

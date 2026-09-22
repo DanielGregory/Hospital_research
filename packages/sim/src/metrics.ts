@@ -49,6 +49,8 @@ export interface Metrics {
   lengthOfStay: Summary;
   lengthOfStayByAcuity: Record<`${Acuity}`, Summary>;
   lengthOfStayByGroup: Record<AcuityGroup, Summary>;
+  /** Discharged patients only (CMS OP-18 style). */
+  lengthOfStayDischarged: Summary;
   /** Mean arrival-to-departure over everyone who left, including LWBS (for Little's Law). */
   meanTimeInSystem: number | null;
   triage: {
@@ -239,6 +241,7 @@ export function computeMetrics(sim: Simulation): Metrics {
     lengthOfStay: all(los),
     lengthOfStayByAcuity: by(acuityKeys, (p) => `${p.initialAcuity}`, los),
     lengthOfStayByGroup: by(groups, (p) => GROUP_OF[p.initialAcuity], los),
+    lengthOfStayDischarged: all((p) => (p.outcome === 'discharged' ? p.departureTime! - p.arrivalTime : undefined)),
     meanTimeInSystem: leftN > 0 ? leftSum / leftN : null,
     triage: {
       triaged,

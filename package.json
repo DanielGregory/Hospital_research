@@ -1,0 +1,22 @@
+{
+  "name": "er-optimization-game",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/sim && tsc -p tools/headless",
+    "headless": "tsx tools/headless/src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

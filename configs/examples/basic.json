@@ -1,0 +1,13 @@
+{
+  "id": "basic",
+  "name": "Basic week: default arrivals, two doctors, then three",
+  "durationMinutes": 10080,
+  "warmupMinutes": 1440,
+  "startDayOfWeek": 0,
+  "startHour": 0,
+  "staffing": { "doctors": 2 },
+  "service": { "distribution": "lognormal" },
+  "commands": [
+    { "atMinute": 4320, "command": { "type": "setDoctors", "count": 3 } }
+  ]
+}

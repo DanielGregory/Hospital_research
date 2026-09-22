@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.tsbuildinfo
+results*.json
+results*.csv

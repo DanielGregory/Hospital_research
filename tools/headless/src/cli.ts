@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { checkLimits, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
+import { applySettings, checkLimits, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
@@ -88,18 +88,7 @@ function parseOverride(arg: string): [string, unknown] {
 
 /** Return a copy of `config` with each dot-path override applied (creating objects as needed). */
 export function applyOverrides(config: unknown, overrides: readonly [string, unknown][]): unknown {
-  const out = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
-  for (const [path, value] of overrides) {
-    const keys = path.split('.');
-    let cur = out;
-    for (const k of keys.slice(0, -1)) {
-      const next = cur[k];
-      if (typeof next !== 'object' || next === null || Array.isArray(next)) cur[k] = {};
-      cur = cur[k] as Record<string, unknown>;
-    }
-    cur[keys[keys.length - 1]!] = value;
-  }
-  return out;
+  return applySettings(config, overrides);
 }
 
 export interface RunOutput {

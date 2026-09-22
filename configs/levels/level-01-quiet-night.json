@@ -1,0 +1,64 @@
+{
+  "id": "level-01-quiet-night",
+  "name": "Quiet Night",
+  "durationMinutes": 480,
+  "startDayOfWeek": 1,
+  "startHour": 23,
+  "arrivals": {
+    "rateMultiplier": 0.8,
+    "acuityMix": {
+      "1": 0.03,
+      "2": 0.2,
+      "3": 0.4,
+      "4": 0.27,
+      "5": 0.1
+    }
+  },
+  "staffing": {
+    "doctors": 1,
+    "triageNurses": 1
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "fifo"
+  },
+  "level": {
+    "number": 1,
+    "title": "Quiet Night",
+    "seed": 24,
+    "briefing": [
+      "Welcome, trainee. This is a simulation. Nothing you do here can hurt anyone.",
+      "Tuesday, 23:00. One doctor, one triage nurse, and a waiting room that is nearly empty. It will not stay empty.",
+      "Right now patients are seen in the order they arrived. Your triage nurse knows which of them are dying. Decide whether that should matter."
+    ],
+    "debrief": {
+      "pass": [
+        "Good. The sickest patients reached a doctor first, and the ones who waited longer could afford to.",
+        "One more thing, trainee. That was not a simulation. Every arrival tonight came from a real emergency department's records, on a real Tuesday night. We changed only what you changed."
+      ],
+      "fail": [
+        "A patient who needed a doctor now waited behind people who could have waited, because they arrived first.",
+        "One more thing, trainee. That was not a simulation. Every arrival tonight came from a real emergency department's records. Try it again. This time, use the triage."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "doorToDoctorByGroup.urgent.max",
+        "max": 30,
+        "label": "No ESI 1–2 patient waits more than 30 minutes for a doctor",
+        "passIfNoData": true
+      },
+      {
+        "metric": "lwbsRate",
+        "max": 0.1,
+        "label": "Fewer than 10% leave without being seen"
+      }
+    ],
+    "playerControls": [
+      "queue.discipline"
+    ],
+    "designNote": "Fixed night (seed 24) where arrival order leaves an ESI 2 patient waiting ~105 min; acuity order gets them seen in ~21. Across random nights one doctor with no pre-emption makes queue order matter only ~10 points, so this level is tied to its night."
+  }
+}

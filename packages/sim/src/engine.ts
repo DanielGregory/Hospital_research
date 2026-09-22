@@ -53,8 +53,25 @@ interface Staff {
   retiring: boolean;
 }
 
+/** Where a patient is, for renderers. */
+export type PatientLocation = 'waitingTriage' | 'triage' | 'waitingDoctor' | 'waitingFastTrack' | 'doctor' | 'fastTrack';
+
+/** What the player may see about a patient. True acuity is included for debrief/debug views only. */
+export interface PatientView {
+  id: number;
+  location: PatientLocation;
+  /** Undefined until triaged. */
+  assignedAcuity?: Acuity;
+  trueAcuity: Acuity;
+  arrivalTime: number;
+  /** Staff member currently with them. */
+  staffId?: number;
+}
+
 export interface SimSnapshot {
   now: number;
+  /** Everyone currently in the department, in id order. */
+  patients: PatientView[];
   durationMinutes: number;
   finished: boolean;
   /** In service order. */
@@ -216,8 +233,20 @@ export class Simulation {
           startedAt: p.doctorStartTime!,
         });
     }
+    const patients: PatientView[] = [];
+    const view = (id: number, location: PatientLocation, staffId?: number) => {
+      const p = P(id);
+      patients.push({ id, location, assignedAcuity: p.assignedAcuity, trueAcuity: p.trueAcuity, arrivalTime: p.arrivalTime, staffId });
+    };
+    for (const id of this.triageQueue.ids()) view(id, 'waitingTriage');
+    for (const id of this.doctorQueues.main.ids()) view(id, 'waitingDoctor');
+    for (const id of this.doctorQueues.fastTrack.ids()) view(id, 'waitingFastTrack');
+    for (const x of inTriage) view(x.id, 'triage', x.staffId);
+    for (const x of withDoctor) view(x.id, x.lane === 'fastTrack' ? 'fastTrack' : 'doctor', x.staffId);
+    patients.sort((a, b) => a.id - b.id);
     return {
       now: this.clock,
+      patients,
       durationMinutes: this.config.durationMinutes,
       finished: this.finished,
       waitingTriage: this.triageQueue.ids().map((id) => ({ id, trueAcuity: P(id).trueAcuity, arrivalTime: P(id).arrivalTime })),

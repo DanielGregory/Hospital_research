@@ -44,6 +44,8 @@ export interface LevelSpec {
   title: string;
   /** The level's fixed day: story mode always plays this seed. */
   seed?: number;
+  /** Notes for designers (why the level is tuned the way it is). Not shown to players. */
+  designNote?: string;
   briefing: string[];
   debrief: { pass: string[]; fail: string[] };
   goals: Goal[];

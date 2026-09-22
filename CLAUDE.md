@@ -106,15 +106,17 @@ Every module toggle exposed. Presets include "layout only" (just design the floo
 - Keep the params file as the single source of truth for numbers.
 
 ## Repo status & commands
-- **Phase 0: done.** **Phase 2: done (engine, configs, headless).**
-- **Phase 1 was skipped at the owner's request** and is still open: the game view (`apps/game`) and Level 1. Level 1 has no config yet. With one lever (queue order) and ~11 patients a night, pass/fail was mostly luck (acuity order raised the pass rate only ~5 points over 60 seeds). Design it together with the view, e.g. a fixed night containing a clear "urgent patient behind a queue" moment.
+- **Phases 0, 1, 2: done.**
 - `pnpm install` / `pnpm test` / `pnpm typecheck`
+- `pnpm game`: run the browser game (Vite dev server). `pnpm e2e`: build it and play levels 1–2 in headless Chromium (light + dark, mobile width). `SCREENSHOTS=dir pnpm e2e` saves screenshots.
 - `pnpm headless run --config configs/examples/basic.json --seed 42 --out results.json` (`--format csv` for CSV)
 - `pnpm headless run --config configs/levels/level-03-fast-track.json --seeds 1-40 --set fastTrack.enabled=true` prints the level pass rate. `--set path=value` overrides any config value (JSON or bare string).
 - Params file: `packages/sim/src/params.ts`. Config schema: `packages/sim/src/config.ts`. Levels: `packages/sim/src/levels.ts`, `configs/levels/`.
 - Modules that are not built yet are rejected by config validation with the phase they belong to, so a config never silently enables something that does nothing.
 
 ## Implementation decisions (keep consistent)
+- **Game (`apps/game`):** Vite + React, with the floor drawn on a Canvas. `runner.ts` only advances the clock (1x = 4 sim-minutes per real second; 1/2/8x, pause, "End shift") and forwards commands. `render/floorPlan.ts` is a pure layout function (tested); `render/draw.ts` paints it. Dots show *assigned* acuity (grey until triaged); true acuity is never shown during play. Setup screens edit only a level's `playerControls`, and `buildConfig` ignores anything else. Demand and on-duty charts come from `hourlyLoad` / `onDutyByHour` in the sim.
+- **Level 1** is tied to one night (seed 24; see its `designNote`). With one doctor and no pre-emption, queue order changes pass rates only ~10 points across random nights.
 - **Default pipeline** (used while `process` is off): arrival → triage queue (FIFO) → triage nurse → doctor queue → doctor → discharge. Its knobs are plain config sections, not modules: `triage` (enabled, time, accuracy), `queue.discipline` (`acuity` | `fifo`), `fastTrack`, `lwbs`. The Phase 5 `process` module replaces this with the node graph.
 - **Roles:** `triageNurse`, `doctor`, `fastTrackClinician`. Fast-track clinicians see only the fast-track lane. Free main-ED doctors take fast-track overflow (`fastTrack.doctorsTakeOverflow`, default true). Without overflow, a fast track splits capacity and does worse than no fast track.
 - **Triage** errors are off by one ESI level (under/over split in params). Queue priority uses *assigned* acuity; metrics group by *true* acuity.

@@ -1,6 +1,6 @@
 import { Simulation } from './engine.js';
 
-export { Simulation, type SimSnapshot, type RunResult } from './engine.js';
+export { Simulation, type SimSnapshot, type RunResult, type PatientView, type PatientLocation } from './engine.js';
 export {
   resolveConfig,
   validateConfig,
@@ -26,6 +26,7 @@ export {
   type PlayerControl,
 } from './levels.js';
 export { onDutyCount, scheduleBoundaries } from './schedule.js';
+export { applySettings, getPath, type Settings } from './settings.js';
 export { PARAMS } from './params.js';
 export { Rng } from './rng.js';
 export { EventQueue } from './eventQueue.js';
@@ -39,3 +40,4 @@ export * from './types.js';
 export function runSimulation(config: unknown, seed: number) {
   return new Simulation(config, seed).run();
 }
+export { hourlyLoad, onDutyByHour, meanDoctorMinutes, type HourLoad } from './analytic/load.js';

@@ -1,8 +1,11 @@
+import { applySettings } from '../src/settings.js';
+
 /**
  * Reference solutions for story levels, shared by the balance tests and seed selection.
  * A reference is a reasonable (not "best found") answer a player could reach.
  */
 export const REFERENCE_SOLUTIONS: Record<string, Record<string, unknown>> = {
+  'level-01-quiet-night': { 'queue.discipline': 'acuity' },
   'level-02-monday-morning': {
     'staffing.schedule.doctor': [
       { startHour: 22, hours: 12, count: 2 },
@@ -35,15 +38,10 @@ export const REFERENCE_SOLUTIONS: Record<string, Record<string, unknown>> = {
 
 /** Apply dot-path settings to a copy of a config. */
 export function withSettings(config: unknown, settings: Record<string, unknown>): Record<string, unknown> {
-  const out = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
-  for (const [path, value] of Object.entries(settings)) {
-    const keys = path.split('.');
-    let cur = out;
-    for (const k of keys.slice(0, -1)) {
-      if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {};
-      cur = cur[k] as Record<string, unknown>;
-    }
-    cur[keys[keys.length - 1]!] = value;
-  }
-  return out;
+  return applySettings(config as Record<string, unknown>, settings);
 }
+
+/** Minimum pass-rate gap (reference minus shipped) across random seeds. Level 1 is tied to its night (see its designNote). */
+export const MIN_CROSS_SEED_GAP: Record<string, number> = {
+  'level-01-quiet-night': 0,
+};

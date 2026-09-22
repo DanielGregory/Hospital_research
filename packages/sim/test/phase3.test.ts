@@ -237,3 +237,42 @@ describe('everything on', () => {
     expect(JSON.stringify(new Simulation(cfg, 9).run())).toBe(JSON.stringify(new Simulation(cfg, 9).run()));
   });
 });
+
+describe('pre-emption (ESI 1)', () => {
+  const oneDoctor = {
+    id: 'pe',
+    durationMinutes: 14 * 1440,
+    staffing: { doctors: 1 },
+    beds: { main: null },
+    arrivals: { rateMultiplier: 0.3 },
+    triage: { accuracy: 1 },
+    lwbs: { enabled: false },
+    deterioration: { enabled: false },
+  };
+
+  it('ESI 1 patients reach a doctor almost at once, even with one busy doctor', () => {
+    const on = new Simulation(oneDoctor, 1).run().metrics;
+    const off = new Simulation({ ...oneDoctor, queue: { preemptAcuity: 0 } }, 1).run().metrics;
+    expect(on.preemptions).toBeGreaterThan(0);
+    expect(off.preemptions).toBe(0);
+    const wait = (m: typeof on) => m.doorToDoctorByAcuity['1'].mean! - m.doorToTriage.mean!;
+    expect(wait(on)).toBeLessThan(wait(off) / 2);
+  });
+
+  it('interrupted work resumes where it stopped: nothing is lost or double-counted', () => {
+    const sim = new Simulation(oneDoctor, 2);
+    const { metrics } = sim.run();
+    expect(metrics.preemptions).toBeGreaterThan(0);
+    const s = sim.snapshot();
+    expect(s.totals.arrived).toBe(s.totals.discharged + s.totals.admitted + s.totals.lwbs + s.patients.length);
+    // Utilisation stays a fraction and matches a run without pre-emption closely (same work, reordered).
+    const off = new Simulation({ ...oneDoctor, queue: { preemptAcuity: 0 } }, 2).run().metrics;
+    expect(Math.abs(metrics.utilizationByRole.doctor! - off.utilizationByRole.doctor!)).toBeLessThan(0.03);
+  });
+
+  it('only under acuity ordering, and never interrupts another ESI 1', () => {
+    expect(new Simulation({ ...oneDoctor, queue: { discipline: 'fifo' } }, 1).run().metrics.preemptions).toBe(0);
+    const all1 = new Simulation({ ...oneDoctor, durationMinutes: 2 * 1440, arrivals: { acuityMix: { '1': 1 }, rateMultiplier: 0.5 } }, 1).run().metrics;
+    expect(all1.preemptions).toBe(0);
+  });
+});

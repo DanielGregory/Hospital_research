@@ -78,6 +78,8 @@ export interface Metrics {
     timeAverageBoarders: number;
   };
   bedOccupancy: { main: number | null; fastTrack: number | null };
+  /** Times a doctor was pulled from a less urgent patient to an ESI 1 (pre-emption). */
+  preemptions: number;
   timeAverageInSystem: number;
   /** Time-average number in the department not yet seen by a doctor. */
   timeAverageWaiting: number;
@@ -259,6 +261,7 @@ export function computeMetrics(sim: Simulation): Metrics {
       timeAverageBoarders: span > 0 ? sim.tw.boarding.integral(end) / span : 0,
     },
     bedOccupancy: { main: bedOcc('main'), fastTrack: bedOcc('fastTrack') },
+    preemptions: sim.preemptions,
     timeAverageInSystem: span > 0 ? sim.tw.inSystem.integral(end) / span : 0,
     timeAverageWaiting: span > 0 ? sim.tw.waiting.integral(end) / span : 0,
     utilizationByRole,

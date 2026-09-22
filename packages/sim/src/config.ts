@@ -120,6 +120,11 @@ export interface SimConfig {
     discipline?: QueueDiscipline;
     /** Doctors finish dispositions (freeing beds) before starting new evaluations. Default true. */
     dispositionFirst?: boolean;
+    /**
+     * With acuity ordering, patients triaged at this level or more urgent interrupt a doctor
+     * who is seeing someone less urgent (resuscitation cases). 0 = never. Default 1.
+     */
+    preemptAcuity?: number;
   };
   fastTrack?: {
     enabled?: boolean;
@@ -183,6 +188,7 @@ export interface ResolvedConfig {
   triage: { enabled: boolean; meanMinutes: number; cv: number; accuracy: number; underTriageShare: number };
   discipline: QueueDiscipline;
   dispositionFirst: boolean;
+  preemptAcuity: number;
   fastTrack: { enabled: boolean; minAcuity: Acuity; serviceFactor: number; doctorsTakeOverflow: boolean };
   lwbs: { enabled: boolean; patienceMeanByAcuity: Record<Acuity, number>; patienceCv: number };
   beds: Record<Lane, number>;
@@ -310,6 +316,7 @@ export function validateConfig(raw: unknown): SimConfig {
   section(c, 'queue', p, (q) => {
     field(q, 'queue', 'discipline', (x) => x === 'fifo' || x === 'acuity', "'fifo' or 'acuity'", p);
     field(q, 'queue', 'dispositionFirst', bool, 'true or false', p);
+    field(q, 'queue', 'preemptAcuity', (x) => Number.isInteger(x) && (x as number) >= 0 && (x as number) <= 5, 'integer 0..5 (0 = never)', p);
   });
 
   section(c, 'fastTrack', p, (f) => {
@@ -655,6 +662,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     triage,
     discipline: c.queue?.discipline ?? 'acuity',
     dispositionFirst: c.queue?.dispositionFirst ?? true,
+    preemptAcuity: c.queue?.preemptAcuity ?? PARAMS.queue.preemptAcuity,
     fastTrack: {
       enabled: c.fastTrack?.enabled ?? false,
       minAcuity: c.fastTrack?.minAcuity ?? PARAMS.fastTrack.minAcuity,

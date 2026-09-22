@@ -185,6 +185,11 @@ export const PARAMS = {
     ] as readonly ScoreTerm[],
   },
 
+  queue: {
+    /** ESI level at or above which a waiting patient interrupts a doctor (resuscitation). 0 = never. */
+    preemptAcuity: 1, // PLACEHOLDER (policy choice; ESI 1 = immediate life-saving intervention)
+  },
+
   staffing: {
     doctors: 4, // PLACEHOLDER (~60% busy at default arrivals incl. dispositions)
     triageNurses: 1, // PLACEHOLDER

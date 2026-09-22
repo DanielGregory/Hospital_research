@@ -51,7 +51,7 @@ interface ArrivalSpec {
 type SimEvent =
   | { kind: 'arrival' }
   | { kind: 'specialArrival'; spec: ArrivalSpec }
-  | { kind: 'taskEnd'; staffId: number }
+  | { kind: 'taskEnd'; staffId: number; token: number }
   | { kind: 'turnaroundEnd'; patientId: number; step: number }
   | { kind: 'transferEnd'; patientId: number }
   | { kind: 'abandon'; patientId: number }
@@ -84,6 +84,8 @@ interface Task {
   step: number;
   readyTime: number;
   pool: Role;
+  /** Minutes of work left, for a task that was paused by pre-emption. */
+  remaining?: number;
 }
 
 interface Runtime {
@@ -116,6 +118,9 @@ interface Staff {
   shiftStart: number;
   busyMinutes: number;
   taskStart?: number;
+  /** When the current task will end, and a token so a paused task's end event is ignored. */
+  taskEnd?: number;
+  taskToken: number;
   /** Home base (layout module): location index, 0 = entrance, i + 1 = room i. */
   loc: number;
 }
@@ -215,6 +220,8 @@ export class Simulation {
   private escalated: boolean;
 
   private counts = { discharged: 0, admitted: 0, lwbs: 0, bounceBacks: 0, deteriorations: 0 };
+  /** Times a doctor was pulled away from a less urgent patient. */
+  preemptions = 0;
   private readonly log: TimedCommand[] = [];
 
   // Live settings (commands change these).
@@ -498,9 +505,11 @@ export class Simulation {
       case 'specialArrival':
         this.admitArrival(ev.spec);
         break;
-      case 'taskEnd':
-        this.onTaskEnd(ev.staffId);
+      case 'taskEnd': {
+        const s = this.staff.find((x) => x.id === ev.staffId);
+        if (s && s.taskToken === ev.token) this.onTaskEnd(ev.staffId);
         break;
+      }
       case 'turnaroundEnd':
         this.completeStep(this.patients[ev.patientId]!, ev.step);
         break;
@@ -947,7 +956,48 @@ export class Simulation {
   }
 
   /** Give free staff the next task from their pool (lowest staff id first). */
+  /**
+   * Pre-emption: a patient triaged at or above `preemptAcuity` who is ready for a doctor, with no
+   * doctor free, takes the doctor whose current patient is least urgent (most recently started first).
+   * The interrupted work goes back in the queue and resumes where it stopped.
+   */
+  private preempt(): void {
+    const level = this.config.preemptAcuity;
+    if (level < 1 || this.discipline !== 'acuity') return;
+    for (;;) {
+      const urgent = this.pools.doctor
+        .ids()
+        .map((tid) => this.tasks.get(tid)!)
+        .find((t) => this.pipeline[t.step]!.kind === 'doctorEval' && (this.patients[t.patientId]!.assignedAcuity ?? 9) <= level);
+      if (!urgent) return;
+      const victims = this.staff
+        .filter((x) => x.role === 'doctor' && !x.retiring && x.taskId !== null)
+        .map((x) => ({ x, t: this.tasks.get(x.taskId!)! }))
+        .filter(({ t }) => (this.patients[t.patientId]!.assignedAcuity ?? 3) > level)
+        .sort((a, b) => b.x.taskStart! - a.x.taskStart! || a.x.id - b.x.id);
+      const v = victims[0];
+      if (!v) return;
+      // Pause the victim's task and put it back in the queue.
+      const s = v.x;
+      const t = v.t;
+      t.remaining = Math.max(0, s.taskEnd! - this.clock);
+      s.busyMinutes += this.clock - s.taskStart!;
+      s.taskId = null;
+      s.taskStart = undefined;
+      s.taskToken++;
+      const vp = this.patients[t.patientId]!;
+      const vr = this.rt[vp.id]!;
+      vr.activeTasks--;
+      vr.status[t.step] = 'queued';
+      this.pools[t.pool].push(t.id, this.taskClass(vp, this.pipeline[t.step]!), t.readyTime);
+      this.pools.doctor.remove(urgent.id);
+      this.startTask(s, urgent);
+      this.preemptions++;
+    }
+  }
+
   private dispatch(): void {
+    this.preempt();
     const ftClosed = !this.fastTrackOpen();
     for (const s of this.staff) {
       if (s.taskId !== null || s.retiring) continue;
@@ -970,8 +1020,15 @@ export class Simulation {
     s.taskId = task.id;
     s.taskStart = this.clock;
     r.status[task.step] = 'active';
-    p.steps[step.id] = { start: this.clock };
+    p.steps[step.id] = { start: p.steps[step.id]?.start ?? this.clock };
     r.activeTasks++;
+    if (task.remaining !== undefined) {
+      // Resuming work that was interrupted by a more urgent patient.
+      s.taskEnd = this.clock + task.remaining;
+      task.remaining = undefined;
+      this.push(s.taskEnd, { kind: 'taskEnd', staffId: s.id, token: ++s.taskToken });
+      return;
+    }
     if (step.kind === 'triage') {
       p.triageStartTime = this.clock;
       r.triageFatigue = fatigue;
@@ -995,7 +1052,8 @@ export class Simulation {
       minutes += walk;
       if (this.clock >= c.warmupMinutes) this.walkingMinutes[s.role] += walk;
     }
-    this.push(this.clock + minutes, { kind: 'taskEnd', staffId: s.id });
+    s.taskEnd = this.clock + minutes;
+    this.push(s.taskEnd, { kind: 'taskEnd', staffId: s.id, token: ++s.taskToken });
   }
 
   /** Where a task happens (layout module). */
@@ -1044,7 +1102,7 @@ export class Simulation {
         : role === 'fastTrackClinician' && this.bedLoc.fastTrack.length
           ? this.bedLoc.fastTrack[0]!
           : this.stationLoc;
-    this.staff.push({ id, role, taskId: null, retiring: false, occ, shiftStart, busyMinutes: 0, loc });
+    this.staff.push({ id, role, taskId: null, retiring: false, occ, shiftStart, busyMinutes: 0, loc, taskToken: 0 });
   }
 
   private removeStaff(s: Staff): void {

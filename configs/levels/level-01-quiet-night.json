@@ -1,11 +1,11 @@
 {
   "id": "level-01-quiet-night",
   "name": "Quiet Night",
-  "durationMinutes": 480,
+  "durationMinutes": 600,
   "startDayOfWeek": 1,
-  "startHour": 23,
+  "startHour": 22,
   "arrivals": {
-    "rateMultiplier": 0.6,
+    "rateMultiplier": 0.8,
     "acuityMix": {
       "1": 0.03,
       "2": 0.2,
@@ -30,39 +30,39 @@
     "seed": 13,
     "briefing": [
       "Welcome, trainee. This is a simulation. Nothing you do here can hurt anyone.",
-      "Tuesday, 23:00. One doctor, one triage nurse, and a waiting room that is nearly empty. It will not stay empty.",
+      "Tuesday, 22:00. One doctor, one triage nurse, and a waiting room that is nearly empty. It will not stay empty.",
       "Right now patients are seen in the order they arrived. Your triage nurse knows which of them are dying. Decide whether that should matter."
     ],
     "debrief": {
       "pass": [
         "Good. The sickest patients reached a doctor first, and the ones who waited longer could afford to.",
-        "One more thing, trainee. That was not a simulation. Every arrival tonight came from a real emergency department's records, on a real Tuesday night. We changed only what you changed."
+        "One more thing, trainee. The patients tonight were not real. Nights like this one are."
       ],
       "fail": [
         "A patient who needed a doctor now waited behind people who could have waited, because they arrived first.",
-        "One more thing, trainee. That was not a simulation. Every arrival tonight came from a real emergency department's records. Try it again. This time, use the triage."
+        "The patients tonight were not real. Nights like this one are. Try it again. This time, use the triage."
       ]
     },
     "goals": [
       {
-        "metric": "doorToDoctorByGroup.urgent.max",
-        "max": 30,
-        "label": "No ESI 1–2 patient waits more than 30 minutes for a doctor",
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 15,
+        "label": "ESI 1–2: median door-to-doctor under 15 minutes",
         "passIfNoData": true
       },
       {
         "metric": "lwbsRate",
-        "max": 0.1,
-        "label": "Fewer than 10% leave without being seen"
+        "max": 0.2,
+        "label": "Fewer than 20% leave without being seen"
       }
     ],
     "playerControls": [
       "queue.discipline"
     ],
-    "designNote": "Fixed night (seed 13) where arrival order leaves an ESI 1-2 patient waiting over 30 minutes and acuity order does not. Across random nights, one doctor who never interrupts a case makes queue order matter little (acuity passes ~43% vs ~40%), so this level is tied to its night. See the open question on ESI 1 pre-emption.",
+    "designNote": "One doctor, 22:00-08:00. With ESI 1 pre-emption, acuity order passes ~58% of nights vs ~34% for arrival order (80 nights). The level seed is a night where arrival order fails and acuity order passes.",
     "reference": {
       "queue.discipline": "acuity"
     },
-    "minCrossSeedGap": 0
+    "minCrossSeedGap": 0.2
   }
 }

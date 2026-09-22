@@ -110,7 +110,7 @@
   "level": {
     "number": 7,
     "title": "Budget Mode",
-    "seed": 2,
+    "seed": 3,
     "briefing": [
       "Final simulation. Monday and Tuesday, with every system live: shifts, fatigue, a hospital that is nearly full, and diagnoses that can be wrong.",
       "You have 20,000 a day. Staff, treatment spaces and escalating to the hospital all cost money. You cannot start a plan that goes over budget.",
@@ -119,7 +119,7 @@
     "debrief": {
       "pass": [
         "Balanced. Nothing was perfect, but nothing was left to fail.",
-        "That is the job, trainee. We compared your choices with what the real department did on these two days. You did better. Soon you will do this with real patients."
+        "That is the job, trainee. Every department you ran was a simulation. The decisions were not."
       ],
       "fail": [
         "Somewhere the money went to the wrong place: idle beds, a rota that ignored the Monday rush, or rushed assessments that sent patients home only for them to come back.",

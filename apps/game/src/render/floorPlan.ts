@@ -58,7 +58,7 @@ export interface WaitingLine {
 
 export interface FloorPlan {
   /** Grid view (layout module): footprint cells to draw under the rooms. */
-  grid?: { cells: Rect[]; entrance: Rect };
+  grid?: { cells: Rect[]; entrance: Rect; cell: number };
   areas: Area[];
   beds: BedMark[];
   staff: StaffMark[];
@@ -67,9 +67,9 @@ export interface FloorPlan {
 }
 
 const PAD = 12;
-const DOT = 14; // grid spacing for waiting dots
-const BED_W = 34;
-const BED_H = 24;
+const DOT = 20; // grid spacing for waiting dots
+const BED_W = 38;
+const BED_H = 28;
 
 export function layoutFloor(s: SimSnapshot, width: number, height: number, showFastTrack: boolean): FloorPlan {
   const waitW = Math.round(width * 0.32);
@@ -97,14 +97,23 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     const used = s.patients.filter((p) => p.location === 'bed' && p.lane === lane).map((p) => p.bed ?? 0);
     const count = info.capacity ?? Math.max(12, ...used.map((b) => b + 1));
     const top = a.y + 58;
-    const cols = Math.max(1, Math.floor((a.w - 2 * PAD) / (BED_W + 10)));
-    const rows = Math.max(1, Math.floor((a.h - (top - a.y) - PAD) / (BED_H + 10)));
+    // Size beds to fill the room: try every column count, keep the one giving the biggest bed.
+    const availW = a.w - 2 * PAD;
+    const availH = a.h - (top - a.y) - PAD;
+    let best = { cols: 1, bw: BED_W, bh: BED_H };
+    for (let cols = 1; cols <= count; cols++) {
+      const rows = Math.ceil(count / cols);
+      const bw = Math.min(64, availW / cols - 12, ((availH / rows - 12) * BED_W) / BED_H);
+      if (bw > best.bw || cols === 1) best = { cols, bw: Math.max(bw, 22), bh: (Math.max(bw, 22) * BED_H) / BED_W };
+    }
+    const { cols, bw, bh } = best;
+    const rows = Math.max(1, Math.floor((availH + 12) / (bh + 12)));
     const shown = Math.min(count, cols * rows);
     for (let i = 0; i < shown; i++) {
-      const x = a.x + PAD + (i % cols) * (BED_W + 10);
-      const y = top + Math.floor(i / cols) * (BED_H + 10);
-      beds.push({ lane, index: i, x, y, w: BED_W, h: BED_H, occupied: used.includes(i) });
-      bedPos.set(`${lane}:${i}`, { x: x + BED_W / 2, y: y + BED_H / 2 });
+      const x = a.x + PAD + (i % cols) * (bw + 12);
+      const y = top + Math.floor(i / cols) * (bh + 12);
+      beds.push({ lane, index: i, x, y, w: bw, h: bh, occupied: used.includes(i) });
+      bedPos.set(`${lane}:${i}`, { x: x + bw * 0.58, y: y + bh / 2 });
     }
   }
 
@@ -170,7 +179,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     const patient = m.patientId === undefined ? undefined : s.patients.find((p) => p.id === m.patientId);
     const pos = patient?.location === 'bed' ? bedPos.get(`${patient.lane}:${patient.bed}`) : undefined;
     if (pos) {
-      staff.push({ ...mark, x: pos.x + BED_W / 2 + 3, y: pos.y - BED_H / 2 + 2 });
+      staff.push({ ...mark, x: pos.x + 14, y: pos.y - 12 });
       continue;
     }
     const aid = area(roleArea[m.role]) ? roleArea[m.role] : 'main';

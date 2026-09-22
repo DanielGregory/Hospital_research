@@ -78,15 +78,16 @@ export function layoutGrid(s: SimSnapshot, layout: ResolvedLayout, width: number
     const mark = { id: m.id, role: m.role, busy: m.busy, leaving: m.retiring, fatigue: m.fatigue };
     const patient = m.patientId === undefined ? undefined : patients.find((p) => p.id === m.patientId);
     if (patient) {
-      staff.push({ ...mark, x: patient.x + 9, y: patient.y - 7 });
+      staff.push({ ...mark, x: patient.x + 13, y: patient.y - 11 });
       continue;
     }
     const home = m.room ?? firstOf('station')?.id;
     const a = home ? roomRect.get(home) : undefined;
     const n = homeCount.get(home ?? '') ?? 0;
     homeCount.set(home ?? '', n + 1);
-    staff.push({ ...mark, x: (a?.x ?? ox) + 10 + (n % 6) * 14, y: (a?.y ?? oy) + (a ? a.h - 10 : 0) - Math.floor(n / 6) * 14 });
+    const per = Math.max(1, Math.floor(((a?.w ?? 60) - 10) / 19));
+    staff.push({ ...mark, x: (a?.x ?? ox) + 12 + (n % per) * 19, y: (a?.y ?? oy) + (a ? a.h - 12 : 0) - Math.floor(n / per) * 19 });
   }
 
-  return { grid: { cells, entrance: rect(layout.entrance.x, layout.entrance.y) }, areas, beds, staff, patients, waitingLines: [] };
+  return { grid: { cells, entrance: rect(layout.entrance.x, layout.entrance.y), cell }, areas, beds, staff, patients, waitingLines: [] };
 }

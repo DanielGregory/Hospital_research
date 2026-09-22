@@ -51,7 +51,9 @@ async function main() {
         page.on('pageerror', (e) => errors.push(e.message));
         page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
         await page.goto(`http://localhost:${PORT}/`);
+        await shot(page, `menu-${scheme}`);
         await page.getByTestId('level-1').click();
+        await shot(page, `briefing-${scheme}`);
         await page.getByTestId('continue').click();
 
         // Level 1, as shipped (arrival order): should fail on its fixed night.

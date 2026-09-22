@@ -10,18 +10,24 @@ export function Setup(props: { level: LevelConfig; values: SetupValues; onChange
   const set = (ctl: PlayerControl, v: unknown) => onChange({ ...values, [ctl]: v });
 
   return (
-    <main className="screen setup">
-      <p className="eyebrow">Simulation {level.level.number} · setup</p>
+    <main className="screen narrow setup">
+      <p className="eyebrow">Simulation {String(level.level.number).padStart(2, '0')} · setup</p>
       <h1>{level.level.title}</h1>
+      <p className="lede">Set things up before the shift starts. Everything else is locked for this simulation.</p>
       {level.level.playerControls.length === 0 && <p>Nothing to set up. Watch closely.</p>}
-      {level.level.playerControls.map((ctl) => {
-        const role = scheduleRole(ctl);
-        if (role) return <ScheduleEditor key={ctl} role={role} shifts={(values[ctl] as Shift[]) ?? []} config={config} onChange={(s) => set(ctl, s)} />;
-        return <SimpleControl key={ctl} control={ctl} value={values[ctl]} onChange={(v) => set(ctl, v)} />;
-      })}
-      {config.modules?.budget && (
-        <BudgetLine planned={plannedCost(config)} cap={config.budget?.capPerDay ?? null} />
+      {level.level.playerControls.filter(scheduleRole).map((ctl) => (
+        <ScheduleEditor key={ctl} role={scheduleRole(ctl)!} shifts={(values[ctl] as Shift[]) ?? []} config={config} onChange={(s) => set(ctl, s)} />
+      ))}
+      {level.level.playerControls.some((c) => !scheduleRole(c)) && (
+        <section className="card">
+          {level.level.playerControls
+            .filter((c) => !scheduleRole(c))
+            .map((ctl) => (
+              <SimpleControl key={ctl} control={ctl} value={values[ctl]} onChange={(v) => set(ctl, v)} />
+            ))}
+        </section>
       )}
+      {config.modules?.budget && <BudgetLine planned={plannedCost(config)} cap={config.budget?.capPerDay ?? null} />}
       {problems.length > 0 && (
         <ul className="problems" role="alert">
           {problems.map((p) => (
@@ -31,8 +37,8 @@ export function Setup(props: { level: LevelConfig; values: SetupValues; onChange
       )}
       <div className="actions">
         <button onClick={onBack}>Back</button>
-        <button className="primary" disabled={problems.length > 0} onClick={onStart} data-testid="start">
-          Start shift
+        <button className="primary push" disabled={problems.length > 0} onClick={onStart} data-testid="start">
+          Start the shift
         </button>
       </div>
     </main>
@@ -92,7 +98,7 @@ export function SimpleControl({ control, value, onChange }: { control: PlayerCon
       );
     case 'fastTrack.minAcuity':
       return (
-        <label className="control">
+        <label className="control control-row">
           Send to fast track: triage level{' '}
           <select value={String(value)} onChange={(e) => onChange(Number(e.target.value) as Acuity)}>
             <option value="4">4 and 5</option>
@@ -104,7 +110,7 @@ export function SimpleControl({ control, value, onChange }: { control: PlayerCon
     case 'beds.main':
     case 'beds.fastTrack':
       return (
-        <div className="control">
+        <div className="control control-row">
           {control === 'beds.main' ? 'Main ED treatment spaces' : 'Fast-track spaces'}{' '}
           <Stepper value={Number(value ?? 0)} min={1} max={60} onChange={onChange} label={control} />
         </div>
@@ -137,7 +143,7 @@ export function SimpleControl({ control, value, onChange }: { control: PlayerCon
     case 'staffing.triageNurses':
     case 'staffing.fastTrackClinicians':
       return (
-        <div className="control">
+        <div className="control control-row">
           {control === 'staffing.doctors' ? 'Doctors' : control === 'staffing.triageNurses' ? 'Triage nurses' : 'Fast-track clinicians'}{' '}
           <Stepper value={Number(value ?? 0)} min={0} max={12} onChange={onChange} label={control} />
         </div>

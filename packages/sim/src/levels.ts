@@ -48,6 +48,8 @@ export interface LevelLimits {
 export interface LevelSpec {
   number: number;
   title: string;
+  /** One line for the level menu. */
+  tagline?: string;
   /** The level's fixed day: story mode always plays this seed. */
   seed?: number;
   /** Notes for designers (why the level is tuned the way it is). Not shown to players. */
@@ -76,6 +78,7 @@ export function checkLevel(level: unknown): string[] {
   if (!isObj(level)) return ['level: must be an object'];
   if (!(Number.isInteger(level.number) && (level.number as number) >= 1)) p.push('level.number: positive integer');
   if (typeof level.title !== 'string' || !level.title) p.push('level.title: non-empty string');
+  if (level.tagline !== undefined && typeof level.tagline !== 'string') p.push('level.tagline: string');
   if (level.seed !== undefined && !(Number.isInteger(level.seed) && (level.seed as number) >= 0 && (level.seed as number) <= 0xffffffff))
     p.push('level.seed: integer in [0, 2^32)');
   if (!strings(level.briefing)) p.push('level.briefing: array of paragraphs');

@@ -131,7 +131,13 @@ export function sandboxConfig(s: SandboxState): GameConfig {
   };
 }
 
-export function Sandbox(props: { state: SandboxState; onChange: (s: SandboxState) => void; onPlay: (c: GameConfig) => void; onLayout: () => void; onBack: () => void }) {
+export function Sandbox(props: {
+  state: SandboxState;
+  onChange: (s: SandboxState) => void;
+  onPlay: (c: GameConfig) => void;
+  onLayout: () => void;
+  onBack: () => void;
+}) {
   const { state: s, onChange } = props;
   const [score, setScore] = useState<{ q: QuickScore; composite: number; cost: number } | null>(null);
   const set = (patch: Partial<SandboxState>) => {
@@ -179,7 +185,12 @@ export function Sandbox(props: { state: SandboxState; onChange: (s: SandboxState
         {MODULES.map((m) => (
           <li key={m}>
             <label>
-              <input type="checkbox" checked={s.modules[m]} onChange={(e) => set({ modules: { ...s.modules, [m]: e.target.checked } })} data-testid={`module-${m}`} />{' '}
+              <input
+                type="checkbox"
+                checked={s.modules[m]}
+                onChange={(e) => set({ modules: { ...s.modules, [m]: e.target.checked } })}
+                data-testid={`module-${m}`}
+              />{' '}
               <strong>{MODULE_TEXT[m][0]}</strong>
               <span className="muted"> {MODULE_TEXT[m][1]}</span>
             </label>
@@ -188,74 +199,87 @@ export function Sandbox(props: { state: SandboxState; onChange: (s: SandboxState
       </ul>
 
       <h2>Setup</h2>
-      <div className="knobs">
-        {stepper('Days', 'days', 1, 14)}
-        <span className="knob">
-          Arrivals{' '}
-          <select value={s.arrivalMultiplier} onChange={(e) => set({ arrivalMultiplier: Number(e.target.value) })} aria-label="Arrival level">
-            {[0.6, 0.8, 1, 1.2, 1.4, 1.6].map((v) => (
-              <option key={v} value={v}>
-                {Math.round(v * 100)}% of normal
-              </option>
-            ))}
-          </select>
-        </span>
-        {stepper('Doctors', 'doctors', 0, 12)}
-        {stepper('Triage nurses', 'triageNurses', 0, 4)}
-        {stepper('Fast-track clinicians', 'fastTrackClinicians', 0, 4)}
-        {s.modules.process && stepper('Nurses', 'nurses', 0, 10)}
-        {s.modules.process && stepper('Technicians', 'techs', 0, 6)}
-        {!s.modules.layout && stepper('Main beds', 'bedsMain', 1, 60)}
-        {!s.modules.layout && stepper('Fast-track beds', 'bedsFastTrack', 1, 20)}
-        <span className="knob">
-          Queue{' '}
-          <select value={s.discipline} onChange={(e) => set({ discipline: e.target.value as QueueDiscipline })} aria-label="Queue order">
-            <option value="acuity">Sickest first</option>
-            <option value="fifo">Arrival order</option>
-          </select>
-        </span>
-        {!s.modules.process && (
+      <section className="card">
+        <div className="knobs">
+          {stepper('Days', 'days', 1, 14)}
           <span className="knob">
-            Fast track{' '}
-            <select value={s.fastTrackFrom ?? ''} onChange={(e) => set({ fastTrackFrom: e.target.value ? (Number(e.target.value) as Acuity) : null })} aria-label="Fast track">
-              <option value="">closed</option>
-              <option value="4">ESI 4–5</option>
-              <option value="5">ESI 5</option>
-            </select>
-          </span>
-        )}
-        {s.modules.diagnosis && !s.modules.process && (
-          <label className="knob">
-            Thoroughness {Math.round(s.thoroughness * 100)}%
-            <input type="range" min={0} max={1} step={0.05} value={s.thoroughness} onChange={(e) => set({ thoroughness: Number(e.target.value) })} />
-          </label>
-        )}
-        {s.modules.boarding && (
-          <label className="knob">
-            <input type="checkbox" checked={s.escalation} onChange={(e) => set({ escalation: e.target.checked })} /> Full-capacity protocol
-          </label>
-        )}
-        {s.modules.budget && (
-          <span className="knob">
-            Budget per day{' '}
-            <select value={s.capPerDay} onChange={(e) => set({ capPerDay: Number(e.target.value) })} aria-label="Budget per day">
-              {Array.from({ length: 11 }, (_, i) => 15000 + i * 2500).map((v) => (
+            Arrivals{' '}
+            <select value={s.arrivalMultiplier} onChange={(e) => set({ arrivalMultiplier: Number(e.target.value) })} aria-label="Arrival level">
+              {[0.6, 0.8, 1, 1.2, 1.4, 1.6].map((v) => (
                 <option key={v} value={v}>
-                  {v.toLocaleString('en-US')}
+                  {Math.round(v * 100)}% of normal
                 </option>
               ))}
             </select>
           </span>
+          {stepper('Doctors', 'doctors', 0, 12)}
+          {stepper('Triage nurses', 'triageNurses', 0, 4)}
+          {stepper('Fast-track clinicians', 'fastTrackClinicians', 0, 4)}
+          {s.modules.process && stepper('Nurses', 'nurses', 0, 10)}
+          {s.modules.process && stepper('Technicians', 'techs', 0, 6)}
+          {!s.modules.layout && stepper('Main beds', 'bedsMain', 1, 60)}
+          {!s.modules.layout && stepper('Fast-track beds', 'bedsFastTrack', 1, 20)}
+          <span className="knob">
+            Queue{' '}
+            <select value={s.discipline} onChange={(e) => set({ discipline: e.target.value as QueueDiscipline })} aria-label="Queue order">
+              <option value="acuity">Sickest first</option>
+              <option value="fifo">Arrival order</option>
+            </select>
+          </span>
+          {!s.modules.process && (
+            <span className="knob">
+              Fast track{' '}
+              <select
+                value={s.fastTrackFrom ?? ''}
+                onChange={(e) => set({ fastTrackFrom: e.target.value ? (Number(e.target.value) as Acuity) : null })}
+                aria-label="Fast track"
+              >
+                <option value="">closed</option>
+                <option value="4">ESI 4–5</option>
+                <option value="5">ESI 5</option>
+              </select>
+            </span>
+          )}
+          {s.modules.diagnosis && !s.modules.process && (
+            <label className="knob">
+              Thoroughness {Math.round(s.thoroughness * 100)}%
+              <input type="range" min={0} max={1} step={0.05} value={s.thoroughness} onChange={(e) => set({ thoroughness: Number(e.target.value) })} />
+            </label>
+          )}
+          {s.modules.boarding && (
+            <label className="knob">
+              <input type="checkbox" checked={s.escalation} onChange={(e) => set({ escalation: e.target.checked })} /> Full-capacity protocol
+            </label>
+          )}
+          {s.modules.budget && (
+            <span className="knob">
+              Budget per day{' '}
+              <select value={s.capPerDay} onChange={(e) => set({ capPerDay: Number(e.target.value) })} aria-label="Budget per day">
+                {Array.from({ length: 11 }, (_, i) => 15000 + i * 2500).map((v) => (
+                  <option key={v} value={v}>
+                    {v.toLocaleString('en-US')}
+                  </option>
+                ))}
+              </select>
+            </span>
+          )}
+        </div>
+        {planned !== null && (
+          <p className="muted" data-testid="planned-cost" style={{ marginBottom: 0 }}>
+            Planned cost: {Math.round(planned).toLocaleString('en-US')} per day
+          </p>
         )}
-      </div>
-      {planned !== null && (
-        <p className="muted" data-testid="planned-cost">
-          Planned cost: {Math.round(planned).toLocaleString('en-US')} per day
-        </p>
-      )}
+      </section>
 
       {s.modules.process && (
-        <ProcessEditor steps={s.steps} fastTrackFrom={s.fastTrackFrom} onChange={(steps) => set({ steps })} onFastTrackFrom={(fastTrackFrom) => set({ fastTrackFrom })} />
+        <section className="card process-editor">
+          <ProcessEditor
+            steps={s.steps}
+            fastTrackFrom={s.fastTrackFrom}
+            onChange={(steps) => set({ steps })}
+            onFastTrackFrom={(fastTrackFrom) => set({ fastTrackFrom })}
+          />
+        </section>
       )}
 
       {problems.length > 0 && (
@@ -274,30 +298,33 @@ export function Sandbox(props: { state: SandboxState; onChange: (s: SandboxState
         <button onClick={test} disabled={problems.length > 0} data-testid="sandbox-test">
           Test (three runs)
         </button>
-        <button className="primary" onClick={() => props.onPlay(config)} disabled={problems.length > 0} data-testid="sandbox-play">
+        <button className="primary push" onClick={() => props.onPlay(config)} disabled={problems.length > 0} data-testid="sandbox-play">
           Watch it run
         </button>
       </div>
 
       {score && (
-        <table className="metrics" data-testid="sandbox-score">
-          <tbody>
-            {(
-              [
-                ['Balanced score', `${Math.round(score.composite)} / 100`],
-                ['Door to doctor, median', minutes(score.q.doorToDoctorMedian)],
-                ['Length of stay, median', minutes(score.q.lengthOfStayMedian)],
-                ['Left without being seen', percent(score.q.lwbsRate)],
-                ['Cost per day', Math.round(score.cost).toLocaleString('en-US')],
-              ] as [string, string][]
-            ).map(([k, v]) => (
-              <tr key={k}>
-                <th scope="row">{k}</th>
-                <td>{v}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <section className="card score">
+          <h3>Result (three runs)</h3>
+          <table className="metrics" data-testid="sandbox-score">
+            <tbody>
+              {(
+                [
+                  ['Balanced score', `${Math.round(score.composite)} / 100`],
+                  ['Door to doctor, median', minutes(score.q.doorToDoctorMedian)],
+                  ['Length of stay, median', minutes(score.q.lengthOfStayMedian)],
+                  ['Left without being seen', percent(score.q.lwbsRate)],
+                  ['Cost per day', Math.round(score.cost).toLocaleString('en-US')],
+                ] as [string, string][]
+              ).map(([k, v]) => (
+                <tr key={k}>
+                  <th scope="row">{k}</th>
+                  <td>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
     </main>
   );

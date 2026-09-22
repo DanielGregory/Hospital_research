@@ -47,6 +47,7 @@
   "level": {
     "number": 6,
     "title": "Mass Casualty",
+    "tagline": "A bus has left the motorway. Thirty casualties in an hour.",
     "seed": 1,
     "briefing": [
       "Simulation six. Saturday, 20:00. Ambulance control has just called: a bus has left the motorway. About thirty casualties, the first arriving in an hour.",

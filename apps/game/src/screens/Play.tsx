@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SetupValues } from '../controls';
 import { clockLabel } from '../format';
 import type { GameConfig } from '../sandbox';
-import { drawFloor } from '../render/draw';
+import { acuityColor, drawFloor, inkOn } from '../render/draw';
 import { layoutFloor } from '../render/floorPlan';
 import { layoutGrid } from '../render/gridPlan';
 import { GameRunner, SPEEDS, type Speed } from '../runner';
@@ -102,96 +102,107 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
   const progress = snap.now / snap.durationMinutes;
   const live = controls.filter((ctl) => LIVE[ctl] && !(ctl.startsWith('beds.') && c.layout));
 
+  const lwbsAlert = snap.totals.lwbs > 0 && snap.totals.lwbs / Math.max(1, snap.totals.arrived) > 0.05;
   return (
     <main className="screen play">
       <header className="hud">
-        <div>
-          <p className="eyebrow">{config.level ? `Simulation ${config.level.number}` : 'Sandbox'}</p>
+        <div className="clock-tile">
+          <p className="eyebrow">{config.level ? `Simulation ${String(config.level.number).padStart(2, '0')}` : 'Sandbox'}</p>
           <strong className="clock" data-testid="clock">
             {clockLabel(c.startDayOfWeek, c.startHour, snap.now)}
           </strong>
-          <div className="progress" aria-hidden>
+          <div className="progress" aria-label={`${Math.round(progress * 100)}% of the shift`}>
             <span style={{ width: `${progress * 100}%` }} />
           </div>
         </div>
         <dl className="stats">
-          <div>
-            <dt>Waiting for triage</dt>
-            <dd>{waitingTriage}</dd>
-          </div>
-          <div>
-            <dt>Waiting for a bed</dt>
-            <dd>{waitingBed}</dd>
-          </div>
-          <div>
-            <dt>Beds in use</dt>
-            <dd>
-              {snap.beds.main.occupied}
-              {snap.beds.main.capacity !== null ? `/${snap.beds.main.capacity}` : ''}
-            </dd>
-          </div>
-          {snap.inpatient && (
-            <div>
-              <dt>Boarding (admitted, no ward bed)</dt>
-              <dd>{boarding}</dd>
-            </div>
-          )}
-          <div>
-            <dt>Sent home / admitted</dt>
-            <dd>
-              {snap.totals.discharged} / {snap.totals.admitted}
-            </dd>
-          </div>
-          <div>
-            <dt>Left without being seen</dt>
-            <dd>{snap.totals.lwbs}</dd>
-          </div>
+          <Stat label="Waiting for triage" value={waitingTriage} />
+          <Stat label="Waiting for a bed" value={waitingBed} />
+          <Stat label="Beds in use" value={`${snap.beds.main.occupied}${snap.beds.main.capacity !== null ? `/${snap.beds.main.capacity}` : ''}`} />
+          {snap.inpatient && <Stat label="Boarding" value={boarding} />}
+          <Stat label="Home / admitted" value={`${snap.totals.discharged} / ${snap.totals.admitted}`} />
+          <Stat label="Left unseen" value={snap.totals.lwbs} alert={lwbsAlert} />
         </dl>
-        <div className="speed" role="group" aria-label="Speed">
-          {SPEEDS.map((s) => (
-            <button key={s} className={s === speed ? 'on' : ''} onClick={() => setRunSpeed(s)} data-testid={`speed-${s}`} aria-pressed={s === speed}>
-              {s === 0 ? 'Pause' : `${s}×`}
-            </button>
-          ))}
-          <button onClick={() => runner.skipToEnd()} data-testid="skip">
-            End shift
-          </button>
+        <div className="speed-controls">
+          <div className="segmented" role="group" aria-label="Speed">
+            {SPEEDS.map((s) => (
+              <button key={s} className={s === speed ? 'on' : ''} onClick={() => setRunSpeed(s)} data-testid={`speed-${s}`} aria-pressed={s === speed}>
+                {s === 0 ? 'Pause' : `${s}×`}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
-      <div className="floor">
-        <canvas ref={canvasRef} aria-label="Emergency department floor" />
-        <Legend />
-      </div>
-      {live.length > 0 && (
-        <section className="live-controls">
-          {live.map((ctl) => (
-            <SimpleControl key={ctl} control={ctl} value={values[ctl]} onChange={(v) => change(ctl, v)} />
-          ))}
-        </section>
-      )}
-      <div className="actions">
-        <button onClick={onQuit}>Quit to menu</button>
+      <div className="play-body">
+        <div className="floor">
+          <canvas ref={canvasRef} aria-label="Emergency department floor" />
+        </div>
+        <aside className="side">
+          {live.length > 0 && (
+            <section className="card live-controls">
+              <h3>Change now</h3>
+              {live.map((ctl) => (
+                <SimpleControl key={ctl} control={ctl} value={values[ctl]} onChange={(v) => change(ctl, v)} />
+              ))}
+            </section>
+          )}
+          <section className="card">
+            <h3>Key</h3>
+            <Legend />
+          </section>
+          <div className="actions" style={{ marginTop: 0 }}>
+            <button onClick={() => runner.skipToEnd()} data-testid="skip">
+              End shift now
+            </button>
+            <button className="ghost" onClick={onQuit}>
+              Quit
+            </button>
+          </div>
+        </aside>
       </div>
     </main>
   );
 }
 
-function Legend() {
+function Stat({ label, value, alert }: { label: string; value: number | string; alert?: boolean }) {
   return (
-    <ul className="legend-row">
-      {[1, 2, 3, 4, 5].map((a) => (
-        <li key={a}>
-          <span className="dot" style={{ background: `var(--esi-${a})` }} /> ESI {a}
+    <div className={`stat ${alert ? 'alert' : ''}`}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function Legend() {
+  const esi = ['Resuscitation', 'Emergent', 'Urgent', 'Less urgent', 'Non-urgent'];
+  const staff: [string, string, string][] = [
+    ['--staff', 'D', 'Doctor'],
+    ['--staff-triage', 'T', 'Triage nurse'],
+    ['--staff-ft', 'F', 'Fast-track clinician'],
+  ];
+  return (
+    <ul className="legend-list">
+      {esi.map((label, i) => (
+        <li key={label}>
+          <span className="dot" style={{ background: `var(--esi-${i + 1})`, color: inkOn(acuityColor((i + 1) as Acuity)) }}>
+            {i + 1}
+          </span>
+          ESI {i + 1} · {label}
         </li>
       ))}
       <li>
-        <span className="dot" style={{ background: 'var(--untriaged)' }} /> Not triaged
+        <span className="dot" style={{ background: 'var(--untriaged)' }} /> Not triaged yet
       </li>
+      {staff.map(([v, letter, label]) => (
+        <li key={label}>
+          <span className="staff-key" style={{ background: `var(${v})` }}>
+            {letter}
+          </span>
+          {label} (outline = free)
+        </li>
+      ))}
       <li>
-        <span className="square" /> Staff (hollow = free)
-      </li>
-      <li>
-        <span className="ring" /> Boarding: admitted, waiting for a ward bed
+        <span className="ring" /> Admitted, waiting for a ward bed
       </li>
     </ul>
   );

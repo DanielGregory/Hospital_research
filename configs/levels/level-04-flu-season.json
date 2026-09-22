@@ -65,6 +65,7 @@
   "level": {
     "number": 4,
     "title": "Flu Season",
+    "tagline": "A week of too many patients. Find the point where queues run away.",
     "seed": 1,
     "briefing": [
       "Simulation four. One week in January. Nearly half again as many patients as normal, and more of them are moderately sick.",

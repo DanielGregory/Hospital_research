@@ -32,7 +32,15 @@ export function detailedProcess(): StepInput[] {
   return [
     { id: 'triage', kind: 'triage', role: 'triageNurse', meanMinutes: 6 },
     { id: 'vitals', kind: 'vitals', role: 'nurse', meanMinutes: 8, after: ['triage'], inBed: true },
-    { id: 'doctorEval', kind: 'doctorEval', role: 'doctor', meanMinutesByAcuity: { '1': 60, '2': 45, '3': 35, '4': 20, '5': 15 }, after: ['vitals'], inBed: true, thoroughness: 0.5 },
+    {
+      id: 'doctorEval',
+      kind: 'doctorEval',
+      role: 'doctor',
+      meanMinutesByAcuity: { '1': 60, '2': 45, '3': 35, '4': 20, '5': 15 },
+      after: ['vitals'],
+      inBed: true,
+      thoroughness: 0.5,
+    },
     { id: 'labs', kind: 'labs', role: 'tech', meanMinutes: 5, turnaroundMinutes: 50, after: ['vitals'], inBed: true, maxAcuity: 3 },
     { id: 'imaging', kind: 'imaging', role: 'tech', meanMinutes: 15, turnaroundMinutes: 25, after: ['vitals'], inBed: true, maxAcuity: 3 },
     { id: 'disposition', kind: 'disposition', role: 'doctor', meanMinutes: 5, after: ['doctorEval', 'labs', 'imaging'], inBed: true },
@@ -78,7 +86,7 @@ export function ProcessEditor(props: {
   };
 
   return (
-    <section className="process-editor" data-testid="process-editor">
+    <div data-testid="process-editor">
       <h3>Patient process</h3>
       <p className="muted">
         Each step is done by one role. A step starts when every step it follows is done; steps with the same predecessors run at the same time. Disposition
@@ -120,7 +128,13 @@ export function ProcessEditor(props: {
               </label>
               <label>
                 Then wait (min){' '}
-                <input type="number" min={0} max={600} value={s.turnaroundMinutes ?? 0} onChange={(e) => update(i, { turnaroundMinutes: Math.max(0, Number(e.target.value)) })} />
+                <input
+                  type="number"
+                  min={0}
+                  max={600}
+                  value={s.turnaroundMinutes ?? 0}
+                  onChange={(e) => update(i, { turnaroundMinutes: Math.max(0, Number(e.target.value)) })}
+                />
               </label>
               <label>
                 <input type="checkbox" checked={s.inBed === true} onChange={(e) => update(i, { inBed: e.target.checked })} /> In a bed
@@ -144,7 +158,14 @@ export function ProcessEditor(props: {
               {['doctorEval', 'labs', 'imaging', 'vitals'].includes(s.kind) && (
                 <label className="thorough">
                   Thoroughness {Math.round((s.thoroughness ?? 0.5) * 100)}%
-                  <input type="range" min={0} max={1} step={0.05} value={s.thoroughness ?? 0.5} onChange={(e) => update(i, { thoroughness: Number(e.target.value) })} />
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={s.thoroughness ?? 0.5}
+                    onChange={(e) => update(i, { thoroughness: Number(e.target.value) })}
+                  />
                 </label>
               )}
             </div>
@@ -187,7 +208,7 @@ export function ProcessEditor(props: {
           <option value="5">5 only</option>
         </select>
       </label>
-    </section>
+    </div>
   );
 }
 
@@ -200,11 +221,11 @@ function ProcessGraph({ steps }: { steps: readonly StepInput[] }) {
     const l = layers.get(s.id) ?? 0;
     const r = rowsIn.get(l) ?? 0;
     rowsIn.set(l, r + 1);
-    pos.set(s.id, { x: 10 + l * 150, y: 10 + r * 44 });
+    pos.set(s.id, { x: 10 + l * 170, y: 10 + r * 44 });
   }
   const h = 20 + Math.max(1, ...rowsIn.values()) * 44;
   return (
-    <svg className="process-graph" viewBox={`0 0 ${cols * 150 + 10} ${h}`} role="img" aria-label="Process graph">
+    <svg className="process-graph" viewBox={`0 0 ${cols * 170 + 10} ${h}`} role="img" aria-label="Process graph">
       <defs>
         <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" className="arrowhead" />
@@ -216,14 +237,14 @@ function ProcessGraph({ steps }: { steps: readonly StepInput[] }) {
           .map((a) => {
             const from = pos.get(a)!;
             const to = pos.get(s.id)!;
-            return <line key={`${a}->${s.id}`} x1={from.x + 120} y1={from.y + 15} x2={to.x} y2={to.y + 15} className="edge" markerEnd="url(#arrow)" />;
+            return <line key={`${a}->${s.id}`} x1={from.x + 140} y1={from.y + 15} x2={to.x} y2={to.y + 15} className="edge" markerEnd="url(#arrow)" />;
           }),
       )}
       {steps.map((s) => {
         const p = pos.get(s.id)!;
         return (
           <g key={s.id}>
-            <rect x={p.x} y={p.y} width={120} height={30} rx={6} className={`node ${s.inBed ? 'in-bed' : ''}`} />
+            <rect x={p.x} y={p.y} width={140} height={30} rx={6} className={`node ${s.inBed ? 'in-bed' : ''}`} />
             <text x={p.x + 8} y={p.y + 19} className="node-label">
               {KIND_LABEL[s.kind].split(' (')[0]}
             </text>
@@ -233,4 +254,3 @@ function ProcessGraph({ steps }: { steps: readonly StepInput[] }) {
     </svg>
   );
 }
-

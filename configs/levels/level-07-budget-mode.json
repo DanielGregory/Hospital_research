@@ -110,6 +110,7 @@
   "level": {
     "number": 7,
     "title": "Budget Mode",
+    "tagline": "Every system live, one budget. Spend where it counts.",
     "seed": 3,
     "briefing": [
       "Final simulation. Monday and Tuesday, with every system live: shifts, fatigue, a hospital that is nearly full, and diagnoses that can be wrong.",

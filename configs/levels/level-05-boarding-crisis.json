@@ -37,6 +37,7 @@
   "level": {
     "number": 5,
     "title": "Boarding Crisis",
+    "tagline": "The hospital is full. More doctors will not fix it.",
     "seed": 3,
     "briefing": [
       "Simulation five. Thursday and Friday. Every inpatient bed in the hospital is full.",

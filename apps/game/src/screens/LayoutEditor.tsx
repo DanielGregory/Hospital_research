@@ -118,8 +118,8 @@ export function LayoutEditor(props: { initial?: LayoutSpec; onPlay: (config: Gam
       <p className="eyebrow">Sandbox · layout only</p>
       <h1>Design the floor</h1>
       <p className="muted">
-        Draw rooms by dragging on the grid. Staff walk from their station to every patient and back, so distance costs time. Test the plan on a normal week
-        to see how it performs.
+        Draw rooms by dragging on the grid. Staff walk from their station to every patient and back, so distance costs time. Test the plan on a normal week to
+        see how it performs.
       </p>
 
       <div className="editor-bar">
@@ -188,7 +188,7 @@ export function LayoutEditor(props: { initial?: LayoutSpec; onPlay: (config: Gam
         </p>
       )}
 
-      <section className="room-list">
+      <section className="card room-list" style={{ marginTop: 16 }}>
         <h2>Rooms</h2>
         <p className="muted">
           {beds('acute')} acute beds, {beds('fastTrack')} fast-track beds.
@@ -231,13 +231,13 @@ export function LayoutEditor(props: { initial?: LayoutSpec; onPlay: (config: Gam
         <button onClick={test} disabled={problems.length > 0} data-testid="test-layout">
           Test this layout
         </button>
-        <button className="primary" onClick={() => props.onPlay(layoutConfig(spec))} disabled={problems.length > 0} data-testid="play-layout">
+        <button className="primary push" onClick={() => props.onPlay(layoutConfig(spec))} disabled={problems.length > 0} data-testid="play-layout">
           Watch a shift
         </button>
       </div>
 
       {score && (
-        <section className="score" data-testid="layout-score">
+        <section className="card score" data-testid="layout-score">
           <h2>Result (a normal week, three runs)</h2>
           <ScoreTable score={score} best={best} />
         </section>

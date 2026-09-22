@@ -7,18 +7,20 @@
 
 import { PARAMS } from './params.js';
 import { checkLevel, type LevelSpec } from './levels.js';
-import { ACUITIES, ROLES, type Acuity, type QueueDiscipline, type Role, type Shift, type TimedCommand } from './types.js';
+import { checkPipeline, defaultPipeline, makeStep, STEP_KINDS, type RoutingRule, type StepDef } from './pipeline.js';
+import {
+  ACUITIES,
+  ROLES,
+  type Acuity,
+  type ConditionSpec,
+  type Lane,
+  type QueueDiscipline,
+  type Role,
+  type Shift,
+  type TimedCommand,
+} from './types.js';
 
-export const MODULES = [
-  'layout',
-  'staffing',
-  'process',
-  'diagnosis',
-  'boarding',
-  'budget',
-  'shocks',
-  'burnout',
-] as const;
+export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 /** Build phase each module lands in. Enabling a module before it is built is a config error. */
@@ -32,11 +34,44 @@ export const MODULE_PHASE: Record<ModuleName, number> = {
   process: 5,
   budget: 5,
 };
-export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing'];
+export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout'];
 
 export type ServiceDistribution = 'exponential' | 'lognormal';
 
 type AcuityMap = Partial<Record<`${Acuity}`, number>>;
+
+export type ShockSpec =
+  | { type: 'surge'; startMinute: number; endMinute: number; multiplier: number }
+  | {
+      type: 'massCasualty';
+      atMinute: number;
+      patients: number;
+      overMinutes: number;
+      acuityMix?: AcuityMap;
+      /** Casualties arrive with a field-triage tag and skip triage. Default true. */
+      preTriaged?: boolean;
+    };
+
+/** A step as written in config JSON (acuity maps keyed "1".."5"; most fields optional). */
+export interface StepInput {
+  id: string;
+  kind: StepDef['kind'];
+  label?: string;
+  role?: Role | null;
+  meanMinutes?: number;
+  meanMinutesByAcuity?: AcuityMap;
+  distribution?: ServiceDistribution;
+  cv?: number;
+  turnaroundMinutes?: number;
+  turnaroundMinutesByAcuity?: AcuityMap;
+  turnaroundCv?: number;
+  thoroughness?: number;
+  after?: string[];
+  inBed?: boolean;
+  minAcuity?: Acuity;
+  maxAcuity?: Acuity;
+  lanes?: Lane[];
+}
 
 export interface SimConfig {
   id: string;
@@ -59,6 +94,8 @@ export interface SimConfig {
     doctors?: number;
     triageNurses?: number;
     fastTrackClinicians?: number;
+    nurses?: number;
+    techs?: number;
     /** Used only when the `staffing` module is on; roles left out keep their fixed count. */
     schedule?: Partial<Record<Role, Shift[]>>;
   };
@@ -70,7 +107,7 @@ export interface SimConfig {
     lognormalCv?: number;
   };
   triage?: {
-    /** Off: patients go straight to the doctor queue with no assigned acuity. */
+    /** Off: patients go straight on with no assigned acuity. */
     enabled?: boolean;
     meanMinutes?: number;
     accuracy?: number;
@@ -78,12 +115,14 @@ export interface SimConfig {
   };
   queue?: {
     discipline?: QueueDiscipline;
+    /** Doctors finish dispositions (freeing beds) before starting new evaluations. Default true. */
+    dispositionFirst?: boolean;
   };
   fastTrack?: {
     enabled?: boolean;
     minAcuity?: Acuity;
     serviceFactor?: number;
-    /** Main-ED doctors with an empty main queue take the next fast-track patient. Default true. */
+    /** Main-ED doctors with nothing in the main ED take the next fast-track task. Default true. */
     doctorsTakeOverflow?: boolean;
   };
   lwbs?: {
@@ -91,6 +130,22 @@ export interface SimConfig {
     /** Use null for "never leaves" (JSON has no Infinity). */
     patienceMeanMinutesByAcuity?: Partial<Record<`${Acuity}`, number | null>>;
   };
+  /** Treatment spaces by lane. null = unlimited. */
+  beds?: { main?: number | null; fastTrack?: number | null };
+  workup?: { enabled?: boolean; meanMinutesByAcuity?: AcuityMap };
+  disposition?: { doctorMinutes?: number };
+  deterioration?: { enabled?: boolean; scaleMinutesByAcuity?: AcuityMap };
+  diagnosis?: { thoroughness?: number; bounceBackProbability?: number };
+  boarding?: {
+    inpatientBeds?: number;
+    initialOccupied?: number;
+    dischargesPerDay?: number;
+    /** Hospital full-capacity protocol in force from the start (speeds up inpatient discharges). */
+    escalation?: boolean;
+  };
+  shocks?: ShockSpec[];
+  /** Custom step graph, used when the `process` module is on. */
+  process?: { steps: StepInput[]; routing?: RoutingRule[] };
   commands?: TimedCommand[];
   /** Story-mode data: narrative, goals, player controls. The engine ignores it when simulating. */
   level?: LevelSpec;
@@ -114,8 +169,37 @@ export interface ResolvedConfig {
   lognormalCv: number;
   triage: { enabled: boolean; meanMinutes: number; cv: number; accuracy: number; underTriageShare: number };
   discipline: QueueDiscipline;
+  dispositionFirst: boolean;
   fastTrack: { enabled: boolean; minAcuity: Acuity; serviceFactor: number; doctorsTakeOverflow: boolean };
   lwbs: { enabled: boolean; patienceMeanByAcuity: Record<Acuity, number>; patienceCv: number };
+  beds: Record<Lane, number>;
+  workup: { enabled: boolean; meanMinutesByAcuity: Record<Acuity, number>; cv: number };
+  disposition: { doctorMinutes: number; cv: number };
+  deterioration: { enabled: boolean; scaleMinutesByAcuity: Record<Acuity, number>; shape: number };
+  diagnosis: {
+    thoroughness: number;
+    /** Thoroughness at which service times are as given in params (the time factor is 1). */
+    baselineThoroughness: number;
+    timeFactorRange: readonly [number, number];
+    missFactorRange: readonly [number, number];
+    bounceBackProbability: number;
+    returnWithinHours: number;
+  };
+  boarding: {
+    inpatientBeds: number;
+    initialOccupied: number;
+    dischargesPerDay: number;
+    escalation: boolean;
+    escalationExtraDischargesPerDay: number;
+    dischargeHourlyWeights: number[];
+  };
+  burnout: typeof PARAMS.burnout;
+  shocks: ShockSpec[];
+  conditions: readonly ConditionSpec[];
+  /** The step graph in use (default pipeline unless the process module is on). */
+  pipeline: StepDef[];
+  /** Routing rules from the process module; empty = fast-track settings decide. */
+  routing: RoutingRule[];
   commands: TimedCommand[];
   level?: LevelSpec;
 }
@@ -135,8 +219,10 @@ const nonNeg = (x: unknown): x is number => typeof x === 'number' && Number.isFi
 const positive = (x: unknown): x is number => nonNeg(x) && x > 0;
 const prob = (x: unknown): x is number => nonNeg(x) && x <= 1;
 const count = (x: unknown): x is number => Number.isInteger(x) && (x as number) >= 0;
+const bool = (x: unknown) => typeof x === 'boolean';
 const isAcuity = (x: unknown): x is Acuity => Number.isInteger(x) && (x as number) >= 1 && (x as number) <= 5;
 const isRole = (x: unknown): x is Role => (ROLES as readonly unknown[]).includes(x);
+const isLane = (x: unknown): x is Lane => x === 'main' || x === 'fastTrack';
 
 /** Collects problems for an optional object section. */
 function section(c: Record<string, unknown>, key: string, p: string[], fn: (s: Record<string, unknown>) => void) {
@@ -179,7 +265,7 @@ export function validateConfig(raw: unknown): SimConfig {
   });
 
   section(c, 'staffing', p, (s) => {
-    for (const k of ['doctors', 'triageNurses', 'fastTrackClinicians']) field(s, 'staffing', k, count, 'non-negative integer', p);
+    for (const k of ['doctors', 'triageNurses', 'fastTrackClinicians', 'nurses', 'techs']) field(s, 'staffing', k, count, 'non-negative integer', p);
     section(s, 'schedule', p, (sch) => {
       for (const [role, shifts] of Object.entries(sch)) {
         if (!isRole(role)) p.push(`staffing.schedule.${role}: unknown role (known: ${ROLES.join(', ')})`);
@@ -196,7 +282,7 @@ export function validateConfig(raw: unknown): SimConfig {
   });
 
   section(c, 'triage', p, (t) => {
-    field(t, 'triage', 'enabled', (x) => typeof x === 'boolean', 'true or false', p);
+    field(t, 'triage', 'enabled', bool, 'true or false', p);
     field(t, 'triage', 'meanMinutes', positive, 'positive number', p);
     field(t, 'triage', 'accuracy', prob, 'probability in [0, 1]', p);
     field(t, 'triage', 'underTriageShare', prob, 'probability in [0, 1]', p);
@@ -204,22 +290,67 @@ export function validateConfig(raw: unknown): SimConfig {
 
   section(c, 'queue', p, (q) => {
     field(q, 'queue', 'discipline', (x) => x === 'fifo' || x === 'acuity', "'fifo' or 'acuity'", p);
+    field(q, 'queue', 'dispositionFirst', bool, 'true or false', p);
   });
 
   section(c, 'fastTrack', p, (f) => {
-    field(f, 'fastTrack', 'enabled', (x) => typeof x === 'boolean', 'true or false', p);
+    field(f, 'fastTrack', 'enabled', bool, 'true or false', p);
     field(f, 'fastTrack', 'minAcuity', isAcuity, 'integer 1..5', p);
     field(f, 'fastTrack', 'serviceFactor', positive, 'positive number', p);
-    field(f, 'fastTrack', 'doctorsTakeOverflow', (x) => typeof x === 'boolean', 'true or false', p);
+    field(f, 'fastTrack', 'doctorsTakeOverflow', bool, 'true or false', p);
     if (f.enabled === true && isObj(c.triage) && c.triage.enabled === false)
       p.push('fastTrack.enabled: fast track routes on triage acuity, so it needs triage enabled');
   });
 
   section(c, 'lwbs', p, (l) => {
-    field(l, 'lwbs', 'enabled', (x) => typeof x === 'boolean', 'true or false', p);
+    field(l, 'lwbs', 'enabled', bool, 'true or false', p);
     if (l.patienceMeanMinutesByAcuity !== undefined)
       p.push(...checkAcuityMap(l.patienceMeanMinutesByAcuity, 'lwbs.patienceMeanMinutesByAcuity', (x) => x === null || positive(x), 'positive number or null (never leaves)'));
   });
+
+  section(c, 'beds', p, (b) => {
+    for (const k of ['main', 'fastTrack']) field(b, 'beds', k, (x) => x === null || (count(x) && (x as number) > 0), 'positive integer or null (unlimited)', p);
+  });
+  section(c, 'workup', p, (w) => {
+    field(w, 'workup', 'enabled', bool, 'true or false', p);
+    if (w.meanMinutesByAcuity !== undefined) p.push(...checkAcuityMap(w.meanMinutesByAcuity, 'workup.meanMinutesByAcuity', nonNeg, 'non-negative'));
+  });
+  section(c, 'disposition', p, (d) => field(d, 'disposition', 'doctorMinutes', nonNeg, 'non-negative number', p));
+  section(c, 'deterioration', p, (d) => {
+    field(d, 'deterioration', 'enabled', bool, 'true or false', p);
+    if (d.scaleMinutesByAcuity !== undefined) p.push(...checkAcuityMap(d.scaleMinutesByAcuity, 'deterioration.scaleMinutesByAcuity', positive, 'positive'));
+  });
+  section(c, 'diagnosis', p, (d) => {
+    field(d, 'diagnosis', 'thoroughness', prob, 'number in [0, 1]', p);
+    field(d, 'diagnosis', 'bounceBackProbability', prob, 'probability in [0, 1]', p);
+  });
+  section(c, 'boarding', p, (b) => {
+    field(b, 'boarding', 'inpatientBeds', count, 'non-negative integer', p);
+    field(b, 'boarding', 'initialOccupied', count, 'non-negative integer', p);
+    field(b, 'boarding', 'dischargesPerDay', nonNeg, 'non-negative number', p);
+    field(b, 'boarding', 'escalation', bool, 'true or false', p);
+    if (count(b.inpatientBeds) && count(b.initialOccupied) && b.initialOccupied > b.inpatientBeds) p.push('boarding.initialOccupied: more than inpatientBeds');
+  });
+
+  if (c.shocks !== undefined) {
+    if (!Array.isArray(c.shocks)) p.push('shocks: must be an array');
+    else c.shocks.forEach((s, i) => p.push(...checkShock(s, `shocks[${i}]`)));
+  }
+
+  if (c.process !== undefined) {
+    if (!isObj(c.process) || !Array.isArray(c.process.steps)) p.push('process: must be { steps: [...], routing?: [...] }');
+    else {
+      c.process.steps.forEach((s, i) => p.push(...checkStepInput(s, `process.steps[${i}]`)));
+      if (c.process.routing !== undefined) {
+        if (!Array.isArray(c.process.routing)) p.push('process.routing: must be an array');
+        else
+          c.process.routing.forEach((r, i) => {
+            if (!isObj(r) || !isAcuity(r.minAcuity) || !isAcuity(r.maxAcuity) || !isLane(r.lane))
+              p.push(`process.routing[${i}]: { minAcuity, maxAcuity, lane: 'main' | 'fastTrack' }`);
+          });
+      }
+    }
+  }
 
   if (c.commands !== undefined) {
     if (!Array.isArray(c.commands)) p.push('commands: must be an array');
@@ -239,6 +370,48 @@ function checkAcuityMap(x: unknown, path: string, ok: (v: unknown) => boolean, w
     if (!['1', '2', '3', '4', '5'].includes(k)) out.push(`${path}.${k}: acuity keys are "1".."5"`);
     else if (!ok(v)) out.push(`${path}.${k}: must be ${what}`);
   }
+  return out;
+}
+
+function checkShock(s: unknown, path: string): string[] {
+  if (!isObj(s)) return [`${path}: must be an object`];
+  if (s.type === 'surge') {
+    const out: string[] = [];
+    if (!nonNeg(s.startMinute) || !nonNeg(s.endMinute) || (s.endMinute as number) <= (s.startMinute as number)) out.push(`${path}: surge needs 0 <= startMinute < endMinute`);
+    if (!nonNeg(s.multiplier)) out.push(`${path}.multiplier: non-negative number`);
+    return out;
+  }
+  if (s.type === 'massCasualty') {
+    const out: string[] = [];
+    if (!nonNeg(s.atMinute)) out.push(`${path}.atMinute: >= 0`);
+    if (!(count(s.patients) && (s.patients as number) > 0)) out.push(`${path}.patients: positive integer`);
+    if (!nonNeg(s.overMinutes)) out.push(`${path}.overMinutes: >= 0`);
+    if (s.acuityMix !== undefined) out.push(...checkAcuityMap(s.acuityMix, `${path}.acuityMix`, nonNeg, 'non-negative'));
+    field(s, path, 'preTriaged', bool, 'true or false', out);
+    return out;
+  }
+  return [`${path}.type: 'surge' or 'massCasualty'`];
+}
+
+function checkStepInput(s: unknown, path: string): string[] {
+  if (!isObj(s)) return [`${path}: must be an object`];
+  const out: string[] = [];
+  if (typeof s.id !== 'string' || !s.id) out.push(`${path}.id: required string`);
+  if (!(STEP_KINDS as readonly unknown[]).includes(s.kind)) out.push(`${path}.kind: one of ${STEP_KINDS.join(', ')}`);
+  field(s, path, 'role', (x) => x === null || isRole(x), `one of ${ROLES.join(', ')} or null`, out);
+  field(s, path, 'meanMinutes', nonNeg, 'non-negative number', out);
+  field(s, path, 'turnaroundMinutes', nonNeg, 'non-negative number', out);
+  field(s, path, 'cv', nonNeg, 'non-negative number', out);
+  field(s, path, 'turnaroundCv', nonNeg, 'non-negative number', out);
+  field(s, path, 'thoroughness', prob, 'number in [0, 1]', out);
+  field(s, path, 'distribution', (x) => x === 'exponential' || x === 'lognormal', "'exponential' or 'lognormal'", out);
+  field(s, path, 'after', (x) => Array.isArray(x) && x.every((a) => typeof a === 'string'), 'array of step ids', out);
+  field(s, path, 'inBed', bool, 'true or false', out);
+  field(s, path, 'minAcuity', isAcuity, 'integer 1..5', out);
+  field(s, path, 'maxAcuity', isAcuity, 'integer 1..5', out);
+  field(s, path, 'lanes', (x) => Array.isArray(x) && x.length > 0 && x.every(isLane), "non-empty array of 'main' | 'fastTrack'", out);
+  if (s.meanMinutesByAcuity !== undefined) out.push(...checkAcuityMap(s.meanMinutesByAcuity, `${path}.meanMinutesByAcuity`, nonNeg, 'non-negative'));
+  if (s.turnaroundMinutesByAcuity !== undefined) out.push(...checkAcuityMap(s.turnaroundMinutesByAcuity, `${path}.turnaroundMinutesByAcuity`, nonNeg, 'non-negative'));
   return out;
 }
 
@@ -279,20 +452,58 @@ export function checkCommand(cmd: unknown, path: string): string[] {
       return cmd.discipline === 'fifo' || cmd.discipline === 'acuity' ? [] : [`${path}.discipline: 'fifo' or 'acuity'`];
     case 'setFastTrack':
       return [
-        ...(typeof cmd.enabled === 'boolean' ? [] : [`${path}.enabled: true or false`]),
+        ...(bool(cmd.enabled) ? [] : [`${path}.enabled: true or false`]),
         ...(cmd.minAcuity === undefined || isAcuity(cmd.minAcuity) ? [] : [`${path}.minAcuity: integer 1..5`]),
+      ];
+    case 'setEscalation':
+      return bool(cmd.enabled) ? [] : [`${path}.enabled: true or false`];
+    case 'setBeds':
+      return [
+        ...(isLane(cmd.lane) ? [] : [`${path}.lane: 'main' or 'fastTrack'`]),
+        ...(cmd.count === null || (count(cmd.count) && (cmd.count as number) > 0) ? [] : [`${path}.count: positive integer or null`]),
       ];
     default:
       return [`${path}.type: unknown command '${String(cmd.type)}'`];
   }
 }
 
-function copyCommand(tc: TimedCommand): TimedCommand {
-  return JSON.parse(JSON.stringify(tc)) as TimedCommand;
+function copy<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x)) as T;
+}
+
+function acuityMapOr(base: Record<Acuity, number>, override?: AcuityMap, all?: number): Record<Acuity, number> {
+  const out = { ...base };
+  for (const a of ACUITIES) {
+    const v = all ?? override?.[`${a}`];
+    if (v !== undefined) out[a] = v;
+  }
+  return out;
+}
+
+function resolveStep(s: StepInput): StepDef {
+  const zero: Record<Acuity, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  return makeStep({
+    id: s.id,
+    kind: s.kind,
+    label: s.label ?? s.kind,
+    role: s.role ?? null,
+    meanMinutesByAcuity: acuityMapOr(zero, s.meanMinutesByAcuity, s.meanMinutes),
+    distribution: s.distribution ?? 'lognormal',
+    cv: s.cv ?? 0.5,
+    turnaroundMinutesByAcuity: acuityMapOr(zero, s.turnaroundMinutesByAcuity, s.turnaroundMinutes),
+    turnaroundCv: s.turnaroundCv ?? 0.6,
+    thoroughness: s.thoroughness ?? PARAMS.diagnosis.thoroughness,
+    after: s.after ?? [],
+    inBed: s.inBed ?? false,
+    minAcuity: s.minAcuity ?? 1,
+    maxAcuity: s.maxAcuity ?? 5,
+    lanes: s.lanes ?? ['main', 'fastTrack'],
+  });
 }
 
 export function resolveConfig(raw: unknown): ResolvedConfig {
   const c = validateConfig(raw);
+  const problems: string[] = [];
 
   const modules = Object.fromEntries(MODULES.map((m) => [m, c.modules?.[m] ?? false])) as Record<ModuleName, boolean>;
 
@@ -301,27 +512,63 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     // A partial mix replaces the default entirely; missing levels become 0.
     for (const a of ACUITIES) acuityMix[a] = c.arrivals.acuityMix[`${a}`] ?? 0;
   }
-  if (!(ACUITIES.reduce((s, a) => s + acuityMix[a], 0) > 0))
-    throw new ConfigError(['arrivals.acuityMix: at least one acuity must have positive weight']);
+  if (!(ACUITIES.reduce((s, a) => s + acuityMix[a], 0) > 0)) problems.push('arrivals.acuityMix: at least one acuity must have positive weight');
 
-  const serviceMeanByAcuity = { ...PARAMS.service.doctorMeanMinutesByAcuity } as Record<Acuity, number>;
+  const serviceMeanByAcuity = acuityMapOr({ ...PARAMS.service.doctorMeanMinutesByAcuity }, c.service?.meanMinutesByAcuity, c.service?.meanMinutes);
   const patienceMeanByAcuity = { ...PARAMS.lwbs.patienceMeanMinutesByAcuity } as Record<Acuity, number>;
   for (const a of ACUITIES) {
-    const override = c.service?.meanMinutes ?? c.service?.meanMinutesByAcuity?.[`${a}`];
-    if (override !== undefined) serviceMeanByAcuity[a] = override;
     const patience = c.lwbs?.patienceMeanMinutesByAcuity?.[`${a}`];
     if (patience !== undefined) patienceMeanByAcuity[a] = patience ?? Infinity;
   }
 
   const durationMinutes = c.durationMinutes ?? PARAMS.run.durationMinutes;
   const warmupMinutes = c.warmupMinutes ?? PARAMS.run.warmupMinutes;
-  if (warmupMinutes >= durationMinutes) throw new ConfigError(['warmupMinutes: must be less than durationMinutes']);
-
-  if (!modules.staffing && c.commands?.some((tc) => tc.command.type === 'setSchedule'))
-    throw new ConfigError(['commands: setSchedule needs the staffing module on']);
+  if (warmupMinutes >= durationMinutes) problems.push('warmupMinutes: must be less than durationMinutes');
+  if (!modules.staffing && c.commands?.some((tc) => tc.command.type === 'setSchedule')) problems.push('commands: setSchedule needs the staffing module on');
 
   const mult = c.arrivals?.rateMultiplier ?? 1;
-  const triageEnabled = c.triage?.enabled ?? true;
+  const triage = {
+    enabled: c.triage?.enabled ?? true,
+    meanMinutes: c.triage?.meanMinutes ?? PARAMS.triage.meanMinutes,
+    cv: PARAMS.triage.cv,
+    accuracy: c.triage?.accuracy ?? PARAMS.triage.accuracy,
+    underTriageShare: c.triage?.underTriageShare ?? PARAMS.triage.underTriageShare,
+  };
+  const workup = {
+    enabled: c.workup?.enabled ?? true,
+    meanMinutesByAcuity: acuityMapOr({ ...PARAMS.workup.meanMinutesByAcuity }, c.workup?.meanMinutesByAcuity),
+    cv: PARAMS.workup.cv,
+  };
+  const disposition = { doctorMinutes: c.disposition?.doctorMinutes ?? PARAMS.disposition.doctorMinutes, cv: PARAMS.disposition.cv };
+  const diagnosis = {
+    thoroughness: c.diagnosis?.thoroughness ?? PARAMS.diagnosis.thoroughness,
+    baselineThoroughness: PARAMS.diagnosis.thoroughness,
+    timeFactorRange: PARAMS.diagnosis.timeFactorRange,
+    missFactorRange: PARAMS.diagnosis.missFactorRange,
+    bounceBackProbability: c.diagnosis?.bounceBackProbability ?? PARAMS.diagnosis.bounceBackProbability,
+    returnWithinHours: PARAMS.diagnosis.returnWithinHours,
+  };
+  const serviceDistribution = c.service?.distribution ?? 'exponential';
+  const lognormalCv = c.service?.lognormalCv ?? PARAMS.service.lognormalCv;
+
+  let pipeline: StepDef[];
+  let routing: RoutingRule[] = [];
+  if (modules.process && c.process) {
+    pipeline = c.process.steps.map(resolveStep);
+    routing = copy(c.process.routing ?? []);
+    problems.push(...checkPipeline(pipeline));
+  } else {
+    if (modules.process) problems.push('modules.process: needs a process section with steps');
+    pipeline = defaultPipeline({ triage, serviceMeanByAcuity, serviceDistribution, lognormalCv, thoroughness: diagnosis.thoroughness, workup, disposition });
+  }
+
+  const initialOccupied = c.boarding?.initialOccupied ?? PARAMS.boarding.initialOccupied;
+  const inpatientBeds = c.boarding?.inpatientBeds ?? PARAMS.boarding.inpatientBeds;
+  if (initialOccupied > inpatientBeds) problems.push('boarding.initialOccupied: more than inpatientBeds');
+
+  if (problems.length > 0) throw new ConfigError(problems);
+
+  const bedCount = (v: number | null | undefined, d: number | null) => (v === undefined ? d : v) ?? Infinity;
 
   return {
     id: c.id,
@@ -338,19 +585,16 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       doctor: c.staffing?.doctors ?? PARAMS.staffing.doctors,
       triageNurse: c.staffing?.triageNurses ?? PARAMS.staffing.triageNurses,
       fastTrackClinician: c.staffing?.fastTrackClinicians ?? PARAMS.staffing.fastTrackClinicians,
+      nurse: c.staffing?.nurses ?? PARAMS.staffing.nurses,
+      tech: c.staffing?.techs ?? PARAMS.staffing.techs,
     },
-    schedule: JSON.parse(JSON.stringify(c.staffing?.schedule ?? {})) as Partial<Record<Role, Shift[]>>,
-    serviceDistribution: c.service?.distribution ?? 'exponential',
+    schedule: copy(c.staffing?.schedule ?? {}),
+    serviceDistribution,
     serviceMeanByAcuity,
-    lognormalCv: c.service?.lognormalCv ?? PARAMS.service.lognormalCv,
-    triage: {
-      enabled: triageEnabled,
-      meanMinutes: c.triage?.meanMinutes ?? PARAMS.triage.meanMinutes,
-      cv: PARAMS.triage.cv,
-      accuracy: c.triage?.accuracy ?? PARAMS.triage.accuracy,
-      underTriageShare: c.triage?.underTriageShare ?? PARAMS.triage.underTriageShare,
-    },
+    lognormalCv,
+    triage,
     discipline: c.queue?.discipline ?? 'acuity',
+    dispositionFirst: c.queue?.dispositionFirst ?? true,
     fastTrack: {
       enabled: c.fastTrack?.enabled ?? false,
       minAcuity: c.fastTrack?.minAcuity ?? PARAMS.fastTrack.minAcuity,
@@ -358,7 +602,29 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       doctorsTakeOverflow: c.fastTrack?.doctorsTakeOverflow ?? true,
     },
     lwbs: { enabled: c.lwbs?.enabled ?? true, patienceMeanByAcuity, patienceCv: PARAMS.lwbs.patienceCv },
-    commands: (c.commands ?? []).map(copyCommand),
+    beds: { main: bedCount(c.beds?.main, PARAMS.beds.main), fastTrack: bedCount(c.beds?.fastTrack, PARAMS.beds.fastTrack) },
+    workup,
+    disposition,
+    deterioration: {
+      enabled: c.deterioration?.enabled ?? true,
+      scaleMinutesByAcuity: acuityMapOr({ ...PARAMS.deterioration.scaleMinutesByAcuity }, c.deterioration?.scaleMinutesByAcuity),
+      shape: PARAMS.deterioration.shape,
+    },
+    diagnosis,
+    boarding: {
+      inpatientBeds,
+      initialOccupied,
+      dischargesPerDay: c.boarding?.dischargesPerDay ?? PARAMS.boarding.dischargesPerDay,
+      escalation: c.boarding?.escalation ?? false,
+      escalationExtraDischargesPerDay: PARAMS.boarding.escalationExtraDischargesPerDay,
+      dischargeHourlyWeights: [...PARAMS.boarding.dischargeHourlyWeights],
+    },
+    burnout: PARAMS.burnout,
+    shocks: modules.shocks ? copy(c.shocks ?? []) : [],
+    conditions: PARAMS.conditions,
+    pipeline,
+    routing,
+    commands: (c.commands ?? []).map(copy),
     level: c.level,
   };
 }

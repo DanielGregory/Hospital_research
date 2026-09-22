@@ -2,39 +2,69 @@
 export type Acuity = 1 | 2 | 3 | 4 | 5;
 export const ACUITIES: readonly Acuity[] = [1, 2, 3, 4, 5];
 
-export type Role = 'triageNurse' | 'doctor' | 'fastTrackClinician';
-export const ROLES: readonly Role[] = ['triageNurse', 'doctor', 'fastTrackClinician'];
+export type Role = 'triageNurse' | 'doctor' | 'fastTrackClinician' | 'nurse' | 'tech';
+export const ROLES: readonly Role[] = ['triageNurse', 'doctor', 'fastTrackClinician', 'nurse', 'tech'];
+
+export interface ConditionSpec {
+  id: string;
+  label: string;
+  acuity: Acuity;
+  /** Relative frequency among conditions at this acuity. */
+  weight: number;
+  /** Probability of admission when correctly diagnosed. */
+  admit: number;
+  /** Probability of misdiagnosis at default thoroughness, before fatigue. */
+  missRisk: number;
+}
 
 export type Lane = 'main' | 'fastTrack';
 
-export type PatientState = 'waitingTriage' | 'inTriage' | 'waitingDoctor' | 'withDoctor' | 'departed';
-export type Outcome = 'treated' | 'lwbs';
+export type Outcome = 'discharged' | 'admitted' | 'lwbs';
+export type ArrivalSource = 'walkIn' | 'massCasualty' | 'bounceBack';
 
+/** A patient's record. Timestamps are sim minutes; fields are filled as the visit progresses. */
 export interface Patient {
   id: number;
+  source: ArrivalSource;
+  /** For bounce-backs: the visit they are returning from. */
+  bounceOf?: number;
+  /** Hidden condition (see PARAMS.conditions). */
+  conditionId: string;
+  /** True acuity at arrival (metrics group by this). */
+  initialAcuity: Acuity;
+  /** Current true acuity; can worsen while waiting. */
   trueAcuity: Acuity;
-  /** Set by triage; may differ from trueAcuity. Undefined if not triaged. */
+  /** Set by triage (and updated when a deterioration is noticed). Undefined if not triaged. */
   assignedAcuity?: Acuity;
-  state: PatientState;
-  outcome?: Outcome;
+  /** What triage assigned, and the true acuity at that moment (for triage accuracy). */
+  triageAssigned?: Acuity;
+  acuityAtTriage?: Acuity;
   lane?: Lane;
-
-  // Pre-drawn at arrival from separate streams (common random numbers across configs).
-  /** Doctor time needed in the main ED (fast track scales it). */
-  serviceMinutes: number;
-  triageMinutes: number;
-  /** Acuity triage would assign. */
-  triageResult: Acuity;
+  /** Treatment space index within the lane while in a bed. */
+  bed?: number;
   /** How long they will wait before leaving without being seen. Infinity = never. */
   patienceMinutes: number;
+  deteriorations: number;
 
   arrivalTime: number;
   triageStartTime?: number;
   triageEndTime?: number;
+  bedRequestTime?: number;
+  bedTime?: number;
+  /** When the first doctor evaluation became ready to start. */
   doctorQueueTime?: number;
+  /** First doctor contact ("seen"). */
   doctorStartTime?: number;
-  departureTime?: number;
+  /** Doctor (or fast-track clinician) who first saw them. */
   providerId?: number;
+  dispositionTime?: number;
+  /** Admitted but waiting for an inpatient bed, holding an ED bed. */
+  boardingStartTime?: number;
+  departureTime?: number;
+  outcome?: Outcome;
+  misdiagnosed?: boolean;
+  /** Minute the misdiagnosed patient will return (may be after the run ends). */
+  returnsAt?: number;
 }
 
 export interface Shift {
@@ -54,7 +84,9 @@ export type Command =
   | { type: 'setStaff'; role: Role; count: number }
   | { type: 'setSchedule'; role: Role; shifts: Shift[] }
   | { type: 'setQueueDiscipline'; discipline: QueueDiscipline }
-  | { type: 'setFastTrack'; enabled: boolean; minAcuity?: Acuity };
+  | { type: 'setFastTrack'; enabled: boolean; minAcuity?: Acuity }
+  | { type: 'setBeds'; lane: Lane; count: number | null }
+  | { type: 'setEscalation'; enabled: boolean };
 
 export interface TimedCommand {
   atMinute: number;

@@ -106,15 +106,26 @@ Every module toggle exposed. Presets include "layout only" (just design the floo
 - Keep the params file as the single source of truth for numbers.
 
 ## Repo status & commands
-- **Phases 0, 1, 2: done.**
+- **Phases 0–3: done.**
 - `pnpm install` / `pnpm test` / `pnpm typecheck`
 - `pnpm game`: run the browser game (Vite dev server). `pnpm e2e`: build it and play levels 1–2 in headless Chromium (light + dark, mobile width). `SCREENSHOTS=dir pnpm e2e` saves screenshots.
 - `pnpm headless run --config configs/examples/basic.json --seed 42 --out results.json` (`--format csv` for CSV)
 - `pnpm headless run --config configs/levels/level-03-fast-track.json --seeds 1-40 --set fastTrack.enabled=true` prints the level pass rate. `--set path=value` overrides any config value (JSON or bare string).
+- `pnpm headless balance --config configs/levels/<level>.json` shows how often the shipped setup, the level's reference solution and its trap meet the goals across 40 days, plus the days that separate them (candidates for `level.seed`).
 - Params file: `packages/sim/src/params.ts`. Config schema: `packages/sim/src/config.ts`. Levels: `packages/sim/src/levels.ts`, `configs/levels/`.
 - Modules that are not built yet are rejected by config validation with the phase they belong to, so a config never silently enables something that does nothing.
 
 ## Implementation decisions (keep consistent)
+- **Step graph (Phase 3):** a visit is a DAG of steps (`pipeline.ts`). The default, used while `process` is off, is triage → [bed] → doctorEval → workup (results; bed held, no staff) → disposition (a short second doctor contact). A step starts when its `after` steps are done; several can run in parallel. Doctor steps for fast-track patients go to fast-track clinicians. Disposition runs last and decides admit or discharge. Each patient draws all their randomness from their own stream (`walkIn:n`, `massCasualty:i:k`, `bounceBack:id`), so one patient's draws never shift another's.
+- **Beds:** `beds.main` / `beds.fastTrack` (null = unlimited; params default 20 / 6). The patient takes a bed before their first in-bed step and keeps it until departure, or until an inpatient bed frees up if they are boarding. Bed queues follow the queue discipline.
+- **Conditions:** hidden `conditionId` per patient from `PARAMS.conditions` (sets admission chance and how easy it is to miss). Metrics group by *initial* true acuity.
+- **Deterioration** (always available, `deterioration.enabled`): Weibull time-to-worsen by current acuity, only until first doctor contact. Staff notice, so a triaged patient's priority is raised. Deteriorated patients need longer evaluations, a real feedback loop: an understaffed ED without LWBS can spiral.
+- **Boarding module:** inpatient beds for ED admissions only; ward discharges are a time-of-day Poisson process. `boarding.escalation` (hospital full-capacity protocol) adds discharges. Off: admitted patients leave at once.
+- **Diagnosis module:** miss probability = condition missRisk × thoroughness factor × fatigue factor. A miss sends the patient home; with `bounceBackProbability` they return within 72 h, one level sicker, as a new arrival. Thoroughness also scales diagnostic step times (1.0 at the 0.5 baseline). Off: no misses.
+- **Shocks module:** `surge` (rate multiplier over a window) and `massCasualty` (burst of arrivals, field-triaged by default so they skip the triage desk).
+- **Burnout module:** fatigue = busy hours × rate + hours on shift × rate. It slows service and raises triage and diagnosis errors. Scheduled staff are new people each shift; fixed staff hand over every 12 h.
+- **Default doctors are 4** since Phase 3: dispositions add doctor time, and 3 doctors spiral without LWBS.
+- **Levels** carry designer-only `reference` (a sensible solution), optional `trap` (a tempting wrong answer), `designNote` and `minCrossSeedGap`. Balance tests read these from the configs.
 - **Game (`apps/game`):** Vite + React, with the floor drawn on a Canvas. `runner.ts` only advances the clock (1x = 4 sim-minutes per real second; 1/2/8x, pause, "End shift") and forwards commands. `render/floorPlan.ts` is a pure layout function (tested); `render/draw.ts` paints it. Dots show *assigned* acuity (grey until triaged); true acuity is never shown during play. Setup screens edit only a level's `playerControls`, and `buildConfig` ignores anything else. Demand and on-duty charts come from `hourlyLoad` / `onDutyByHour` in the sim.
 - **Level 1** is tied to one night (seed 24; see its `designNote`). With one doctor and no pre-emption, queue order changes pass rates only ~10 points across random nights.
 - **Default pipeline** (used while `process` is off): arrival → triage queue (FIFO) → triage nurse → doctor queue → doctor → discharge. Its knobs are plain config sections, not modules: `triage` (enabled, time, accuracy), `queue.discipline` (`acuity` | `fifo`), `fastTrack`, `lwbs`. The Phase 5 `process` module replaces this with the node graph.

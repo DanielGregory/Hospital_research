@@ -13,6 +13,15 @@ export function Debrief(props: { level: LevelConfig; metrics: Metrics; onRetry: 
     ['Door to doctor, 90th percentile', minutes(m.doorToDoctor.p90)],
     ['ESI 1–2 door to doctor, median', minutes(m.doorToDoctorByGroup.urgent.median)],
     ['Length of stay, median', minutes(m.lengthOfStay.median)],
+    ['Admitted', `${m.admitted} (${percent(m.admissionRate)})`],
+    ['Got worse while waiting', String(m.deterioration.events)],
+    ...(m.boarding.boarders > 0 ? ([['Boarding, average', minutes((m.boarding.meanHours ?? 0) * 60)]] as [string, string][]) : []),
+    ...(m.diagnosis.misdiagnosisRate !== null
+      ? ([
+          ['Missed diagnoses (now revealed)', percent(m.diagnosis.misdiagnosisRate)],
+          ['Came back within 72 h', String(m.diagnosis.bounceBacks72h)],
+        ] as [string, string][])
+      : []),
     ['Doctors busy', percent(m.utilizationByRole.doctor)],
     ['Triage accuracy (now revealed)', percent(m.triage.accuracy)],
   ];

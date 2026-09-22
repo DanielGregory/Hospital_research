@@ -3,12 +3,14 @@ import level1 from '../../../configs/levels/level-01-quiet-night.json';
 import level2 from '../../../configs/levels/level-02-monday-morning.json';
 import level3 from '../../../configs/levels/level-03-fast-track.json';
 import level4 from '../../../configs/levels/level-04-flu-season.json';
+import level5 from '../../../configs/levels/level-05-boarding-crisis.json';
+import level6 from '../../../configs/levels/level-06-mass-casualty.json';
 import { resolveConfig, validateConfig } from '../src/config.js';
 import { Simulation } from '../src/engine.js';
 import { checkLimits, evaluateGoals, getMetric, staffingSummary } from '../src/levels.js';
-import { MIN_CROSS_SEED_GAP, REFERENCE_SOLUTIONS, withSettings } from './levelBalance.js';
+import { applySettings } from '../src/settings.js';
 
-const LEVELS: readonly any[] = [level1, level2, level3, level4] as const;
+const LEVELS: readonly any[] = [level1, level2, level3, level4, level5, level6];
 
 describe('goal evaluation', () => {
   const metrics = new Simulation({ id: 'x', durationMinutes: 600 }, 1).run().metrics;
@@ -59,7 +61,7 @@ describe('limits', () => {
 
 describe.each(LEVELS.map((l) => [l.id as string, l] as const))('%s', (id, level) => {
   const goals = level.level.goals;
-  const ref = withSettings(level, REFERENCE_SOLUTIONS[id]!);
+  const ref = applySettings(level, level.level.reference);
   const seed = level.level.seed;
 
   it('is valid, within its limits, and every goal metric exists', () => {
@@ -75,9 +77,17 @@ describe.each(LEVELS.map((l) => [l.id as string, l] as const))('%s', (id, level)
     expect(evaluateGoals(new Simulation(ref, seed).run().metrics, goals).passed).toBe(true);
   });
 
+  it.runIf(level.level.trap)('the trap fails on the level seed and loses clearly to the reference', () => {
+    const trap = applySettings(level, level.level.trap);
+    expect(evaluateGoals(new Simulation(trap, seed).run().metrics, goals).passed).toBe(false);
+    const seeds = Array.from({ length: 12 }, (_, i) => 100 + i);
+    const rate = (cfg: unknown) => seeds.filter((s) => evaluateGoals(new Simulation(cfg, s).run().metrics, goals).passed).length / seeds.length;
+    expect(rate(ref) - rate(trap)).toBeGreaterThanOrEqual(0.25);
+  });
+
   it('the reference beats the shipped setup across other days too', () => {
     const seeds = Array.from({ length: 12 }, (_, i) => 100 + i);
     const rate = (cfg: unknown) => seeds.filter((s) => evaluateGoals(new Simulation(cfg, s).run().metrics, goals).passed).length / seeds.length;
-    expect(rate(ref) - rate(level)).toBeGreaterThanOrEqual(MIN_CROSS_SEED_GAP[id] ?? 0.25);
+    expect(rate(ref) - rate(level)).toBeGreaterThanOrEqual(level.level.minCrossSeedGap ?? 0.25);
   });
 });

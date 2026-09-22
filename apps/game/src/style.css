@@ -12,6 +12,8 @@
   --area-bg: #ffffff;
   --staff: #2f5bd3;
   --untriaged: #9aa0a6;
+  --boarding: #7b4bd6;
+  --bed: #ecebe6;
   --esi-1: #c62828;
   --esi-2: #ef6c00;
   --esi-3: #d4a200;
@@ -34,6 +36,8 @@
     --area-bg: #252321;
     --staff: #7ea0ff;
     --untriaged: #7c7f84;
+    --boarding: #b197fc;
+    --bed: #34322e;
     --esi-1: #ff6b6b;
     --esi-2: #ffa94d;
     --esi-3: #ffd43b;
@@ -56,6 +60,8 @@
   --area-bg: #252321;
   --staff: #7ea0ff;
   --untriaged: #7c7f84;
+  --boarding: #b197fc;
+  --bed: #34322e;
   --esi-1: #ff6b6b;
   --esi-2: #ffa94d;
   --esi-3: #ffd43b;
@@ -146,6 +152,8 @@ button.icon { min-width: 36px; padding: 0; }
 .floor canvas { width: 100%; height: min(62vh, 560px); display: block; border-radius: 12px; }
 .legend-row { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.8rem; color: var(--muted); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+.ring { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2.5px solid var(--boarding); vertical-align: middle; }
+.slider { display: block; width: 100%; max-width: 360px; margin: 6px 0; accent-color: var(--accent); }
 .square { display: inline-block; width: 10px; height: 10px; background: var(--staff); vertical-align: middle; }
 .live-controls { display: flex; flex-wrap: wrap; gap: 8px 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px; }
 

@@ -38,6 +38,14 @@ function defaultFor(ctl: PlayerControl, r: ResolvedConfig): unknown {
       return r.fastTrack.enabled;
     case 'fastTrack.minAcuity':
       return r.fastTrack.minAcuity;
+    case 'beds.main':
+      return Number.isFinite(r.beds.main) ? r.beds.main : 20;
+    case 'beds.fastTrack':
+      return Number.isFinite(r.beds.fastTrack) ? r.beds.fastTrack : 6;
+    case 'boarding.escalation':
+      return r.boarding.escalation;
+    case 'diagnosis.thoroughness':
+      return r.diagnosis.thoroughness;
     default:
       return [] as Shift[]; // schedules
   }
@@ -62,6 +70,8 @@ export const ROLE_LABEL: Record<Role, string> = {
   doctor: 'Doctors',
   triageNurse: 'Triage nurses',
   fastTrackClinician: 'Fast-track clinicians',
+  nurse: 'Nurses',
+  tech: 'Technicians',
 };
 
 export function scheduleRole(ctl: PlayerControl): Role | undefined {

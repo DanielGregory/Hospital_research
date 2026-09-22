@@ -82,6 +82,20 @@ async function main() {
         await page.getByTestId('schedule-doctor').waitFor();
         await shot(page, `setup-${scheme}`);
 
+        // Level 5: boarding view renders and plays to the end.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('level-5').click();
+        await page.getByTestId('continue').click();
+        await page.getByTestId('escalation').check();
+        await page.getByTestId('fasttrack-enabled').check();
+        await page.getByTestId('start').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(2500);
+        await shot(page, `play-boarding-${scheme}`);
+        await page.getByTestId('skip').click();
+        const r5 = await page.getByTestId('result').textContent();
+        if (r5 !== 'Goals met') fail(`level 5 with the reference plan: expected pass, got "${r5}"`);
+
         // Mobile width: no horizontal scroll on the menu.
         await page.setViewportSize({ width: 375, height: 800 });
         await page.goto(`http://localhost:${PORT}/`);

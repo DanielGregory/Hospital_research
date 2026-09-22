@@ -5,7 +5,7 @@
   "startDayOfWeek": 1,
   "startHour": 23,
   "arrivals": {
-    "rateMultiplier": 0.8,
+    "rateMultiplier": 0.6,
     "acuityMix": {
       "1": 0.03,
       "2": 0.2,
@@ -27,7 +27,7 @@
   "level": {
     "number": 1,
     "title": "Quiet Night",
-    "seed": 24,
+    "seed": 13,
     "briefing": [
       "Welcome, trainee. This is a simulation. Nothing you do here can hurt anyone.",
       "Tuesday, 23:00. One doctor, one triage nurse, and a waiting room that is nearly empty. It will not stay empty.",
@@ -59,6 +59,10 @@
     "playerControls": [
       "queue.discipline"
     ],
-    "designNote": "Fixed night (seed 24) where arrival order leaves an ESI 2 patient waiting ~105 min; acuity order gets them seen in ~21. Across random nights one doctor with no pre-emption makes queue order matter only ~10 points, so this level is tied to its night."
+    "designNote": "Fixed night (seed 13) where arrival order leaves an ESI 1-2 patient waiting over 30 minutes and acuity order does not. Across random nights, one doctor who never interrupts a case makes queue order matter little (acuity passes ~43% vs ~40%), so this level is tied to its night. See the open question on ESI 1 pre-emption.",
+    "reference": {
+      "queue.discipline": "acuity"
+    },
+    "minCrossSeedGap": 0
   }
 }

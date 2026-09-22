@@ -72,6 +72,38 @@ export function SimpleControl({ control, value, onChange }: { control: PlayerCon
           </select>
         </label>
       );
+    case 'beds.main':
+    case 'beds.fastTrack':
+      return (
+        <div className="control">
+          {control === 'beds.main' ? 'Main ED treatment spaces' : 'Fast-track spaces'}{' '}
+          <Stepper value={Number(value ?? 0)} min={1} max={60} onChange={onChange} label={control} />
+        </div>
+      );
+    case 'boarding.escalation':
+      return (
+        <label className="control check">
+          <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} data-testid="escalation" /> Declare hospital
+          full-capacity protocol (wards discharge faster)
+        </label>
+      );
+    case 'diagnosis.thoroughness':
+      return (
+        <label className="control">
+          How thorough are doctor assessments? <strong>{Math.round(Number(value) * 100)}%</strong>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={Number(value)}
+            onChange={(e) => onChange(Number(e.target.value))}
+            aria-label="Thoroughness"
+            className="slider"
+          />
+          <span className="muted">Faster, more misses ↔ slower, fewer misses</span>
+        </label>
+      );
     case 'staffing.doctors':
     case 'staffing.triageNurses':
     case 'staffing.fastTrackClinicians':

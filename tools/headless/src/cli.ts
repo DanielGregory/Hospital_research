@@ -11,10 +11,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { applySettings, checkLimits, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
+import { applySettings, balanceReport, checkLimits, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
+  balance --config <level.json> [--seeds <a-b>] [--set <path=value> ...]
+      Goal pass rates for the shipped setup and the level's reference solution.
 
 Options:
   --config   Level or sandbox config (JSON). Required.
@@ -27,6 +29,7 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
+  command: 'run' | 'balance';
   config: string;
   /** Empty = use the level's seed, else 1. */
   seeds: number[];
@@ -39,7 +42,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run') throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
+  if (cmd !== 'run' && cmd !== 'balance') throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   const opts: Record<string, string> = {};
   const overrides: [string, unknown][] = [];
   for (let i = 0; i < rest.length; i++) {
@@ -69,7 +72,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
 
   const format = opts.format ?? (opts.out?.endsWith('.csv') ? 'csv' : 'json');
   if (format !== 'json' && format !== 'csv') throw new UsageError('--format must be json or csv');
-  return { config: opts.config, seeds, overrides, out: opts.out, format };
+  return { command: cmd, config: opts.config, seeds, overrides, out: opts.out, format };
 }
 
 function parseOverride(arg: string): [string, unknown] {
@@ -159,6 +162,19 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
     const args = parseArgs(argv);
     const configPath = resolve(cwd, args.config);
     const config = applyOverrides(JSON.parse(readFileSync(configPath, 'utf8')), args.overrides);
+    if (args.command === 'balance') {
+      const seeds = args.seeds.length ? args.seeds : Array.from({ length: 40 }, (_, i) => i + 1);
+      const r = balanceReport(config, seeds);
+      const pct = (x: number) => `${Math.round(x * 100)}%`;
+      const line = (name: string, row: NonNullable<typeof r.reference>) =>
+        `${name.padEnd(10)} ${pct(row.passRate).padStart(4)} of ${r.seeds} days | level seed: ${row.onLevelSeed ? 'pass' : 'fail'} | ` +
+        Object.entries(row.goalPassRates)
+          .map(([k, v]) => `${k} ${pct(v)}`)
+          .join(', ');
+      process.stdout.write(`${r.levelId}\n${line('shipped', r.shipped)}\n${r.reference ? line('reference', r.reference) : 'reference  (none in config)'}\n`);
+      process.stdout.write(`days where shipped fails and reference passes: ${r.discriminatingSeeds.slice(0, 12).join(' ') || 'none'}\n`);
+      return 0;
+    }
     const output = runConfig(config, args.config, args.seeds, args.overrides);
     const seedCount = output.runs.length;
     const text = args.format === 'csv' ? toCsv(output) : JSON.stringify(output, null, 2) + '\n';

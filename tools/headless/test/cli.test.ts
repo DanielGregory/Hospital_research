@@ -9,6 +9,7 @@ const root = resolve(import.meta.dirname, '../../..');
 describe('parseArgs', () => {
   it('parses a single seed and infers format from --out', () => {
     expect(parseArgs(['run', '--config', 'c.json', '--seed', '42', '--out', 'r.csv'])).toEqual({
+      command: 'run',
       config: 'c.json',
       seeds: [42],
       overrides: [],
@@ -57,7 +58,7 @@ describe('main', () => {
   it('returns non-zero on a bad config', () => {
     const dir = mkdtempSync(join(tmpdir(), 'er-headless-'));
     const bad = join(dir, 'bad.json');
-    writeFileSync(bad, JSON.stringify({ id: 'x', modules: { boarding: true } }));
+    writeFileSync(bad, JSON.stringify({ id: 'x', modules: { layout: true } }));
     expect(main(['run', '--config', bad], root)).toBe(1);
   });
 });
@@ -89,7 +90,7 @@ describe('overrides and levels', () => {
     expect(main(['run', '--config', 'configs/levels/level-03-fast-track.json', '--out', out], root)).toBe(0);
     const r = JSON.parse(readFileSync(out, 'utf8'));
     expect(r.runs).toHaveLength(1);
-    expect(r.runs[0].seed).toBe(1);
+    expect(r.runs[0].seed).toBe(2); // the level's own day
     expect(r.level).toMatchObject({ number: 3, passRate: 0 });
     expect(r.runs[0].goals.results).toHaveLength(3);
 

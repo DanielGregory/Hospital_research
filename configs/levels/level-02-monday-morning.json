@@ -52,8 +52,8 @@
     "goals": [
       {
         "metric": "lwbsRate",
-        "max": 0.03,
-        "label": "Fewer than 3% leave without being seen"
+        "max": 0.04,
+        "label": "Fewer than 4% leave without being seen"
       },
       {
         "metric": "doorToDoctor.median",
@@ -62,8 +62,8 @@
       },
       {
         "metric": "doorToDoctorByGroup.urgent.mean",
-        "max": 18,
-        "label": "ESI 1–2 seen within 18 minutes on average",
+        "max": 20,
+        "label": "ESI 1–2 seen within 20 minutes on average",
         "passIfNoData": true
       }
     ],
@@ -77,6 +77,30 @@
       "maxOnDuty": {
         "doctor": 5
       }
+    },
+    "reference": {
+      "staffing.schedule.doctor": [
+        {
+          "startHour": 22,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 7,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 10,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 13,
+          "hours": 12,
+          "count": 1
+        }
+      ]
     }
   }
 }

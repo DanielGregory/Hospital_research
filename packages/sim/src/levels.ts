@@ -29,6 +29,10 @@ export const PLAYER_CONTROLS = [
   'staffing.schedule.fastTrackClinician',
   'fastTrack.enabled',
   'fastTrack.minAcuity',
+  'beds.main',
+  'beds.fastTrack',
+  'boarding.escalation',
+  'diagnosis.thoroughness',
 ] as const;
 export type PlayerControl = (typeof PLAYER_CONTROLS)[number];
 
@@ -37,6 +41,8 @@ export interface LevelLimits {
   staffHoursPerDay?: Partial<Record<Role, number>>;
   /** Most staff of a role on duty at once. */
   maxOnDuty?: Partial<Record<Role, number>>;
+  /** Most treatment spaces per lane. */
+  maxBeds?: Partial<Record<'main' | 'fastTrack', number>>;
 }
 
 export interface LevelSpec {
@@ -46,6 +52,15 @@ export interface LevelSpec {
   seed?: number;
   /** Notes for designers (why the level is tuned the way it is). Not shown to players. */
   designNote?: string;
+  /**
+   * A reasonable player solution (settings keyed by player control) used by balance checks:
+   * the shipped setup should fail and this should pass. Not shown to players.
+   */
+  reference?: Partial<Record<PlayerControl, unknown>>;
+  /** A tempting wrong answer the level is built to punish (balance checks: it fails on the level seed). */
+  trap?: Partial<Record<PlayerControl, unknown>>;
+  /** Minimum pass-rate gap (reference minus shipped) across random days that balance checks require. Default 0.25. */
+  minCrossSeedGap?: number;
   briefing: string[];
   debrief: { pass: string[]; fail: string[] };
   goals: Goal[];
@@ -73,6 +88,14 @@ export function checkLevel(level: unknown): string[] {
       else if (g.max === undefined && g.min === undefined) p.push(`level.goals[${i}]: needs max or min`);
       else if ([g.max, g.min].some((v) => v !== undefined && typeof v !== 'number')) p.push(`level.goals[${i}]: max/min must be numbers`);
     });
+  for (const key of ['reference', 'trap'] as const) {
+    const v = level[key];
+    if (v === undefined) continue;
+    if (!isObj(v)) p.push(`level.${key}: object of player control -> value`);
+    else
+      for (const k of Object.keys(v))
+        if (!Array.isArray(level.playerControls) || !level.playerControls.includes(k)) p.push(`level.${key}.${k}: not one of this level's player controls`);
+  }
   if (!Array.isArray(level.playerControls)) p.push('level.playerControls: array');
   else
     for (const ctl of level.playerControls)
@@ -86,6 +109,11 @@ export function checkLevel(level: unknown): string[] {
         if (!isObj(m) || Object.entries(m).some(([r, v]) => !(ROLES as readonly string[]).includes(r) || typeof v !== 'number'))
           p.push(`level.limits.${key}: object of role -> number`);
       }
+    if (isObj(level.limits) && level.limits.maxBeds !== undefined) {
+      const m = level.limits.maxBeds;
+      if (!isObj(m) || Object.entries(m).some(([k, v]) => (k !== 'main' && k !== 'fastTrack') || typeof v !== 'number'))
+        p.push('level.limits.maxBeds: { main?: number, fastTrack?: number }');
+    }
   }
   return p;
 }
@@ -147,6 +175,10 @@ export function checkLimits(c: ResolvedConfig): string[] {
       out.push(`${role}: ${sum[role].hoursPerDay.toFixed(1)} staff-hours/day exceeds the limit of ${h}`);
     const m = limits.maxOnDuty?.[role];
     if (m !== undefined && sum[role].maxOnDuty > m) out.push(`${role}: ${sum[role].maxOnDuty} on duty at once exceeds the limit of ${m}`);
+  }
+  for (const lane of ['main', 'fastTrack'] as const) {
+    const max = limits.maxBeds?.[lane];
+    if (max !== undefined && c.beds[lane] > max) out.push(`${lane} beds: ${Number.isFinite(c.beds[lane]) ? c.beds[lane] : 'unlimited'} exceeds the limit of ${max}`);
   }
   return out;
 }

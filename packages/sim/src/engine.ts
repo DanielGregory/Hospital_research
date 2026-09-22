@@ -1,16 +1,15 @@
 /**
  * Discrete-event simulation of the ED.
  *
- * Default pipeline (the `process` module will make this editable in Phase 5):
- *   arrival -> [triage queue -> triage nurse] -> doctor queue -> doctor -> discharge
- * with an optional fast-track lane for low-acuity patients (free main-ED doctors
- * pick up fast-track overflow unless told not to) and LWBS from any
- * waiting line. Staff counts are fixed, or follow shift schedules when the
- * `staffing` module is on.
+ * A patient's visit follows the step graph in `config.pipeline` (see pipeline.ts):
+ * the default is triage -> [bed] -> doctor evaluation -> workup -> disposition.
+ * Around that sit the modules: beds and boarding (admitted patients hold their ED bed
+ * until an inpatient bed frees up), diagnosis (misdiagnosis -> bounce-backs), shocks
+ * (surges, mass casualties), burnout (fatigue slows staff and raises errors), and
+ * staffing (shift schedules). Patients can deteriorate or leave while not yet seen.
  *
- * The engine has no notion of wall-clock time or rendering. A front end drives
- * it with `runUntil(t)` at whatever speed it likes, reads `snapshot()`, and
- * changes things only through `command()`.
+ * The engine has no notion of wall-clock time or rendering. A front end drives it
+ * with `runUntil(t)`, reads `snapshot()`, and changes things only through `command()`.
  */
 
 import { ArrivalProcess } from './arrivals.js';
@@ -18,15 +17,19 @@ import { checkCommand, ConfigError, resolveConfig, type ResolvedConfig } from '.
 import { EventQueue } from './eventQueue.js';
 import { computeMetrics, type Metrics } from './metrics.js';
 import { PatientQueue } from './patientQueue.js';
+import { DIAGNOSTIC_KINDS, type StepDef } from './pipeline.js';
 import { Rng } from './rng.js';
-import { onDutyCount, scheduleBoundaries } from './schedule.js';
+import { occurrencesInRun, scheduleBoundaries } from './schedule.js';
 import { TimeWeighted } from './stats.js';
 import {
   ACUITIES,
   ROLES,
   type Acuity,
+  type ArrivalSource,
   type Command,
+  type ConditionSpec,
   type Lane,
+  type Outcome,
   type Patient,
   type QueueDiscipline,
   type Role,
@@ -34,54 +37,116 @@ import {
   type TimedCommand,
 } from './types.js';
 
+interface ArrivalSpec {
+  source: ArrivalSource;
+  /** Arrives with an assigned acuity from field triage and skips triage. */
+  preTriaged?: boolean;
+  /** Stream name for this patient's random draws. */
+  stream: string;
+  acuity?: Acuity;
+  conditionId?: string;
+  bounceOf?: number;
+}
+
 type SimEvent =
   | { kind: 'arrival' }
-  | { kind: 'triageEnd'; staffId: number }
-  | { kind: 'treatmentEnd'; staffId: number }
+  | { kind: 'specialArrival'; spec: ArrivalSpec }
+  | { kind: 'taskEnd'; staffId: number }
+  | { kind: 'turnaroundEnd'; patientId: number; step: number }
   | { kind: 'abandon'; patientId: number }
+  | { kind: 'deteriorate'; patientId: number; token: number }
   | { kind: 'shift'; role: Role; version: number }
+  | { kind: 'handover' }
+  | { kind: 'inpatientDischarge' }
   | { kind: 'command'; command: Command };
 
 /** Tie-break among events at the same instant. Commands run last so live and replayed commands match. */
-const PRIORITY = { triageEnd: 0, treatmentEnd: 0, shift: 1, abandon: 2, arrival: 3, command: 4 } as const;
+const PRIORITY: Record<SimEvent['kind'], number> = {
+  taskEnd: 0,
+  turnaroundEnd: 0,
+  shift: 1,
+  handover: 1,
+  inpatientDischarge: 2,
+  deteriorate: 2,
+  abandon: 2,
+  specialArrival: 3,
+  arrival: 3,
+  command: 4,
+};
+
+type StepStatus = 'blocked' | 'queued' | 'active' | 'turnaround' | 'done' | 'skipped';
+
+interface Task {
+  id: number;
+  patientId: number;
+  step: number;
+  readyTime: number;
+  pool: Role;
+}
+
+interface Runtime {
+  rng: Rng;
+  condition: ConditionSpec;
+  status: StepStatus[];
+  taskIds: (number | undefined)[];
+  bedRequested: boolean;
+  hasBed: boolean;
+  activeTasks: number;
+  wantsToLeave: boolean;
+  seen: boolean;
+  finished: boolean;
+  deteriorationToken: number;
+  thoroughness: number[];
+  /** Fatigue of whoever did the first doctor evaluation (diagnosis errors). */
+  evalFatigue: number;
+  /** Fatigue of the triage nurse (triage errors). */
+  triageFatigue: number;
+}
 
 interface Staff {
   id: number;
   role: Role;
-  patientId: number | null;
-  /** Leaves once the current patient is done (count reduced while busy). */
+  taskId: number | null;
   retiring: boolean;
+  /** Shift occurrence this person belongs to; undefined = fixed staffing or a manual extra. */
+  occ?: string;
+  shiftStart: number;
+  busyMinutes: number;
+  taskStart?: number;
 }
 
 /** Where a patient is, for renderers. */
-export type PatientLocation = 'waitingTriage' | 'triage' | 'waitingDoctor' | 'waitingFastTrack' | 'doctor' | 'fastTrack';
+export type PatientLocation = 'waiting' | 'intake' | 'bed';
 
-/** What the player may see about a patient. True acuity is included for debrief/debug views only. */
+/** What a renderer may show about a patient. True acuity and condition are for debrief/debug views only. */
 export interface PatientView {
   id: number;
   location: PatientLocation;
+  /** What they are waiting for, if not being attended: a step kind or 'bed'. */
+  waitingFor?: string;
+  lane?: Lane;
+  bed?: number;
+  boarding: boolean;
   /** Undefined until triaged. */
   assignedAcuity?: Acuity;
   trueAcuity: Acuity;
   arrivalTime: number;
-  /** Staff member currently with them. */
-  staffId?: number;
+  staffIds: number[];
+  source: ArrivalSource;
 }
 
 export interface SimSnapshot {
   now: number;
-  /** Everyone currently in the department, in id order. */
-  patients: PatientView[];
   durationMinutes: number;
   finished: boolean;
-  /** In service order. */
-  waitingTriage: { id: number; trueAcuity: Acuity; arrivalTime: number }[];
-  waitingDoctor: Record<Lane, { id: number; trueAcuity: Acuity; assignedAcuity?: Acuity; arrivalTime: number }[]>;
-  inTriage: { id: number; trueAcuity: Acuity; staffId: number; startedAt: number }[];
-  withDoctor: { id: number; trueAcuity: Acuity; assignedAcuity?: Acuity; staffId: number; lane: Lane; startedAt: number }[];
-  staff: { id: number; role: Role; busy: boolean; retiring: boolean }[];
+  /** Everyone currently in the department, in id order. */
+  patients: PatientView[];
+  staff: { id: number; role: Role; busy: boolean; retiring: boolean; fatigue: number; patientId?: number }[];
+  beds: Record<Lane, { capacity: number | null; occupied: number }>;
+  /** Inpatient beds for admissions (boarding module), else null. */
+  inpatient: { capacity: number; occupied: number; boarders: number; escalated: boolean } | null;
   settings: { discipline: QueueDiscipline; fastTrackEnabled: boolean; fastTrackOpen: boolean; fastTrackMinAcuity: Acuity };
-  totals: { arrived: number; treated: number; lwbs: number };
+  totals: { arrived: number; discharged: number; admitted: number; lwbs: number; bounceBacks: number; deteriorations: number };
 }
 
 export interface RunResult {
@@ -89,24 +154,53 @@ export interface RunResult {
   commandLog: TimedCommand[];
 }
 
+/** Fatigue records for staff-shifts, for metrics. */
+export interface FatigueRecord {
+  role: Role;
+  start: number;
+  end: number;
+  fatigue: number;
+}
+
 export class Simulation {
   readonly config: ResolvedConfig;
   readonly seed: number;
 
   private clock = 0;
+  private readonly root: Rng;
   private readonly calendarOffset: number;
   private readonly events = new EventQueue<SimEvent>();
   private readonly arrivals: ArrivalProcess;
-  private readonly rng: Record<'acuity' | 'service' | 'triageTime' | 'triageResult' | 'patience', Rng>;
+  private walkIns = 0;
   private readonly acuityWeights: number[];
+  private readonly conditionsByAcuity: Record<Acuity, ConditionSpec[]>;
+  private readonly conditionById: Map<string, ConditionSpec>;
+  private readonly pipeline: StepDef[];
+  private readonly stepIndex: Map<string, number>;
+  private readonly dispositionStep: number;
 
   private readonly patients: Patient[] = [];
-  private readonly triageQueue = new PatientQueue();
-  private readonly doctorQueues: Record<Lane, PatientQueue> = { main: new PatientQueue(), fastTrack: new PatientQueue() };
+  /** Ids of patients still in the department, in id order. */
+  private readonly active = new Set<number>();
+  private inSystem = 0;
+  private notSeen = 0;
+  private readonly rt: Runtime[] = [];
+  private readonly tasks = new Map<number, Task>();
+  private nextTaskId = 0;
+  private readonly pools: Record<Role, PatientQueue>;
+  private readonly bedQueues: Record<Lane, PatientQueue> = { main: new PatientQueue(), fastTrack: new PatientQueue() };
+  private readonly bedCapacity: Record<Lane, number>;
+  private readonly bedsUsed: Record<Lane, (number | null)[]> = { main: [], fastTrack: [] };
   private readonly staff: Staff[] = [];
   private nextStaffId = 0;
-  private treated = 0;
-  private lwbs = 0;
+  private readonly fatigueLog: FatigueRecord[] = [];
+
+  private inpatientOccupied: number;
+  private readonly boarders: number[] = [];
+  private readonly inpatientArrivals: ArrivalProcess | undefined;
+  private escalated: boolean;
+
+  private counts = { discharged: 0, admitted: 0, lwbs: 0, bounceBacks: 0, deteriorations: 0 };
   private readonly log: TimedCommand[] = [];
 
   // Live settings (commands change these).
@@ -115,12 +209,15 @@ export class Simulation {
   private fastTrackMinAcuity: Acuity;
   private fastTrackWasOpen = false;
   private readonly schedule: Partial<Record<Role, Shift[]>>;
-  private readonly scheduleVersion: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0 };
+  private readonly fixedTarget: Record<Role, number>;
+  private readonly scheduleVersion: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 };
 
   /** Time-weighted accumulators over [warmup, duration]. */
   readonly tw: {
     inSystem: TimeWeighted;
     waiting: TimeWeighted;
+    boarding: TimeWeighted;
+    bedsOccupied: Record<Lane, TimeWeighted>;
     busy: Record<Role, TimeWeighted>;
     onDuty: Record<Role, TimeWeighted>;
   };
@@ -130,35 +227,86 @@ export class Simulation {
     this.config = resolveConfig(rawConfig);
     this.seed = seed;
     const c = this.config;
-    const root = new Rng(seed);
-    this.arrivals = new ArrivalProcess(c, root.stream('arrivals'));
-    this.rng = {
-      acuity: root.stream('acuity'),
-      service: root.stream('service'),
-      triageTime: root.stream('triageTime'),
-      triageResult: root.stream('triageResult'),
-      patience: root.stream('patience'),
-    };
+    this.root = new Rng(seed);
+
+    // Arrivals, with surge multipliers when the shocks module is on.
+    const surges = c.shocks.filter((s) => s.type === 'surge');
+    const surgeAt = (t: number) => surges.reduce((m, s) => (t >= s.startMinute && t < s.endMinute ? m * s.multiplier : m), 1);
+    const maxSurge = surges.reduce((m, s) => m * Math.max(1, s.multiplier), 1);
+    this.arrivals = new ArrivalProcess(c, this.root.stream('arrivals'), surgeAt, maxSurge);
+
     this.acuityWeights = ACUITIES.map((a) => c.acuityMix[a]);
+    this.conditionsByAcuity = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+    for (const cond of c.conditions) this.conditionsByAcuity[cond.acuity].push(cond);
+    this.conditionById = new Map(c.conditions.map((x) => [x.id, x]));
+    this.pipeline = c.pipeline;
+    this.stepIndex = new Map(this.pipeline.map((s, i) => [s.id, i]));
+    this.dispositionStep = this.pipeline.findIndex((s) => s.kind === 'disposition');
+
     this.calendarOffset = (c.startDayOfWeek * 24 + c.startHour) * 60;
     this.discipline = c.discipline;
-    this.fastTrackEnabled = c.fastTrack.enabled;
+    this.fastTrackEnabled = c.fastTrack.enabled || c.routing.some((r) => r.lane === 'fastTrack');
     this.fastTrackMinAcuity = c.fastTrack.minAcuity;
-    this.schedule = c.modules.staffing ? { ...c.schedule } : {};
+    this.schedule = c.modules.staffing ? JSON.parse(JSON.stringify(c.schedule)) : {};
+    this.fixedTarget = { ...c.staff };
+    this.bedCapacity = { ...c.beds };
+    this.pools = Object.fromEntries(ROLES.map((r) => [r, new PatientQueue()])) as Record<Role, PatientQueue>;
 
     const [w0, w1] = [c.warmupMinutes, c.durationMinutes];
     const perRole = () => Object.fromEntries(ROLES.map((r) => [r, new TimeWeighted(w0, w1)])) as Record<Role, TimeWeighted>;
-    this.tw = { inSystem: new TimeWeighted(w0, w1), waiting: new TimeWeighted(w0, w1), busy: perRole(), onDuty: perRole() };
+    this.tw = {
+      inSystem: new TimeWeighted(w0, w1),
+      waiting: new TimeWeighted(w0, w1),
+      boarding: new TimeWeighted(w0, w1),
+      bedsOccupied: { main: new TimeWeighted(w0, w1), fastTrack: new TimeWeighted(w0, w1) },
+      busy: perRole(),
+      onDuty: perRole(),
+    };
 
     for (const role of ROLES) {
-      const shifts = this.schedule[role];
-      this.setCount(role, shifts ? onDutyCount(shifts, this.calendarOffset, 0) : c.staff[role]);
-      if (shifts) this.scheduleShiftEvents(role);
+      this.reconcileStaff(role);
+      if (this.schedule[role]) this.scheduleShiftEvents(role);
     }
+    if (c.modules.burnout) {
+      const every = c.burnout.handoverHours * 60;
+      for (let t = every; t <= c.durationMinutes; t += every) this.push(t, { kind: 'handover' });
+    }
+
+    this.inpatientOccupied = c.boarding.initialOccupied;
+    this.escalated = c.boarding.escalation;
+    if (c.modules.boarding) {
+      const w = c.boarding.dischargeHourlyWeights;
+      const mean = w.reduce((a, b) => a + b, 0) / 24;
+      const perHour = c.boarding.dischargesPerDay / 24;
+      // Escalation scales the discharge rate; thinning needs its maximum up front.
+      const boost = c.boarding.dischargesPerDay > 0 ? (c.boarding.dischargesPerDay + c.boarding.escalationExtraDischargesPerDay) / c.boarding.dischargesPerDay : 1;
+      this.inpatientArrivals = new ArrivalProcess(
+        { hourlyRates: w.map((x) => (x / mean) * perHour), dayOfWeekMultipliers: [1, 1, 1, 1, 1, 1, 1], startDayOfWeek: c.startDayOfWeek, startHour: c.startHour },
+        this.root.stream('inpatientDischarges'),
+        () => (this.escalated ? boost : 1),
+        boost,
+      );
+      const t = this.inpatientArrivals.next(0, c.durationMinutes);
+      if (t !== undefined) this.push(t, { kind: 'inpatientDischarge' });
+    }
+
+    c.shocks.forEach((s, i) => {
+      if (s.type !== 'massCasualty') return;
+      const rng = this.root.stream(`massCasualty:${i}`);
+      const mix = s.acuityMix ?? { '1': 0.2, '2': 0.4, '3': 0.3, '4': 0.1 };
+      const weights = ACUITIES.map((a) => mix[`${a}`] ?? 0);
+      for (let k = 0; k < s.patients; k++) {
+        const t = s.atMinute + rng.next() * s.overMinutes;
+        const acuity = ACUITIES[rng.weightedIndex(weights)]!;
+        const preTriaged = s.preTriaged ?? true;
+        if (t <= c.durationMinutes) this.push(t, { kind: 'specialArrival', spec: { source: 'massCasualty', stream: `massCasualty:${i}:${k}`, acuity, preTriaged } });
+      }
+    });
+
     this.fastTrackWasOpen = this.fastTrackOpen();
     this.updateCounters();
 
-    for (const tc of c.commands) this.events.push(tc.atMinute, { kind: 'command', command: tc.command }, PRIORITY.command);
+    for (const tc of c.commands) this.push(tc.atMinute, { kind: 'command', command: tc.command });
     this.scheduleNextArrival(0);
   }
 
@@ -196,8 +344,7 @@ export class Simulation {
   command(cmd: Command): void {
     const problems = checkCommand(cmd, 'command');
     if (problems.length > 0) throw new ConfigError(problems);
-    if (cmd.type === 'setSchedule' && !this.config.modules.staffing)
-      throw new ConfigError(['command: setSchedule needs the staffing module on']);
+    if (cmd.type === 'setSchedule' && !this.config.modules.staffing) throw new ConfigError(['command: setSchedule needs the staffing module on']);
     this.apply(JSON.parse(JSON.stringify(cmd)) as Command);
   }
 
@@ -209,84 +356,131 @@ export class Simulation {
     return computeMetrics(this);
   }
 
+  /** All patients so far (read-only use: metrics, debugging, tests). */
+  allPatients(): readonly Patient[] {
+    return this.patients;
+  }
+
+  /** Fatigue at the end of every staff-shift so far, plus staff still on duty (burnout module). */
+  fatigueRecords(): FatigueRecord[] {
+    return [...this.fatigueLog, ...this.staff.map((s) => ({ role: s.role, start: s.shiftStart, end: this.clock, fatigue: this.fatigue(s) }))];
+  }
+
+  /** Tasks waiting for a role, in the order they will be served (read-only). */
+  queuedTasks(role: Role): { patientId: number; kind: StepDef['kind'] }[] {
+    return this.pools[role].ids().map((tid) => {
+      const t = this.tasks.get(tid)!;
+      return { patientId: t.patientId, kind: this.pipeline[t.step]!.kind };
+    });
+  }
+
+  conditionOf(p: Patient): ConditionSpec {
+    return this.conditionById.get(p.conditionId)!;
+  }
+
   /** Read-only view for renderers. Returns fresh objects every call. */
   snapshot(): SimSnapshot {
-    const P = (id: number) => this.patients[id]!;
-    const doctorLine = (lane: Lane) =>
-      this.doctorQueues[lane].ids().map((id) => {
-        const p = P(id);
-        return { id, trueAcuity: p.trueAcuity, assignedAcuity: p.assignedAcuity, arrivalTime: p.arrivalTime };
-      });
-    const inTriage: SimSnapshot['inTriage'] = [];
-    const withDoctor: SimSnapshot['withDoctor'] = [];
+    const staffByPatient = new Map<number, number[]>();
     for (const s of this.staff) {
-      if (s.patientId === null) continue;
-      const p = P(s.patientId);
-      if (s.role === 'triageNurse') inTriage.push({ id: p.id, trueAcuity: p.trueAcuity, staffId: s.id, startedAt: p.triageStartTime! });
-      else
-        withDoctor.push({
-          id: p.id,
-          trueAcuity: p.trueAcuity,
-          assignedAcuity: p.assignedAcuity,
-          staffId: s.id,
-          lane: p.lane!,
-          startedAt: p.doctorStartTime!,
-        });
+      if (s.taskId === null) continue;
+      const pid = this.tasks.get(s.taskId)!.patientId;
+      staffByPatient.set(pid, [...(staffByPatient.get(pid) ?? []), s.id]);
     }
     const patients: PatientView[] = [];
-    const view = (id: number, location: PatientLocation, staffId?: number) => {
-      const p = P(id);
-      patients.push({ id, location, assignedAcuity: p.assignedAcuity, trueAcuity: p.trueAcuity, arrivalTime: p.arrivalTime, staffId });
-    };
-    for (const id of this.triageQueue.ids()) view(id, 'waitingTriage');
-    for (const id of this.doctorQueues.main.ids()) view(id, 'waitingDoctor');
-    for (const id of this.doctorQueues.fastTrack.ids()) view(id, 'waitingFastTrack');
-    for (const x of inTriage) view(x.id, 'triage', x.staffId);
-    for (const x of withDoctor) view(x.id, x.lane === 'fastTrack' ? 'fastTrack' : 'doctor', x.staffId);
-    patients.sort((a, b) => a.id - b.id);
+    for (const id of this.active) {
+      const p = this.patients[id]!;
+      const r = this.rt[id]!;
+      const staffIds = staffByPatient.get(id) ?? [];
+      let location: PatientLocation;
+      let waitingFor: string | undefined;
+      if (r.hasBed) location = 'bed';
+      else if (staffIds.length > 0) location = 'intake';
+      else location = 'waiting';
+      if (staffIds.length === 0 && p.boardingStartTime === undefined) {
+        const queued = r.status.findIndex((st) => st === 'queued');
+        if (queued >= 0) waitingFor = this.pipeline[queued]!.kind;
+        else if (r.bedRequested && !r.hasBed) waitingFor = 'bed';
+      }
+      patients.push({
+        id,
+        location,
+        waitingFor,
+        lane: p.lane,
+        bed: p.bed,
+        boarding: p.boardingStartTime !== undefined,
+        assignedAcuity: p.assignedAcuity,
+        trueAcuity: p.trueAcuity,
+        arrivalTime: p.arrivalTime,
+        staffIds,
+        source: p.source,
+      });
+    }
+    const bedInfo = (lane: Lane) => ({
+      capacity: Number.isFinite(this.bedCapacity[lane]) ? this.bedCapacity[lane] : null,
+      occupied: this.bedsUsed[lane].filter((x) => x !== null).length,
+    });
     return {
       now: this.clock,
-      patients,
       durationMinutes: this.config.durationMinutes,
       finished: this.finished,
-      waitingTriage: this.triageQueue.ids().map((id) => ({ id, trueAcuity: P(id).trueAcuity, arrivalTime: P(id).arrivalTime })),
-      waitingDoctor: { main: doctorLine('main'), fastTrack: doctorLine('fastTrack') },
-      inTriage,
-      withDoctor,
-      staff: this.staff.map((s) => ({ id: s.id, role: s.role, busy: s.patientId !== null, retiring: s.retiring })),
+      patients,
+      staff: this.staff.map((s) => ({
+        id: s.id,
+        role: s.role,
+        busy: s.taskId !== null,
+        retiring: s.retiring,
+        fatigue: this.fatigue(s),
+        patientId: s.taskId === null ? undefined : this.tasks.get(s.taskId)!.patientId,
+      })),
+      beds: { main: bedInfo('main'), fastTrack: bedInfo('fastTrack') },
+      inpatient: this.config.modules.boarding
+        ? { capacity: this.config.boarding.inpatientBeds, occupied: this.inpatientOccupied, boarders: this.boarders.length, escalated: this.escalated }
+        : null,
       settings: {
         discipline: this.discipline,
         fastTrackEnabled: this.fastTrackEnabled,
         fastTrackOpen: this.fastTrackOpen(),
         fastTrackMinAcuity: this.fastTrackMinAcuity,
       },
-      totals: { arrived: this.patients.length, treated: this.treated, lwbs: this.lwbs },
+      totals: { arrived: this.patients.length, ...this.counts },
     };
   }
 
-  /** All patients so far (read-only use: metrics, debugging, tests). */
-  allPatients(): readonly Patient[] {
-    return this.patients;
-  }
+  // --- events ----------------------------------------------------------------
 
-  // --- event handlers ------------------------------------------------------
+  private push(time: number, ev: SimEvent): void {
+    this.events.push(time, ev, PRIORITY[ev.kind]);
+  }
 
   private handle(ev: SimEvent): void {
     switch (ev.kind) {
       case 'arrival':
-        this.onArrival();
+        this.admitArrival({ source: 'walkIn', stream: `walkIn:${this.walkIns++}` });
+        this.scheduleNextArrival(this.clock);
         break;
-      case 'triageEnd':
-        this.onTriageEnd(ev.staffId);
+      case 'specialArrival':
+        this.admitArrival(ev.spec);
         break;
-      case 'treatmentEnd':
-        this.onTreatmentEnd(ev.staffId);
+      case 'taskEnd':
+        this.onTaskEnd(ev.staffId);
+        break;
+      case 'turnaroundEnd':
+        this.completeStep(this.patients[ev.patientId]!, ev.step);
         break;
       case 'abandon':
         this.onAbandon(ev.patientId);
         break;
+      case 'deteriorate':
+        this.onDeteriorate(ev.patientId, ev.token);
+        break;
       case 'shift':
-        if (ev.version === this.scheduleVersion[ev.role]) this.setCount(ev.role, onDutyCount(this.schedule[ev.role]!, this.calendarOffset, this.clock));
+        if (ev.version === this.scheduleVersion[ev.role]) this.reconcileStaff(ev.role);
+        break;
+      case 'handover':
+        this.onHandover();
+        break;
+      case 'inpatientDischarge':
+        this.onInpatientDischarge();
         break;
       case 'command':
         this.apply(ev.command);
@@ -297,167 +491,464 @@ export class Simulation {
 
   private scheduleNextArrival(from: number): void {
     const t = this.arrivals.next(from, this.config.durationMinutes);
-    if (t !== undefined) this.events.push(t, { kind: 'arrival' }, PRIORITY.arrival);
+    if (t !== undefined) this.push(t, { kind: 'arrival' });
   }
 
-  private onArrival(): void {
+  private admitArrival(spec: ArrivalSpec): void {
     const c = this.config;
-    const trueAcuity = ACUITIES[this.rng.acuity.weightedIndex(this.acuityWeights)]!;
-    // Every per-patient draw happens here, in a fixed order, whatever the config: common random numbers.
-    const mean = c.serviceMeanByAcuity[trueAcuity];
-    const serviceMinutes =
-      c.serviceDistribution === 'lognormal' ? this.rng.service.lognormal(mean, c.lognormalCv) : this.rng.service.exponential(mean);
-    const triageMinutes = this.rng.triageTime.lognormal(c.triage.meanMinutes, c.triage.cv);
-    const triageResult = this.drawTriageResult(trueAcuity);
-    const patienceMean = c.lwbs.patienceMeanByAcuity[trueAcuity];
-    // Lognormal from one standard-normal draw, taken even when unused so streams stay aligned.
-    const z = this.rng.patience.normal();
+    // Every patient has their own random stream, so their draws don't depend on anyone else.
+    const rng = this.root.stream(spec.stream);
+    const acuityDraw = ACUITIES[rng.weightedIndex(this.acuityWeights)]!;
+    const acuity = spec.acuity ?? acuityDraw;
+    const pool = this.conditionsByAcuity[acuity];
+    const conditionDraw = pool[rng.weightedIndex(pool.map((x) => x.weight))]!;
+    const condition = (spec.conditionId && this.conditionById.get(spec.conditionId)) || conditionDraw;
+    const patienceMean = c.lwbs.patienceMeanByAcuity[acuity];
+    const z = rng.normal();
     const sigma2 = Math.log(1 + c.lwbs.patienceCv ** 2);
     const patienceMinutes = Number.isFinite(patienceMean) ? Math.exp(Math.log(patienceMean) - sigma2 / 2 + Math.sqrt(sigma2) * z) : Infinity;
 
     const p: Patient = {
       id: this.patients.length,
-      trueAcuity,
-      state: 'waitingTriage',
-      serviceMinutes,
-      triageMinutes,
-      triageResult,
+      source: spec.source,
+      bounceOf: spec.bounceOf,
+      conditionId: condition.id,
+      initialAcuity: acuity,
+      trueAcuity: acuity,
       patienceMinutes,
+      deteriorations: 0,
       arrivalTime: this.clock,
     };
     this.patients.push(p);
+    this.rt.push({
+      rng,
+      condition,
+      status: this.pipeline.map(() => 'blocked'),
+      taskIds: this.pipeline.map(() => undefined),
+      bedRequested: false,
+      hasBed: false,
+      activeTasks: 0,
+      wantsToLeave: false,
+      seen: false,
+      finished: false,
+      deteriorationToken: 0,
+      thoroughness: [],
+      evalFatigue: 0,
+      triageFatigue: 0,
+    });
+    this.active.add(p.id);
+    this.inSystem++;
+    this.notSeen++;
+    if (spec.source === 'bounceBack') this.counts.bounceBacks++;
 
-    if (c.lwbs.enabled && Number.isFinite(patienceMinutes))
-      this.events.push(this.clock + patienceMinutes, { kind: 'abandon', patientId: p.id }, PRIORITY.abandon);
-
-    if (c.triage.enabled) this.triageQueue.push(p.id, 0, this.clock);
-    else this.enqueueForDoctor(p);
-    this.scheduleNextArrival(this.clock);
+    if (spec.preTriaged) {
+      // Field triage: tagged on scene (same accuracy as the ED triage desk), no triage step here.
+      p.assignedAcuity = this.triageResult(p);
+      p.triageAssigned = p.assignedAcuity;
+      p.acuityAtTriage = p.trueAcuity;
+      this.pipeline.forEach((s, i) => {
+        if (s.kind === 'triage') this.rt[p.id]!.status[i] = 'skipped';
+      });
+    }
+    if (c.lwbs.enabled && Number.isFinite(patienceMinutes)) this.push(this.clock + patienceMinutes, { kind: 'abandon', patientId: p.id });
+    if (c.deterioration.enabled) this.scheduleDeterioration(p);
+    this.advance(p);
   }
 
-  private drawTriageResult(trueAcuity: Acuity): Acuity {
+  // --- the step graph ----------------------------------------------------------
+
+  private applies(p: Patient, s: StepDef): boolean {
+    const a = p.assignedAcuity ?? 3;
+    const lane = p.lane ?? this.routeLane(p);
+    return a >= s.minAcuity && a <= s.maxAcuity && s.lanes.includes(lane);
+  }
+
+  /** Start every step whose prerequisites are met; finish the visit when all are done. */
+  private advance(p: Patient): void {
+    const r = this.rt[p.id]!;
+    if (r.finished) return;
+    let progressed = true;
+    while (progressed && !r.finished) {
+      progressed = false;
+      for (let i = 0; i < this.pipeline.length; i++) {
+        if (r.status[i] !== 'blocked') continue;
+        const s = this.pipeline[i]!;
+        const ready =
+          s.after.every((id) => {
+            const st = r.status[this.stepIndex.get(id)!];
+            return st === 'done' || st === 'skipped';
+          }) && (i !== this.dispositionStep || r.status.every((st, j) => j === i || st === 'done' || st === 'skipped'));
+        if (!ready) continue;
+        if (!this.applies(p, s)) {
+          r.status[i] = 'skipped';
+          progressed = true;
+          continue;
+        }
+        if (s.inBed && !r.hasBed) {
+          this.requestBed(p);
+          continue;
+        }
+        this.startStep(p, i);
+        progressed = true;
+      }
+    }
+  }
+
+  private startStep(p: Patient, i: number): void {
+    const r = this.rt[p.id]!;
+    const s = this.pipeline[i]!;
+    if (s.kind === 'doctorEval' && p.doctorQueueTime === undefined) p.doctorQueueTime = this.clock;
+    if (s.role !== null && s.meanMinutesByAcuity[p.trueAcuity] > 0) {
+      const pool: Role = s.role === 'doctor' && p.lane === 'fastTrack' ? 'fastTrackClinician' : s.role;
+      const task: Task = { id: this.nextTaskId++, patientId: p.id, step: i, readyTime: this.clock, pool };
+      this.tasks.set(task.id, task);
+      r.taskIds[i] = task.id;
+      r.status[i] = 'queued';
+      this.pools[pool].push(task.id, this.taskClass(p, s), task.readyTime);
+      return;
+    }
+    // Unstaffed (or zero-time) step: straight to its turnaround, if any.
+    if (s.kind === 'doctorEval') this.markSeen(p, undefined, 0);
+    this.startTurnaround(p, i);
+  }
+
+  private taskClass(p: Patient, s: StepDef): number {
+    if (s.kind === 'disposition' && this.config.dispositionFirst) return -1;
+    if (s.kind === 'triage' || s.kind === 'registration') return 0;
+    return this.discipline === 'acuity' ? (p.assignedAcuity ?? 3) : 0;
+  }
+
+  private startTurnaround(p: Patient, i: number): void {
+    const r = this.rt[p.id]!;
+    const s = this.pipeline[i]!;
+    const mean = s.turnaroundMinutesByAcuity[p.trueAcuity];
+    const minutes = mean > 0 ? drawDuration(r.rng.stream(`turnaround:${s.id}`), mean, s.turnaroundCv, 'lognormal') : 0;
+    if (minutes > 0) {
+      r.status[i] = 'turnaround';
+      this.push(this.clock + minutes, { kind: 'turnaroundEnd', patientId: p.id, step: i });
+    } else this.completeStep(p, i);
+  }
+
+  private completeStep(p: Patient, i: number): void {
+    const r = this.rt[p.id]!;
+    if (r.finished) return;
+    const s = this.pipeline[i]!;
+    r.status[i] = 'done';
+    if (DIAGNOSTIC_KINDS.includes(s.kind)) r.thoroughness.push(s.thoroughness);
+    if (s.kind === 'triage') {
+      p.triageEndTime = this.clock;
+      p.assignedAcuity = this.triageResult(p);
+      p.triageAssigned = p.assignedAcuity;
+      p.acuityAtTriage = p.trueAcuity;
+    }
+    if (s.kind === 'disposition') {
+      this.dispose(p);
+      return;
+    }
+    if (r.wantsToLeave && !r.seen && r.activeTasks === 0) {
+      this.leaveWithoutBeingSeen(p);
+      return;
+    }
+    this.advance(p);
+  }
+
+  private triageResult(p: Patient): Acuity {
+    const r = this.rt[p.id]!;
     const { accuracy, underTriageShare } = this.config.triage;
-    const u = this.rng.triageResult.next();
-    const v = this.rng.triageResult.next();
-    if (u < accuracy) return trueAcuity;
-    const under = v < underTriageShare;
+    const rng = r.rng.stream('triage');
+    const u = rng.next();
+    const v = rng.next();
+    const errorFactor = this.config.modules.burnout ? 1 + this.config.burnout.errorEffect * r.triageFatigue : 1;
+    if (u >= Math.min(1, (1 - accuracy) * errorFactor)) return p.trueAcuity;
     // Off by one level, clipped to 1..5; at the edge the error goes the other way.
-    let a = trueAcuity + (under ? 1 : -1);
+    let a = p.trueAcuity + (v < underTriageShare ? 1 : -1);
     if (a > 5) a = 4;
     if (a < 1) a = 2;
     return a as Acuity;
   }
 
-  private onTriageEnd(staffId: number): void {
-    const s = this.staffById(staffId);
-    const p = this.patients[s.patientId!]!;
-    this.release(s);
-    p.triageEndTime = this.clock;
-    p.assignedAcuity = p.triageResult;
-    if (this.config.lwbs.enabled && this.clock - p.arrivalTime >= p.patienceMinutes) {
-      // Patience ran out during triage: they leave rather than join the doctor queue.
-      this.depart(p, 'lwbs');
-      return;
-    }
-    this.enqueueForDoctor(p);
+  private markSeen(p: Patient, staffId: number | undefined, fatigue: number): void {
+    const r = this.rt[p.id]!;
+    if (r.seen) return;
+    r.seen = true;
+    this.notSeen--;
+    r.evalFatigue = fatigue;
+    p.doctorStartTime = this.clock;
+    p.providerId = staffId;
   }
 
-  private onTreatmentEnd(staffId: number): void {
-    const s = this.staffById(staffId);
-    const p = this.patients[s.patientId!]!;
-    this.release(s);
-    this.depart(p, 'treated');
+  /** Disposition: diagnosis outcome, then admit (maybe boarding) or discharge. */
+  private dispose(p: Patient): void {
+    const c = this.config;
+    const r = this.rt[p.id]!;
+    p.dispositionTime = this.clock;
+    const rng = r.rng.stream('disposition');
+    const [uMiss, uBounce, uWhen, uAdmit] = [rng.next(), rng.next(), rng.next(), rng.next()];
+    if (c.modules.diagnosis) {
+      const t = r.thoroughness.length ? r.thoroughness.reduce((a, b) => a + b, 0) / r.thoroughness.length : c.diagnosis.thoroughness;
+      const [m0, m1] = c.diagnosis.missFactorRange;
+      const fatigueFactor = c.modules.burnout ? 1 + c.burnout.errorEffect * r.evalFatigue : 1;
+      const missProb = Math.min(1, r.condition.missRisk * (m0 + (m1 - m0) * t) * fatigueFactor);
+      if (uMiss < missProb) {
+        // A missed diagnosis sends the patient home.
+        p.misdiagnosed = true;
+        if (uBounce < c.diagnosis.bounceBackProbability) {
+          p.returnsAt = this.clock + uWhen * c.diagnosis.returnWithinHours * 60;
+          if (p.returnsAt <= c.durationMinutes) {
+            const acuity = Math.max(1, p.trueAcuity - 1) as Acuity;
+            this.push(p.returnsAt, { kind: 'specialArrival', spec: { source: 'bounceBack', stream: `bounceBack:${p.id}`, acuity, conditionId: p.conditionId, bounceOf: p.id } });
+          }
+        }
+        this.depart(p, 'discharged');
+        return;
+      }
+    }
+    if (uAdmit >= r.condition.admit) {
+      this.depart(p, 'discharged');
+      return;
+    }
+    if (!c.modules.boarding) {
+      this.depart(p, 'admitted');
+      return;
+    }
+    if (this.inpatientOccupied < c.boarding.inpatientBeds) {
+      this.inpatientOccupied++;
+      this.depart(p, 'admitted');
+      return;
+    }
+    // Boarding: stays in the ED bed until an inpatient bed frees up.
+    p.boardingStartTime = this.clock;
+    r.finished = true;
+    this.boarders.push(p.id);
+  }
+
+  private onInpatientDischarge(): void {
+    if (this.inpatientOccupied > 0) this.inpatientOccupied--;
+    while (this.boarders.length > 0 && this.inpatientOccupied < this.config.boarding.inpatientBeds) {
+      const p = this.patients[this.boarders.shift()!]!;
+      this.inpatientOccupied++;
+      this.depart(p, 'admitted');
+    }
+    const t = this.inpatientArrivals!.next(this.clock, this.config.durationMinutes);
+    if (t !== undefined) this.push(t, { kind: 'inpatientDischarge' });
+  }
+
+  private depart(p: Patient, outcome: Outcome): void {
+    const r = this.rt[p.id]!;
+    r.finished = true;
+    p.outcome = outcome;
+    p.departureTime = this.clock;
+    this.active.delete(p.id);
+    this.inSystem--;
+    if (!r.seen) this.notSeen--;
+    this.counts[outcome === 'lwbs' ? 'lwbs' : outcome]++;
+    // Cancel anything still queued for them.
+    r.taskIds.forEach((tid, i) => {
+      if (tid === undefined || r.status[i] !== 'queued') return;
+      this.pools[this.tasks.get(tid)!.pool].remove(tid);
+      this.tasks.delete(tid);
+    });
+    if (p.lane !== undefined) this.bedQueues[p.lane].remove(p.id);
+    if (r.hasBed) this.releaseBed(p);
+  }
+
+  private leaveWithoutBeingSeen(p: Patient): void {
+    this.depart(p, 'lwbs');
   }
 
   private onAbandon(id: number): void {
     const p = this.patients[id]!;
-    if (p.state === 'waitingTriage') this.triageQueue.remove(id);
-    else if (p.state === 'waitingDoctor') this.doctorQueues[p.lane!].remove(id);
-    else return; // being seen (or already gone): stays
-    this.depart(p, 'lwbs');
+    const r = this.rt[id]!;
+    if (r.finished || r.seen) return;
+    if (r.activeTasks > 0) r.wantsToLeave = true; // leaves when the current step ends
+    else this.leaveWithoutBeingSeen(p);
   }
 
-  // --- routing & dispatch ----------------------------------------------------
+  private scheduleDeterioration(p: Patient): void {
+    const r = this.rt[p.id]!;
+    if (p.trueAcuity === 1) return;
+    const { scaleMinutesByAcuity, shape } = this.config.deterioration;
+    const u = r.rng.stream(`deteriorate:${p.deteriorations}`).next();
+    // Weibull: time to worsen, measured from arrival. Hazard rises with time waited.
+    const scale = scaleMinutesByAcuity[p.trueAcuity];
+    const sinceArrival = scale * Math.pow(-Math.log(1 - u), 1 / shape);
+    const at = Math.max(this.clock, p.arrivalTime + sinceArrival);
+    this.push(at, { kind: 'deteriorate', patientId: p.id, token: ++r.deteriorationToken });
+  }
+
+  private onDeteriorate(id: number, token: number): void {
+    const p = this.patients[id]!;
+    const r = this.rt[id]!;
+    if (r.finished || r.seen || token !== r.deteriorationToken) return;
+    p.trueAcuity = Math.max(1, p.trueAcuity - 1) as Acuity;
+    p.deteriorations++;
+    this.counts.deteriorations++;
+    // Staff notice: if already triaged, their priority is raised to match.
+    if (p.assignedAcuity !== undefined && p.assignedAcuity > p.trueAcuity) {
+      p.assignedAcuity = p.trueAcuity;
+      this.requeue(p);
+    }
+    this.scheduleDeterioration(p);
+  }
+
+  /** Re-sort a patient's queued tasks and bed request after their priority changed. */
+  private requeue(p: Patient): void {
+    const r = this.rt[p.id]!;
+    r.taskIds.forEach((tid, i) => {
+      if (tid === undefined || r.status[i] !== 'queued') return;
+      const task = this.tasks.get(tid)!;
+      this.pools[task.pool].remove(tid);
+      this.pools[task.pool].push(tid, this.taskClass(p, this.pipeline[i]!), task.readyTime);
+    });
+    if (p.lane !== undefined && this.bedQueues[p.lane].remove(p.id)) this.bedQueues[p.lane].push(p.id, this.bedClass(p), p.bedRequestTime!);
+  }
+
+  // --- beds ---------------------------------------------------------------------
 
   private fastTrackOpen(): boolean {
-    return this.fastTrackEnabled && this.config.triage.enabled && this.activeCount('fastTrackClinician') > 0;
+    return this.fastTrackEnabled && this.activeCount('fastTrackClinician') > 0;
   }
 
-  private laneFor(p: Patient): Lane {
-    return this.fastTrackOpen() && p.assignedAcuity !== undefined && p.assignedAcuity >= this.fastTrackMinAcuity ? 'fastTrack' : 'main';
+  private routeLane(p: Patient): Lane {
+    if (p.assignedAcuity === undefined || !this.fastTrackOpen()) return 'main';
+    if (this.config.routing.length > 0) {
+      const rule = this.config.routing.find((x) => p.assignedAcuity! >= x.minAcuity && p.assignedAcuity! <= x.maxAcuity);
+      return rule?.lane ?? 'main';
+    }
+    return p.assignedAcuity >= this.fastTrackMinAcuity ? 'fastTrack' : 'main';
   }
 
-  private queueClass(p: Patient): number {
+  private bedClass(p: Patient): number {
     return this.discipline === 'acuity' ? (p.assignedAcuity ?? 3) : 0;
   }
 
-  private enqueueForDoctor(p: Patient): void {
-    p.state = 'waitingDoctor';
-    p.doctorQueueTime ??= this.clock;
-    p.lane = this.laneFor(p);
-    this.doctorQueues[p.lane].push(p.id, this.queueClass(p), p.doctorQueueTime);
+  private requestBed(p: Patient): void {
+    const r = this.rt[p.id]!;
+    if (r.bedRequested) return;
+    r.bedRequested = true;
+    p.bedRequestTime = this.clock;
+    p.lane = this.routeLane(p);
+    this.bedQueues[p.lane].push(p.id, this.bedClass(p), p.bedRequestTime);
+    this.fillBeds(p.lane);
   }
 
-  /** Re-sort everyone waiting for a doctor (after routing rules or queue order change). */
-  private reroute(): void {
-    const ids = [...this.doctorQueues.main.drain(), ...this.doctorQueues.fastTrack.drain()];
-    for (const id of ids) this.enqueueForDoctor(this.patients[id]!);
+  private fillBeds(lane: Lane): void {
+    const used = this.bedsUsed[lane];
+    for (;;) {
+      const occupied = used.filter((x) => x !== null).length;
+      if (occupied >= this.bedCapacity[lane] || this.bedQueues[lane].size === 0) return;
+      const id = this.bedQueues[lane].pop()!;
+      const p = this.patients[id]!;
+      let idx = used.indexOf(null);
+      if (idx < 0) idx = used.push(null) - 1;
+      used[idx] = id;
+      p.bed = idx;
+      p.bedTime = this.clock;
+      this.rt[id]!.hasBed = true;
+      this.advance(p);
+    }
   }
+
+  private releaseBed(p: Patient): void {
+    const lane = p.lane!;
+    this.bedsUsed[lane][p.bed!] = null;
+    this.rt[p.id]!.hasBed = false;
+    this.fillBeds(lane);
+  }
+
+  /** Patients still waiting for a bed are re-routed when fast track opens or closes. */
+  private rerouteBedQueues(): void {
+    const ids = [...this.bedQueues.main.drain(), ...this.bedQueues.fastTrack.drain()].sort((a, b) => a - b);
+    for (const id of ids) {
+      const p = this.patients[id]!;
+      p.lane = this.routeLane(p);
+      this.bedQueues[p.lane].push(id, this.bedClass(p), p.bedRequestTime!);
+    }
+    this.fillBeds('main');
+    this.fillBeds('fastTrack');
+  }
+
+  /** Re-key every queued task (after the queue discipline changed). */
+  private requeueAll(): void {
+    for (const id of this.active) if (!this.rt[id]!.finished) this.requeue(this.patients[id]!);
+  }
+
+  // --- staff --------------------------------------------------------------------
 
   private afterChange(): void {
     const open = this.fastTrackOpen();
     if (open !== this.fastTrackWasOpen) {
       this.fastTrackWasOpen = open;
-      this.reroute();
+      this.rerouteBedQueues();
     }
     this.dispatch();
     this.updateCounters();
   }
 
-  /** Give free staff the next patient from their line (lowest staff id first). */
+  /** Give free staff the next task from their pool (lowest staff id first). */
   private dispatch(): void {
+    const ftClosed = !this.fastTrackOpen();
     for (const s of this.staff) {
-      if (s.patientId !== null || s.retiring) continue;
-      let id: number | undefined;
-      if (s.role === 'triageNurse') id = this.triageQueue.pop();
-      else if (s.role === 'fastTrackClinician') id = this.doctorQueues.fastTrack.pop();
-      else {
-        id = this.doctorQueues.main.pop();
-        if (id === undefined && this.config.fastTrack.doctorsTakeOverflow) {
-          // A free main-ED doctor picks up a minor case rather than sit idle; seen in the main ED.
-          id = this.doctorQueues.fastTrack.pop();
-          if (id !== undefined) this.patients[id]!.lane = 'main';
-        }
+      if (s.taskId !== null || s.retiring) continue;
+      let tid = this.pools[s.role].pop();
+      if (tid === undefined && s.role === 'doctor' && (this.config.fastTrack.doctorsTakeOverflow || ftClosed)) {
+        // A free main-ED doctor picks up fast-track work rather than sit idle.
+        tid = this.pools.fastTrackClinician.pop();
       }
-      if (id === undefined) continue;
-      const p = this.patients[id]!;
-      s.patientId = id;
-      p.providerId = s.id;
-      if (s.role === 'triageNurse') {
-        p.state = 'inTriage';
-        p.triageStartTime = this.clock;
-        this.events.push(this.clock + p.triageMinutes, { kind: 'triageEnd', staffId: s.id }, PRIORITY.triageEnd);
-      } else {
-        p.state = 'withDoctor';
-        p.doctorStartTime = this.clock;
-        const minutes = p.serviceMinutes * (p.lane === 'fastTrack' ? this.config.fastTrack.serviceFactor : 1);
-        this.events.push(this.clock + minutes, { kind: 'treatmentEnd', staffId: s.id }, PRIORITY.treatmentEnd);
-      }
+      if (tid === undefined) continue;
+      this.startTask(s, this.tasks.get(tid)!);
     }
   }
 
-  private depart(p: Patient, outcome: 'treated' | 'lwbs'): void {
-    p.state = 'departed';
-    p.outcome = outcome;
-    p.departureTime = this.clock;
-    if (outcome === 'treated') this.treated++;
-    else this.lwbs++;
+  private startTask(s: Staff, task: Task): void {
+    const c = this.config;
+    const p = this.patients[task.patientId]!;
+    const r = this.rt[p.id]!;
+    const step = this.pipeline[task.step]!;
+    const fatigue = this.fatigue(s);
+    s.taskId = task.id;
+    s.taskStart = this.clock;
+    r.status[task.step] = 'active';
+    r.activeTasks++;
+    if (step.kind === 'triage') {
+      p.triageStartTime = this.clock;
+      r.triageFatigue = fatigue;
+    }
+    if (step.kind === 'doctorEval') this.markSeen(p, s.id, fatigue);
+
+    let minutes = drawDuration(r.rng.stream(`step:${step.id}`), step.meanMinutesByAcuity[p.trueAcuity], step.cv, step.distribution);
+    if (c.modules.diagnosis && DIAGNOSTIC_KINDS.includes(step.kind)) {
+      const [f0, f1] = c.diagnosis.timeFactorRange;
+      // Scaled so the baseline thoroughness leaves the params' service times unchanged.
+      const at = (t: number) => f0 + (f1 - f0) * t;
+      minutes *= at(step.thoroughness) / at(c.diagnosis.baselineThoroughness);
+    }
+    if (c.modules.burnout) minutes *= 1 + c.burnout.timeEffect * fatigue;
+    if (s.role === 'fastTrackClinician') minutes *= c.fastTrack.serviceFactor;
+    this.push(this.clock + minutes, { kind: 'taskEnd', staffId: s.id });
   }
 
-  // --- staff -----------------------------------------------------------------
+  private onTaskEnd(staffId: number): void {
+    const s = this.staff.find((x) => x.id === staffId)!;
+    const task = this.tasks.get(s.taskId!)!;
+    this.tasks.delete(task.id);
+    s.busyMinutes += this.clock - s.taskStart!;
+    s.taskId = null;
+    s.taskStart = undefined;
+    if (s.retiring) this.removeStaff(s);
+    const p = this.patients[task.patientId]!;
+    const r = this.rt[p.id]!;
+    r.activeTasks--;
+    if (r.finished) return;
+    r.taskIds[task.step] = undefined;
+    this.startTurnaround(p, task.step);
+  }
 
-  private staffById(id: number): Staff {
-    return this.staff.find((s) => s.id === id)!;
+  private fatigue(s: Staff): number {
+    if (!this.config.modules.burnout) return 0;
+    const b = this.config.burnout;
+    const busy = s.busyMinutes + (s.taskStart !== undefined ? this.clock - s.taskStart : 0);
+    return (b.perBusyHour * busy) / 60 + (b.perShiftHour * Math.max(0, this.clock - s.shiftStart)) / 60;
   }
 
   private activeCount(role: Role): number {
@@ -466,46 +957,83 @@ export class Simulation {
     return n;
   }
 
-  private release(s: Staff): void {
-    s.patientId = null;
-    if (s.retiring) this.staff.splice(this.staff.indexOf(s), 1);
+  private addStaff(role: Role, occ: string | undefined, shiftStart: number): void {
+    this.staff.push({ id: this.nextStaffId++, role, taskId: null, retiring: false, occ, shiftStart, busyMinutes: 0 });
   }
 
-  private setCount(role: Role, target: number): void {
-    let active = this.activeCount(role);
-    // Grow: first cancel pending departures, then bring in new staff.
+  private removeStaff(s: Staff): void {
+    this.fatigueLog.push({ role: s.role, start: s.shiftStart, end: this.clock, fatigue: this.fatigue(s) });
+    this.staff.splice(this.staff.indexOf(s), 1);
+  }
+
+  /** Send someone home: now if idle, else after their current task. */
+  private retire(s: Staff): void {
+    if (s.taskId === null) this.removeStaff(s);
+    else s.retiring = true;
+  }
+
+  /**
+   * Bring a role's staff in line with its schedule (one group per shift occurrence in progress)
+   * or its fixed target. Manual extras from setStaff last until the role's next shift boundary.
+   */
+  private reconcileStaff(role: Role): void {
+    const shifts = this.schedule[role];
+    const mine = () => this.staff.filter((s) => s.role === role && !s.retiring);
+    if (!shifts) {
+      const active = mine();
+      for (let n = active.length; n < this.fixedTarget[role]; n++) this.addStaff(role, undefined, this.clock);
+      // Newest leave first, idle before busy.
+      const extra = active.length - this.fixedTarget[role];
+      if (extra > 0) {
+        const order = [...active].reverse().sort((a, b) => Number(a.taskId !== null) - Number(b.taskId !== null));
+        order.slice(0, extra).forEach((s) => this.retire(s));
+      }
+      return;
+    }
+    const current = occurrencesInRun(shifts, this.calendarOffset, this.clock, this.clock + 1e-9).filter((o) => o.start <= this.clock && this.clock < o.end);
+    const keys = new Set(current.map((o) => o.key));
+    for (const s of mine()) if (s.occ === undefined || !keys.has(s.occ)) this.retire(s);
+    for (const o of current) {
+      const members = mine().filter((s) => s.occ === o.key);
+      for (let n = members.length; n < o.count; n++) this.addStaff(role, o.key, o.start);
+      members.slice(o.count).forEach((s) => this.retire(s));
+    }
+  }
+
+  private setStaffNow(role: Role, target: number): void {
+    const active = this.staff.filter((s) => s.role === role && !s.retiring);
+    // Cancel pending departures first, then bring in extras.
+    let n = active.length;
     for (const s of this.staff) {
-      if (active >= target) break;
+      if (n >= target) break;
       if (s.role === role && s.retiring) {
         s.retiring = false;
-        active++;
+        n++;
       }
     }
-    while (active < target) {
-      this.staff.push({ id: this.nextStaffId++, role, patientId: null, retiring: false });
-      active++;
-    }
-    // Shrink: idle staff leave now (newest first); busy ones finish their patient.
-    for (let i = this.staff.length - 1; i >= 0 && active > target; i--) {
-      const s = this.staff[i]!;
-      if (s.role === role && !s.retiring && s.patientId === null) {
-        this.staff.splice(i, 1);
-        active--;
-      }
-    }
-    for (let i = this.staff.length - 1; i >= 0 && active > target; i--) {
-      const s = this.staff[i]!;
-      if (s.role === role && !s.retiring) {
-        s.retiring = true;
-        active--;
-      }
+    for (; n < target; n++) this.addStaff(role, undefined, this.clock);
+    const now = this.staff.filter((s) => s.role === role && !s.retiring);
+    const extra = now.length - target;
+    if (extra > 0) {
+      const order = [...now].reverse().sort((a, b) => Number(a.taskId !== null) - Number(b.taskId !== null));
+      order.slice(0, extra).forEach((s) => this.retire(s));
     }
   }
 
   private scheduleShiftEvents(role: Role): void {
     const version = this.scheduleVersion[role];
     for (const t of scheduleBoundaries(this.schedule[role]!, this.calendarOffset, this.config.durationMinutes)) {
-      if (t > this.clock) this.events.push(t, { kind: 'shift', role, version }, PRIORITY.shift);
+      if (t > this.clock) this.push(t, { kind: 'shift', role, version });
+    }
+  }
+
+  /** Fixed (unscheduled) staff hand over every few hours: fatigue starts again. */
+  private onHandover(): void {
+    for (const s of this.staff) {
+      if (s.occ !== undefined || this.schedule[s.role]) continue;
+      this.fatigueLog.push({ role: s.role, start: s.shiftStart, end: this.clock, fatigue: this.fatigue(s) });
+      s.shiftStart = this.clock;
+      s.busyMinutes = s.taskStart !== undefined ? -(this.clock - s.taskStart) : 0;
     }
   }
 
@@ -515,13 +1043,16 @@ export class Simulation {
     this.log.push({ atMinute: this.clock, command: JSON.parse(JSON.stringify(cmd)) as Command });
     switch (cmd.type) {
       case 'setStaff':
-        // Holds until the role's next shift boundary, if it has a schedule.
-        this.setCount(cmd.role, cmd.count);
+        if (this.schedule[cmd.role]) this.setStaffNow(cmd.role, cmd.count);
+        else {
+          this.fixedTarget[cmd.role] = cmd.count;
+          this.setStaffNow(cmd.role, cmd.count);
+        }
         break;
       case 'setSchedule':
         this.schedule[cmd.role] = cmd.shifts;
         this.scheduleVersion[cmd.role]++;
-        this.setCount(cmd.role, onDutyCount(cmd.shifts, this.calendarOffset, this.clock));
+        this.reconcileStaff(cmd.role);
         this.scheduleShiftEvents(cmd.role);
         break;
       case 'setQueueDiscipline':
@@ -531,31 +1062,46 @@ export class Simulation {
         this.fastTrackEnabled = cmd.enabled;
         if (cmd.minAcuity !== undefined) this.fastTrackMinAcuity = cmd.minAcuity;
         break;
+      case 'setBeds':
+        this.bedCapacity[cmd.lane] = cmd.count ?? Infinity;
+        break;
+      case 'setEscalation':
+        this.escalated = cmd.enabled;
+        break;
     }
-    // Routing rules or queue order may have changed: re-sort everyone waiting for a doctor.
+    // Routing or queue order may have changed.
     this.fastTrackWasOpen = this.fastTrackOpen();
-    this.reroute();
+    this.rerouteBedQueues();
+    this.requeueAll();
     this.dispatch();
     this.updateCounters();
   }
 
   private updateCounters(): void {
     const t = this.clock;
-    const waiting = this.triageQueue.size + this.doctorQueues.main.size + this.doctorQueues.fastTrack.size;
-    let busyTotal = 0;
+    this.tw.inSystem.set(t, this.inSystem);
+    // "Waiting" = in the department and not yet seen by a doctor.
+    this.tw.waiting.set(t, this.notSeen);
+    this.tw.boarding.set(t, this.boarders.length);
+    for (const lane of ['main', 'fastTrack'] as const) this.tw.bedsOccupied[lane].set(t, this.bedsUsed[lane].filter((x) => x !== null).length);
     for (const role of ROLES) {
       let busy = 0;
       let duty = 0;
       for (const s of this.staff) {
         if (s.role !== role) continue;
         duty++;
-        if (s.patientId !== null) busy++;
+        if (s.taskId !== null) busy++;
       }
-      busyTotal += busy;
       this.tw.busy[role].set(t, busy);
       this.tw.onDuty[role].set(t, duty);
     }
-    this.tw.waiting.set(t, waiting);
-    this.tw.inSystem.set(t, waiting + busyTotal);
   }
+}
+
+/** A duration with the given mean: exponential, or lognormal with coefficient of variation `cv` (0 = fixed). */
+function drawDuration(rng: Rng, mean: number, cv: number, distribution: 'exponential' | 'lognormal'): number {
+  if (!(mean > 0)) return 0;
+  if (distribution === 'exponential') return rng.exponential(mean);
+  if (!(cv > 0)) return mean;
+  return rng.lognormal(mean, cv);
 }

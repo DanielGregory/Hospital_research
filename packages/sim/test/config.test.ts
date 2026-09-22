@@ -32,8 +32,8 @@ describe('config', () => {
 
   it('rejects unknown modules and modules not built yet', () => {
     expect(() => validateConfig({ id: 'x', modules: { teleport: true } })).toThrow(/unknown module/);
-    expect(() => validateConfig({ id: 'x', modules: { boarding: true } })).toThrow(/Phase 3/);
-    expect(() => validateConfig({ id: 'x', modules: { boarding: false } })).not.toThrow();
+    expect(() => validateConfig({ id: 'x', modules: { layout: true } })).toThrow(/Phase 4/);
+    expect(() => validateConfig({ id: 'x', modules: { layout: false } })).not.toThrow();
   });
 
   it('rejects bad commands', () => {

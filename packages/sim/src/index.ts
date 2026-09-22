@@ -1,6 +1,6 @@
 import { Simulation } from './engine.js';
 
-export { Simulation, type SimSnapshot, type RunResult, type PatientView, type PatientLocation } from './engine.js';
+export { Simulation, type SimSnapshot, type RunResult, type PatientView, type PatientLocation, type FatigueRecord } from './engine.js';
 export {
   resolveConfig,
   validateConfig,
@@ -10,6 +10,8 @@ export {
   IMPLEMENTED_MODULES,
   type SimConfig,
   type ResolvedConfig,
+  type ShockSpec,
+  type StepInput,
   type ModuleName,
 } from './config.js';
 export { computeMetrics, NOT_YET_MODELED, type Metrics, type AcuityGroup } from './metrics.js';
@@ -41,3 +43,5 @@ export function runSimulation(config: unknown, seed: number) {
   return new Simulation(config, seed).run();
 }
 export { hourlyLoad, onDutyByHour, meanDoctorMinutes, type HourLoad } from './analytic/load.js';
+export { defaultPipeline, checkPipeline, makeStep, STEP_KINDS, DIAGNOSTIC_KINDS, type StepDef, type StepKind, type RoutingRule } from './pipeline.js';
+export { balanceReport, type BalanceReport, type BalanceRow } from './balance.js';

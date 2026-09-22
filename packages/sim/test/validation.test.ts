@@ -85,8 +85,19 @@ describe("Little's Law", () => {
 });
 
 describe('monotonicity', () => {
-  it('more doctors never increase any patient’s wait (FIFO, no triage/LWBS; common random numbers)', () => {
-    const base = { ...basic, commands: [], durationMinutes: 3 * 1440, triage: { enabled: false }, queue: { discipline: 'fifo' }, lwbs: { enabled: false } };
+  it('more doctors never increase any patient’s wait (single doctor step, FIFO, unlimited beds; common random numbers)', () => {
+    const base = {
+      ...basic,
+      commands: [],
+      durationMinutes: 3 * 1440,
+      triage: { enabled: false },
+      queue: { discipline: 'fifo' },
+      lwbs: { enabled: false },
+      deterioration: { enabled: false },
+      workup: { enabled: false },
+      disposition: { doctorMinutes: 0 },
+      beds: { main: null },
+    };
     for (const seed of [1, 2, 3]) {
       let prevWaits: number[] | undefined;
       let prevMean = Infinity;

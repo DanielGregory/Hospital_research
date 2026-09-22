@@ -27,23 +27,42 @@ describe('triage', () => {
   });
 
   it('acuity ordering sees urgent patients faster than FIFO does', () => {
-    const base = { id: 't', durationMinutes: 14 * 1440, warmupMinutes: 1440, triage: { accuracy: 1 }, lwbs: { enabled: false } };
-    const fifo = new Simulation({ ...base, queue: { discipline: 'fifo' } }, 3).run().metrics;
-    const acuity = new Simulation({ ...base, queue: { discipline: 'acuity' } }, 3).run().metrics;
-    // Door-to-doctor includes triage, which both share; compare the doctor-queue part.
-    const wait = (m: typeof fifo, g: 'urgent' | 'minor') => m.doorToDoctorByGroup[g].mean! - m.doorToTriage.mean!;
-    expect(wait(acuity, 'urgent')).toBeLessThan(wait(fifo, 'urgent') / 3);
-    expect(wait(acuity, 'minor')).toBeGreaterThan(wait(fifo, 'minor'));
+    const base = {
+      id: 't',
+      durationMinutes: 14 * 1440,
+      warmupMinutes: 1440,
+      staffing: { doctors: 3 },
+      triage: { accuracy: 1 },
+      lwbs: { enabled: false },
+      deterioration: { enabled: false },
+    };
+    // Time from being ready for a doctor to seeing one, by true acuity group.
+    const doctorWait = (discipline: 'fifo' | 'acuity', urgent: boolean) => {
+      const sim = new Simulation({ ...base, queue: { discipline } }, 3);
+      sim.run();
+      const xs = sim
+        .allPatients()
+        .filter((p) => p.doctorStartTime !== undefined && (urgent ? p.initialAcuity <= 2 : p.initialAcuity >= 4))
+        .map((p) => p.doctorStartTime! - p.doctorQueueTime!);
+      return xs.reduce((a, b) => a + b, 0) / xs.length;
+    };
+    expect(doctorWait('acuity', true)).toBeLessThan(doctorWait('fifo', true) / 3);
+    expect(doctorWait('acuity', false)).toBeGreaterThan(doctorWait('fifo', false));
   });
 
   it('the doctor queue serves assigned acuity 1 before 5, FIFO within a level', () => {
-    const sim = new Simulation({ id: 't', durationMinutes: 3000, staffing: { doctors: 1, triageNurses: 4 }, arrivals: { hourlyRates: flat(10) } }, 5);
+    const sim = new Simulation(
+      { id: 't', durationMinutes: 3000, staffing: { doctors: 1, triageNurses: 4 }, arrivals: { hourlyRates: flat(10) }, beds: { main: null }, queue: { dispositionFirst: false } },
+      5,
+    );
     sim.runUntil(1500);
-    const line = sim.snapshot().waitingDoctor.main;
+    const line = sim.queuedTasks('doctor').filter((t) => t.kind === 'doctorEval');
     expect(line.length).toBeGreaterThan(5);
+    const P = sim.allPatients();
     for (let i = 1; i < line.length; i++) {
-      const [a, b] = [line[i - 1]!, line[i]!];
+      const [a, b] = [P[line[i - 1]!.patientId]!, P[line[i]!.patientId]!];
       expect(a.assignedAcuity! <= b.assignedAcuity!).toBe(true);
+      if (a.assignedAcuity === b.assignedAcuity) expect(a.doctorQueueTime!).toBeLessThanOrEqual(b.doctorQueueTime!);
     }
   });
 });

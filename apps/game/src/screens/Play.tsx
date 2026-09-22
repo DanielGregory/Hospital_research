@@ -16,6 +16,9 @@ const LIVE: Partial<Record<PlayerControl, (v: unknown, all: SetupValues) => Comm
   'staffing.doctors': (v) => ({ type: 'setStaff', role: 'doctor', count: Number(v) }),
   'staffing.triageNurses': (v) => ({ type: 'setStaff', role: 'triageNurse', count: Number(v) }),
   'staffing.fastTrackClinicians': (v) => ({ type: 'setStaff', role: 'fastTrackClinician', count: Number(v) }),
+  'beds.main': (v) => ({ type: 'setBeds', lane: 'main', count: Number(v) }),
+  'beds.fastTrack': (v) => ({ type: 'setBeds', lane: 'fastTrack', count: Number(v) }),
+  'boarding.escalation': (v) => ({ type: 'setEscalation', enabled: v === true }),
 };
 
 export function Play(props: { config: LevelConfig; seed: number; values: SetupValues; onFinish: (runner: GameRunner) => void; onQuit: () => void }) {
@@ -53,7 +56,7 @@ export function Play(props: { config: LevelConfig; seed: number; values: SetupVa
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          drawFloor(ctx, layoutFloor(s, w, h, showFastTrack), w, h, showFastTrack);
+          drawFloor(ctx, layoutFloor(s, w, h, showFastTrack), w, h);
         }
       }
       if (t - lastUi > 100 || s.finished) {
@@ -82,8 +85,9 @@ export function Play(props: { config: LevelConfig; seed: number; values: SetupVa
     runner.command(LIVE[ctl]!(v, next));
   };
 
-  const waitingTriage = snap.patients.filter((p) => p.location === 'waitingTriage').length;
-  const waitingDoctor = snap.patients.filter((p) => p.location === 'waitingDoctor' || p.location === 'waitingFastTrack').length;
+  const waitingTriage = snap.patients.filter((p) => p.waitingFor === 'triage').length;
+  const waitingBed = snap.patients.filter((p) => p.waitingFor === 'bed').length;
+  const boarding = snap.patients.filter((p) => p.boarding).length;
   const c = runner.sim.config;
   const progress = snap.now / snap.durationMinutes;
   const live = config.level.playerControls.filter((ctl) => LIVE[ctl]);
@@ -106,12 +110,27 @@ export function Play(props: { config: LevelConfig; seed: number; values: SetupVa
             <dd>{waitingTriage}</dd>
           </div>
           <div>
-            <dt>Waiting for a doctor</dt>
-            <dd>{waitingDoctor}</dd>
+            <dt>Waiting for a bed</dt>
+            <dd>{waitingBed}</dd>
           </div>
           <div>
-            <dt>Seen</dt>
-            <dd>{snap.totals.treated}</dd>
+            <dt>Beds in use</dt>
+            <dd>
+              {snap.beds.main.occupied}
+              {snap.beds.main.capacity !== null ? `/${snap.beds.main.capacity}` : ''}
+            </dd>
+          </div>
+          {snap.inpatient && (
+            <div>
+              <dt>Boarding (admitted, no ward bed)</dt>
+              <dd>{boarding}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Sent home / admitted</dt>
+            <dd>
+              {snap.totals.discharged} / {snap.totals.admitted}
+            </dd>
           </div>
           <div>
             <dt>Left without being seen</dt>
@@ -160,6 +179,9 @@ function Legend() {
       </li>
       <li>
         <span className="square" /> Staff (hollow = free)
+      </li>
+      <li>
+        <span className="ring" /> Boarding: admitted, waiting for a ward bed
       </li>
     </ul>
   );

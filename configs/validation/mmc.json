@@ -1,6 +1,6 @@
 {
   "id": "validation-mm3",
-  "name": "M/M/3 at 80% utilisation (Erlang C check): no triage, FIFO, no LWBS",
+  "name": "M/M/3 at 80% utilisation (Erlang C check): one doctor step, FIFO, nothing else",
   "durationMinutes": 2000000,
   "warmupMinutes": 10000,
   "arrivals": {
@@ -21,6 +21,19 @@
     "discipline": "fifo"
   },
   "lwbs": {
+    "enabled": false
+  },
+  "beds": {
+    "main": null,
+    "fastTrack": null
+  },
+  "workup": {
+    "enabled": false
+  },
+  "disposition": {
+    "doctorMinutes": 0
+  },
+  "deterioration": {
     "enabled": false
   }
 }

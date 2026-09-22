@@ -1,0 +1,115 @@
+{
+  "id": "level-06-mass-casualty",
+  "name": "Mass Casualty",
+  "durationMinutes": 480,
+  "startDayOfWeek": 5,
+  "startHour": 20,
+  "modules": {
+    "staffing": true,
+    "shocks": true
+  },
+  "staffing": {
+    "triageNurses": 1,
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 20,
+          "hours": 12,
+          "count": 3
+        }
+      ]
+    }
+  },
+  "beds": {
+    "main": 16,
+    "fastTrack": 6
+  },
+  "shocks": [
+    {
+      "type": "massCasualty",
+      "atMinute": 60,
+      "patients": 30,
+      "overMinutes": 40,
+      "acuityMix": {
+        "1": 0.2,
+        "2": 0.35,
+        "3": 0.3,
+        "4": 0.15
+      }
+    }
+  ],
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "level": {
+    "number": 6,
+    "title": "Mass Casualty",
+    "seed": 1,
+    "briefing": [
+      "Simulation six. Saturday, 20:00. Ambulance control has just called: a bus has left the motorway. About thirty casualties, the first arriving in an hour.",
+      "Paramedics will tag them on scene, so they skip your triage desk. Many of them are critically hurt.",
+      "You can call in extra doctors and open surge spaces in corridors and side rooms. Do it now, before the first ambulance arrives."
+    ],
+    "debrief": {
+      "pass": [
+        "You set up your capacity before the wave arrived, so the sickest patients reached a doctor while they could still be helped.",
+        "A surge plan only works if you start it before the patients arrive."
+      ],
+      "fail": [
+        "The wave arrived faster than doctors or beds could be found. Critically injured patients waited, and some got worse while they waited.",
+        "Call staff in and open space before the first ambulance, not after."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 25,
+        "label": "ESI 1–2: median door-to-doctor under 25 minutes"
+      },
+      {
+        "metric": "deterioration.events",
+        "max": 4,
+        "label": "No more than 4 patients get worse while waiting"
+      },
+      {
+        "metric": "lwbsRate",
+        "max": 0.12,
+        "label": "Fewer than 12% leave without being seen"
+      }
+    ],
+    "playerControls": [
+      "staffing.schedule.doctor",
+      "beds.main",
+      "queue.discipline"
+    ],
+    "limits": {
+      "maxOnDuty": {
+        "doctor": 8
+      },
+      "maxBeds": {
+        "main": 28
+      }
+    },
+    "reference": {
+      "staffing.schedule.doctor": [
+        {
+          "startHour": 20,
+          "hours": 12,
+          "count": 3
+        },
+        {
+          "startHour": 20,
+          "hours": 8,
+          "count": 5
+        }
+      ],
+      "beds.main": 26
+    },
+    "trap": {
+      "beds.main": 28
+    }
+  }
+}

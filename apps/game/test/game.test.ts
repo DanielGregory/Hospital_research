@@ -90,3 +90,19 @@ describe('format', () => {
     expect(metricValue('doorToDoctor.median', 12.4)).toBe('12 min');
   });
 });
+
+describe('floor plan with beds and boarding', () => {
+  it('puts bedded patients on distinct beds and marks boarders', () => {
+    const level5 = LEVELS.find((l) => l.level.number === 5)!;
+    const sim = new Simulation(level5, 3);
+    sim.runUntil(30 * 60);
+    const s = sim.snapshot();
+    expect(s.patients.some((p) => p.boarding)).toBe(true);
+    const plan = layoutFloor(s, 900, 600, true);
+    const onBeds = plan.patients.filter((d) => plan.beds.some((b) => d.x > b.x && d.x < b.x + b.w && d.y > b.y && d.y < b.y + b.h));
+    expect(onBeds.length).toBe(s.patients.filter((p) => p.location === 'bed').length);
+    expect(new Set(onBeds.map((d) => `${d.x},${d.y}`)).size).toBe(onBeds.length);
+    expect(plan.patients.filter((d) => d.boarding).length).toBe(s.patients.filter((p) => p.boarding).length);
+    expect(plan.beds.filter((b) => b.lane === 'main')).toHaveLength(12);
+  });
+});

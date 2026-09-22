@@ -9,8 +9,8 @@ describe('Simulation', () => {
     const sim = new Simulation({ id: 't', durationMinutes: 3000 }, 1);
     const { metrics } = sim.run();
     const s = sim.snapshot();
-    const inside = s.waitingTriage.length + s.inTriage.length + s.waitingDoctor.main.length + s.waitingDoctor.fastTrack.length + s.withDoctor.length;
-    expect(s.totals.arrived).toBe(s.totals.treated + s.totals.lwbs + inside);
+    const inside = s.patients.length;
+    expect(s.totals.arrived).toBe(s.totals.discharged + s.totals.admitted + s.totals.lwbs + inside);
     expect(metrics.inSystemAtEnd).toBe(inside);
     expect(s.finished).toBe(true);
     for (const p of sim.allPatients()) {
@@ -26,9 +26,9 @@ describe('Simulation', () => {
       sim.runUntil(t);
       const s = sim.snapshot();
       const free = (role: string) => s.staff.some((x) => x.role === role && !x.busy && !x.retiring);
-      if (s.waitingDoctor.main.length > 0) expect(free('doctor')).toBe(false);
-      if (s.waitingTriage.length > 0) expect(free('triageNurse')).toBe(false);
-      expect(s.withDoctor.length).toBeLessThanOrEqual(s.staff.filter((x) => x.role !== 'triageNurse').length);
+      if (sim.queuedTasks('doctor').length > 0) expect(free('doctor')).toBe(false);
+      if (sim.queuedTasks('triageNurse').length > 0) expect(free('triageNurse')).toBe(false);
+      for (const x of s.staff) if (x.busy) expect(s.patients.some((p) => p.staffIds.includes(x.id))).toBe(true);
     }
   });
 
@@ -53,7 +53,7 @@ describe('Simulation', () => {
     expect(doctors(sim)).toHaveLength(1);
     sim.command({ type: 'setStaff', role: 'doctor', count: 4 });
     expect(doctors(sim)).toHaveLength(4);
-    expect(sim.snapshot().withDoctor).toHaveLength(4);
+    expect(sim.snapshot().staff.filter((x) => x.role === 'doctor' && x.busy)).toHaveLength(4);
   });
 
   it('raising staff cancels pending departures before hiring', () => {

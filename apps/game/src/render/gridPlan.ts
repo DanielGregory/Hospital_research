@@ -74,6 +74,7 @@ export function layoutGrid(s: SimSnapshot, layout: ResolvedLayout, width: number
       waited: s.now - p.arrivalTime,
       boarding: p.boarding,
       special: p.source === 'walkIn' ? null : p.source,
+    byAmbulance: p.byAmbulance,
       inBed: p.location === 'bed',
       waitingFor: p.waitingFor,
     };

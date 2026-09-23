@@ -151,6 +151,16 @@
       "diagnosis.thoroughness",
       "boarding.escalation"
     ],
+    "liveCalls": [
+      "callIn",
+      "hallway",
+      "diversion",
+      "moveStaff"
+    ],
+    "stars": {
+      "two": 75,
+      "three": 88
+    },
     "limits": {
       "maxOnDuty": {
         "doctor": 7,
@@ -207,5 +217,8 @@
       "beds.main": 30,
       "diagnosis.thoroughness": 0.9
     }
+  },
+  "liveCalls": {
+    "maxCallIns": 2
   }
 }

@@ -222,7 +222,7 @@ class Figure {
     // Ambulance arrivals stay on their trolley until they are settled in a bed; admitted
     // patients go up to the ward on one.
     const inBed = a.kind === 'patient' && a.data.inBed && settled;
-    const arriving = a.kind === 'patient' && a.data.special === 'massCasualty' && !inBed && !a.leaving;
+    const arriving = a.kind === 'patient' && (a.data.special === 'massCasualty' || a.data.byAmbulance === true) && !inBed && !a.leaving;
     const toWard = a.kind === 'patient' && a.leaving && a.data.boarding;
     const onGurney = arriving || toWard;
     this.porter.visible = onGurney;
@@ -282,6 +282,8 @@ interface Theme {
 export class Scene3D {
   readonly renderer: THREE.WebGLRenderer;
   theme: Theme = themeNow();
+  /** Display name for a patient id (tracking board). */
+  namer: ((id: number) => string) | null = null;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(36, 1, 0.1, 500);
   private readonly controls: OrbitControls;
@@ -587,7 +589,7 @@ export class Scene3D {
         g.font = '600 16px system-ui, sans-serif';
         g.fillText(p.bedLabel!, 54, y);
         g.fillStyle = '#9fb3c8';
-        g.fillText(`#${p.id}`, 150, y);
+        g.fillText((this.namer?.(p.id) ?? `#${p.id}`).slice(0, 14), 130, y);
         g.fillText(p.boarding ? 'Admitted – awaiting bed' : 'In treatment', 220, y);
         g.fillStyle = p.waited > 240 ? '#ff8a80' : '#e8eef5';
         g.fillText(`${Math.floor(p.waited / 60)}h ${String(Math.round(p.waited % 60)).padStart(2, '0')}m`, 430, y);

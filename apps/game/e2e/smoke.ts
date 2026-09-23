@@ -19,6 +19,15 @@ function fail(msg: string): never {
   throw new Error(msg);
 }
 
+/** Click through any tip or alert that paused the game. */
+async function unhold(page: Page) {
+  for (let i = 0; i < 5; i++) {
+    const b = page.getByTestId('resume');
+    if (!(await b.isVisible().catch(() => false))) return;
+    await b.click();
+  }
+}
+
 async function shot(page: Page, name: string) {
   if (shots) await page.screenshot({ path: resolve(shots, `${name}.png`), fullPage: true });
 }
@@ -60,10 +69,15 @@ async function main() {
         await shot(page, `briefing-${scheme}`);
         await page.getByTestId('continue').click();
 
-        // Level 1, as shipped (arrival order): should fail on its fixed night.
+        // Level 1, as shipped (arrival order): should fail on its fixed night. The tutorial pauses for its first tip.
         await page.getByTestId('start').click();
+        await page.getByTestId('resume').waitFor();
+        await shot(page, `coach-${scheme}`);
+        await unhold(page);
+        await page.getByTestId('auto-pause').uncheck();
         await page.getByTestId('speed-8').click();
         await page.waitForTimeout(1500);
+        await unhold(page);
         const clock1 = await page.getByTestId('clock').textContent();
         await page.waitForTimeout(500);
         const clock2 = await page.getByTestId('clock').textContent();
@@ -80,6 +94,8 @@ async function main() {
         await page.getByTestId('skip').click();
         const r1 = await page.getByTestId('result').textContent();
         if (r1 !== 'Goals not met') fail(`level 1 with arrival order: expected failure, got "${r1}"`);
+        await page.getByTestId('why').waitFor();
+        if ((await page.getByTestId('stars').getAttribute('aria-label')) !== '0 of 3 stars') fail('a failed level should earn no stars');
 
         // Retry with acuity order: should pass and unlock "next".
         await page.getByTestId('retry').click();
@@ -88,6 +104,7 @@ async function main() {
         await page.getByTestId('skip').click();
         const r2 = await page.getByTestId('result').textContent();
         if (r2 !== 'Goals met') fail(`level 1 with acuity order: expected pass, got "${r2}"`);
+        if ((await page.getByTestId('stars').getAttribute('aria-label')) === '0 of 3 stars') fail('a passed level should earn stars');
         await shot(page, `debrief-${scheme}`);
 
         // Level 2 setup screen with the schedule editor.
@@ -95,6 +112,38 @@ async function main() {
         await page.getByTestId('continue').click();
         await page.getByTestId('schedule-doctor').waitFor();
         await shot(page, `setup-${scheme}`);
+
+        // Level 6: the incident is announced and pauses the game; call in help; change the process mid-shift.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('level-6').click();
+        await page.getByTestId('continue').click();
+        await page.getByTestId('start').click();
+        await page.getByTestId('auto-pause').check();
+        await page.getByTestId('speed-8').click();
+        await page.getByText('Major incident declared').first().waitFor({ timeout: 20_000 });
+        await shot(page, `incident-${scheme}`);
+        await page.getByTestId('resume').click();
+        await page.getByTestId('call-in').click();
+        await page.getByText(/On the way: here in/).waitFor();
+        await page.getByTestId('adjust-plan').click();
+        await page.getByTestId('process-editor').waitFor();
+        await shot(page, `plan-drawer-${scheme}`);
+        await page.getByTestId('apply-plan').click();
+        await unhold(page);
+        await page.getByTestId('skip').click();
+        await page.getByTestId('why').waitFor();
+        await shot(page, `debrief-why-${scheme}`);
+
+        // Daily challenge: the menu card opens the day's level with a note, and the debrief offers a share line.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('daily').click();
+        await page.getByTestId('daily-note').waitFor();
+        await page.getByTestId('continue').click();
+        await page.getByTestId('start').click();
+        await unhold(page);
+        await page.getByTestId('skip').click();
+        const share = await page.getByTestId('share-text').textContent();
+        if (!share?.includes('ER Shift daily')) fail(`daily share text missing: ${share}`);
 
         // Level 5: boarding view renders and plays to the end.
         await page.goto(`http://localhost:${PORT}/`);
@@ -105,6 +154,7 @@ async function main() {
         await page.getByTestId('start').click();
         await page.getByTestId('speed-8').click();
         await page.waitForTimeout(2500);
+        await unhold(page);
         await shot(page, `play-boarding-${scheme}`);
         await page.getByTestId('skip').click();
         const r5 = await page.getByTestId('result').textContent();

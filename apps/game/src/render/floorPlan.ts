@@ -122,6 +122,8 @@ export interface PatientDot {
   area: string;
   /** Lying in a bed (rather than waiting or with the triage nurse). */
   inBed: boolean;
+  /** Came by ambulance: arrives by the ambulance door on a trolley. */
+  byAmbulance?: boolean;
   pose?: Pose['pose'];
   face?: number;
   /** What they are waiting for, if anything (for tooltips). */
@@ -247,6 +249,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     waited: s.now - p.arrivalTime,
     boarding: p.boarding,
     special: p.source === 'walkIn' ? null : p.source,
+    byAmbulance: p.byAmbulance,
     area,
     inBed: p.location === 'bed',
     waitingFor: p.waitingFor,

@@ -107,6 +107,15 @@
       "fastTrack.enabled",
       "fastTrack.minAcuity"
     ],
+    "liveCalls": [
+      "callIn",
+      "hallway",
+      "diversion"
+    ],
+    "stars": {
+      "two": 88,
+      "three": 95
+    },
     "limits": {
       "staffHoursPerDay": {
         "doctor": 96,
@@ -167,5 +176,8 @@
         }
       ]
     }
+  },
+  "liveCalls": {
+    "maxCallIns": 2
   }
 }

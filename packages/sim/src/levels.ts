@@ -33,8 +33,28 @@ export const PLAYER_CONTROLS = [
   'beds.fastTrack',
   'boarding.escalation',
   'diagnosis.thoroughness',
+  /** The patient process (needs the process module on in the level). */
+  'process.steps',
 ] as const;
 export type PlayerControl = (typeof PLAYER_CONTROLS)[number];
+
+/** Decisions a level lets the player make during the shift, besides changing its player controls. */
+export const LIVE_CALLS = ['callIn', 'diversion', 'hallway', 'moveStaff'] as const;
+export type LiveCall = (typeof LIVE_CALLS)[number];
+
+/** Moments a tutorial tip can wait for. */
+export const COACH_TRIGGERS = ['start', 'firstTriaged', 'firstInBed', 'emergentWaiting', 'firstLeft'] as const;
+export type CoachTrigger = (typeof COACH_TRIGGERS)[number];
+
+/** A tutorial tip shown during play when its moment comes (once per run). */
+export interface CoachTip {
+  when: CoachTrigger;
+  text: string;
+  /** Pause the clock while the tip is showing. */
+  pause?: boolean;
+  /** A player control or UI element to point at (e.g. 'queue.discipline', 'speed', 'hover'). */
+  highlight?: string;
+}
 
 export interface LevelLimits {
   /** Average staff-hours per day, by role. */
@@ -63,6 +83,12 @@ export interface LevelSpec {
   trap?: Partial<Record<PlayerControl, unknown>>;
   /** Minimum pass-rate gap (reference minus shipped) across random days that balance checks require. Default 0.25. */
   minCrossSeedGap?: number;
+  /** Live decisions offered during the shift (default none). */
+  liveCalls?: LiveCall[];
+  /** Tutorial tips (narrative text lives here, never in the engine). */
+  coach?: CoachTip[];
+  /** Balanced-score thresholds for the second and third star (the first is for meeting the goals). */
+  stars?: { two: number; three: number };
   briefing: string[];
   debrief: { pass: string[]; fail: string[] };
   goals: Goal[];
@@ -98,6 +124,17 @@ export function checkLevel(level: unknown): string[] {
     else
       for (const k of Object.keys(v))
         if (!Array.isArray(level.playerControls) || !level.playerControls.includes(k)) p.push(`level.${key}.${k}: not one of this level's player controls`);
+  }
+  if (level.liveCalls !== undefined && (!Array.isArray(level.liveCalls) || level.liveCalls.some((x) => !(LIVE_CALLS as readonly unknown[]).includes(x))))
+    p.push(`level.liveCalls: array of ${LIVE_CALLS.join(', ')}`);
+  if (
+    level.coach !== undefined &&
+    (!Array.isArray(level.coach) || level.coach.some((t) => !isObj(t) || !(COACH_TRIGGERS as readonly unknown[]).includes(t.when) || typeof t.text !== 'string'))
+  )
+    p.push(`level.coach: array of { when: ${COACH_TRIGGERS.join(' | ')}, text, pause?, highlight? }`);
+  if (level.stars !== undefined) {
+    const st = level.stars;
+    if (!isObj(st) || typeof st.two !== 'number' || typeof st.three !== 'number' || st.two > st.three) p.push('level.stars: { two, three } with two <= three');
   }
   if (!Array.isArray(level.playerControls)) p.push('level.playerControls: array');
   else

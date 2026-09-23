@@ -1,5 +1,7 @@
 import { evaluateGoals, type LevelSpec, type Metrics } from '@er/sim';
+import { useState } from 'react';
 import { metricValue, minutes, percent } from '../format';
+import { Why, type RunAnalysis } from '../play/Why';
 
 const SCORE_LABEL: Record<string, string> = {
   'doorToDoctor.median': 'Door to doctor, median',
@@ -11,7 +13,19 @@ const SCORE_LABEL: Record<string, string> = {
   'boarding.meanHours': 'Boarding time (hours)',
 };
 
-export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: () => void; onNext?: () => void; onMenu: () => void; retryLabel?: string }) {
+export function Debrief(props: {
+  level?: LevelSpec;
+  metrics: Metrics;
+  run?: RunAnalysis;
+  /** Stars earned (levels only). */
+  stars?: number;
+  /** Text to share (daily challenge). */
+  share?: string;
+  onRetry: () => void;
+  onNext?: () => void;
+  onMenu: () => void;
+  retryLabel?: string;
+}) {
   const { level, metrics: m, onRetry, onNext, onMenu } = props;
   const { passed, results } = evaluateGoals(m, level?.goals ?? []);
   const rows: [string, string][] = [
@@ -24,18 +38,23 @@ export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: (
     ['Length of stay, median', minutes(m.lengthOfStay.median)],
     ['Admitted', `${m.admitted} (${percent(m.admissionRate)})`],
     ['Got worse while waiting', String(m.deterioration.events)],
+    ['Became critical while waiting', String(m.deterioration.critical)],
     ...(m.boarding.boarders > 0 ? ([['Boarding, average', minutes((m.boarding.meanHours ?? 0) * 60)]] as [string, string][]) : []),
     ...(m.diagnosis.misdiagnosisRate !== null
       ? ([
           ['Missed diagnoses (now revealed)', percent(m.diagnosis.misdiagnosisRate)],
-          ['Came back within 72 h', String(m.diagnosis.bounceBacks72h)],
+          ['Will come back within 72 h', `${m.diagnosis.bounceBacks72h}${m.diagnosis.bounceBacksAfterRun ? ` (${m.diagnosis.bounceBacksAfterRun} after the shift)` : ''}`],
         ] as [string, string][])
       : []),
     ['Doctors busy', percent(m.utilizationByRole.doctor)],
     ...(m.walking ? ([["Doctors' busy time spent walking", percent(m.walking.shareOfBusyByRole.doctor)]] as [string, string][]) : []),
     ['Triage accuracy (now revealed)', percent(m.triage.accuracy)],
+    ...(m.live.callIns > 0 ? ([['Called in', `${m.live.callIns} (${m.live.callInHours.toFixed(1)} h)`]] as [string, string][]) : []),
+    ...(m.live.diversionHours > 0 ? ([['Ambulances diverted', `${m.live.diverted} patients over ${m.live.diversionHours.toFixed(1)} h`]] as [string, string][]) : []),
+    ...(m.live.hallwayPatients > 0 ? ([['Treated in a hallway', String(m.live.hallwayPatients)]] as [string, string][]) : []),
     ['Cost per day', Math.round(m.cost.perDay).toLocaleString('en-US')],
   ];
+  const [copied, setCopied] = useState(false);
   const tone = !level ? '' : passed ? 'pass' : 'fail';
   return (
     <main className="screen debrief">
@@ -44,6 +63,7 @@ export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: (
         <div>
           <p className="eyebrow">{level ? `Simulation ${String(level.number).padStart(2, '0')} · debrief` : 'Sandbox · results'}</p>
           <h1 data-testid="result">{!level ? 'Shift complete' : passed ? 'Goals met' : 'Goals not met'}</h1>
+          {props.stars !== undefined && <Stars n={props.stars} />}
           {level && (
             <p className="muted" style={{ margin: 0 }}>
               {results.filter((r) => r.passed).length} of {results.length} goals met · balanced score{' '}
@@ -77,6 +97,22 @@ export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: (
           {p}
         </p>
       ))}
+
+      {props.run && <Why m={m} run={props.run} />}
+
+      {props.share && (
+        <section className="card share">
+          <h3>Share today’s result</h3>
+          <pre data-testid="share-text">{props.share}</pre>
+          <button
+            onClick={() => {
+              void navigator.clipboard?.writeText(props.share!).then(() => setCopied(true));
+            }}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </section>
+      )}
 
       <div className="debrief-grid">
         <section className="card">
@@ -126,6 +162,18 @@ export function Debrief(props: { level?: LevelSpec; metrics: Metrics; onRetry: (
         )}
       </div>
     </main>
+  );
+}
+
+export function Stars({ n }: { n: number }) {
+  return (
+    <span className="stars" role="img" aria-label={`${n} of 3 stars`} data-testid="stars">
+      {[0, 1, 2].map((i) => (
+        <span key={i} className={i < n ? 'on' : 'off'}>
+          ★
+        </span>
+      ))}
+    </span>
   );
 }
 

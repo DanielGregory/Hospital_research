@@ -48,7 +48,7 @@
       {
         "metric": "doorToDoctorByGroup.urgent.median",
         "max": 15,
-        "label": "ESI 1–2: median door-to-doctor under 15 minutes",
+        "label": "ESI 1\u20132: median door-to-doctor under 15 minutes",
         "passIfNoData": true
       },
       {
@@ -60,10 +60,43 @@
     "playerControls": [
       "queue.discipline"
     ],
+    "liveCalls": [],
+    "stars": {
+      "two": 85,
+      "three": 96
+    },
     "designNote": "One doctor, 22:00-08:00. With ESI 1 pre-emption, acuity order passes ~58% of nights vs ~34% for arrival order (80 nights). The level seed is a night where arrival order fails and acuity order passes.",
     "reference": {
       "queue.discipline": "acuity"
     },
-    "minCrossSeedGap": 0.2
+    "minCrossSeedGap": 0.2,
+    "coach": [
+      {
+        "when": "start",
+        "text": "This is your department tonight. Patients come in through the entrance and wait until the triage nurse sees them. Drag to turn the view, scroll to zoom, and hover over anyone to see who they are.",
+        "pause": true,
+        "highlight": "floor"
+      },
+      {
+        "when": "start",
+        "text": "These buttons set the pace: pause any time to think, or speed up to 8\u00d7 when it's quiet.",
+        "highlight": "speed"
+      },
+      {
+        "when": "firstTriaged",
+        "text": "The triage nurse has given a patient a level: 1 (red) is the most urgent, 5 (blue) the least. Their badge shows it.",
+        "highlight": "floor"
+      },
+      {
+        "when": "emergentWaiting",
+        "text": "An emergent patient is waiting for the doctor behind less urgent people who arrived first. You can change who goes next, right now.",
+        "pause": true,
+        "highlight": "queue.discipline"
+      },
+      {
+        "when": "firstLeft",
+        "text": "Someone just gave up and left without being seen. Long waits cost patients, not just minutes."
+      }
+    ]
   }
 }

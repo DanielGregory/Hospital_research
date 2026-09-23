@@ -71,6 +71,13 @@
     "playerControls": [
       "staffing.schedule.doctor"
     ],
+    "liveCalls": [
+      "callIn"
+    ],
+    "stars": {
+      "two": 85,
+      "three": 97
+    },
     "limits": {
       "staffHoursPerDay": {
         "doctor": 84
@@ -103,5 +110,8 @@
         }
       ]
     }
+  },
+  "liveCalls": {
+    "maxCallIns": 1
   }
 }

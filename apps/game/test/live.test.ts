@@ -1,0 +1,111 @@
+import { applySettings, Simulation } from '@er/sim';
+import { describe, expect, it } from 'vitest';
+import { LEVELS } from '../src/levels';
+import { AlertWatch } from '../src/play/alerts';
+import { nextTip, triggered } from '../src/play/coach';
+import { dailyChallenge, shareText } from '../src/play/daily';
+import { commandLabel, explain } from '../src/play/explain';
+import { personName } from '../src/play/names';
+import { recordBest, starsFor } from '../src/play/stars';
+
+const level = (n: number) => LEVELS.find((l) => l.level.number === n)!;
+
+describe('alerts', () => {
+  it('warns about a mass casualty before it arrives, once, and pauses for it', () => {
+    const cfg = level(6);
+    const sim = new Simulation(cfg, cfg.level.seed ?? 1);
+    const watch = new AlertWatch();
+    const seen: string[] = [];
+    for (let t = 0; t <= 200; t += 5) {
+      sim.runUntil(t);
+      for (const a of watch.check(sim.snapshot())) seen.push(`${a.kind}@${t}:${a.pause}`);
+    }
+    const incident = seen.filter((x) => x.startsWith('incident'));
+    expect(incident).toHaveLength(1);
+    expect(incident[0]).toMatch(/:true$/);
+    const at = Number(incident[0]!.split('@')[1]!.split(':')[0]);
+    const shock = cfg.shocks!.find((s) => s.type === 'massCasualty')!;
+    expect(at).toBeLessThan(shock.atMinute);
+  });
+
+  it('flags a crowded department without repeating itself every tick', () => {
+    const sim = new Simulation({ id: 'busy', durationMinutes: 1440, staffing: { doctors: 2 }, arrivals: { rateMultiplier: 1.6 } }, 2);
+    const watch = new AlertWatch();
+    const kinds: string[] = [];
+    for (let t = 0; t <= 1440; t += 5) {
+      sim.runUntil(t);
+      kinds.push(...watch.check(sim.snapshot()).map((a) => a.kind));
+    }
+    const crowded = kinds.filter((k) => k === 'crowded').length;
+    expect(crowded).toBeGreaterThan(0);
+    expect(crowded).toBeLessThanOrEqual(1440 / 120 + 1);
+  });
+});
+
+describe('level 1 coaching', () => {
+  it('has tips that each come due during the level', () => {
+    const cfg = level(1);
+    const tips = cfg.level.coach!;
+    expect(tips.length).toBeGreaterThan(2);
+    const sim = new Simulation(applySettings(cfg, []), cfg.level.seed!);
+    const shown = new Set<number>();
+    for (let t = 0; t <= cfg.durationMinutes!; t += 5) {
+      sim.runUntil(t);
+      let i = nextTip(tips, shown, sim.snapshot());
+      while (i !== null) {
+        shown.add(i);
+        i = nextTip(tips, shown, sim.snapshot());
+      }
+    }
+    // Every tip except possibly 'firstLeft' fires on the level's night as shipped.
+    const missing = tips.map((tip, i) => (shown.has(i) ? null : tip.when)).filter(Boolean);
+    expect(missing.filter((w) => w !== 'firstLeft')).toEqual([]);
+    expect(triggered('start', sim.snapshot())).toBe(true);
+  });
+});
+
+describe('debrief explanations', () => {
+  it('names the main bottleneck, the worst moment and the decisions taken', () => {
+    const cfg = level(5);
+    const sim = new Simulation(cfg, cfg.level.seed ?? 1);
+    sim.runUntil(600);
+    sim.command({ type: 'setHallwayBeds', count: 2 });
+    const r = sim.run();
+    const ex = explain(r.metrics, sim.timeline, r.commandLog, { startDayOfWeek: 0, startHour: 0 });
+    expect(['boarding', 'bed']).toContain(ex.bottleneck!.cause);
+    expect(ex.lines[0]).toMatch(/biggest share of waiting/);
+    expect(ex.peak!.waiting).toBeGreaterThan(0);
+    expect(ex.lines.some((l) => /hallway/.test(l))).toBe(r.metrics.live.hallwayPatients > 0);
+    expect(commandLabel({ type: 'setHallwayBeds', count: 2 })).toBe('Hallway spaces: 2');
+  });
+});
+
+describe('stars and the daily challenge', () => {
+  it('gives no stars for missed goals and more for higher scores', () => {
+    const cfg = level(1);
+    const shipped = new Simulation(cfg, cfg.level.seed!).run().metrics;
+    expect(starsFor(cfg.level, shipped)).toBe(0);
+    const ref = new Simulation(applySettings(cfg, Object.entries(cfg.level.reference ?? {})), cfg.level.seed!).run().metrics;
+    expect(starsFor(cfg.level, ref)).toBeGreaterThanOrEqual(1);
+    const table = recordBest(recordBest({}, 'x', { stars: 1, score: 50 }), 'x', { stars: 3, score: 40 });
+    expect(table.x).toEqual({ stars: 3, score: 50 });
+  });
+
+  it('picks the same level and seed for everyone on a date, and rotates through levels 2-7', () => {
+    const a = dailyChallenge(LEVELS, '2026-09-23');
+    const b = dailyChallenge(LEVELS, '2026-09-23');
+    expect(a.level.id).toBe(b.level.id);
+    expect(a.seed).toBe(b.seed);
+    const week = ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26'].map((d) => dailyChallenge(LEVELS, d).level.level.number);
+    expect(new Set(week).size).toBe(6);
+    expect(week.every((n) => n >= 2)).toBe(true);
+    expect(dailyChallenge(LEVELS, '2026-09-24').seed).not.toBe(a.seed);
+    expect(shareText(a, 2, 71.6, 'https://example.org/')).toContain('★★☆ score 72/100');
+  });
+
+  it('gives each person a stable made-up name', () => {
+    expect(personName('patient', 7, 3)).toEqual(personName('patient', 7, 3));
+    const names = new Set(Array.from({ length: 50 }, (_, i) => JSON.stringify(personName('patient', i, 3))));
+    expect(names.size).toBeGreaterThan(40);
+  });
+});

@@ -93,6 +93,14 @@
       "fastTrack.minAcuity",
       "staffing.schedule.fastTrackClinician"
     ],
+    "liveCalls": [
+      "moveStaff",
+      "callIn"
+    ],
+    "stars": {
+      "two": 94,
+      "three": 98.5
+    },
     "limits": {
       "staffHoursPerDay": {
         "doctor": 72,
@@ -112,5 +120,8 @@
         }
       ]
     }
+  },
+  "liveCalls": {
+    "maxCallIns": 1
   }
 }

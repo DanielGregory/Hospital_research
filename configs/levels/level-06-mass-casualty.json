@@ -6,7 +6,8 @@
   "startHour": 20,
   "modules": {
     "staffing": true,
-    "shocks": true
+    "shocks": true,
+    "process": true
   },
   "staffing": {
     "triageNurses": 1,
@@ -84,8 +85,19 @@
     "playerControls": [
       "staffing.schedule.doctor",
       "beds.main",
-      "queue.discipline"
+      "queue.discipline",
+      "process.steps"
     ],
+    "liveCalls": [
+      "callIn",
+      "hallway",
+      "diversion",
+      "moveStaff"
+    ],
+    "stars": {
+      "two": 45,
+      "three": 65
+    },
     "limits": {
       "maxOnDuty": {
         "doctor": 8
@@ -112,5 +124,146 @@
     "trap": {
       "beds.main": 28
     }
+  },
+  "process": {
+    "steps": [
+      {
+        "id": "triage",
+        "kind": "triage",
+        "label": "Triage",
+        "role": "triageNurse",
+        "meanMinutesByAcuity": {
+          "1": 6,
+          "2": 6,
+          "3": 6,
+          "4": 6,
+          "5": 6
+        },
+        "distribution": "lognormal",
+        "cv": 0.5,
+        "turnaroundMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [],
+        "inBed": false,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      },
+      {
+        "id": "doctorEval",
+        "kind": "doctorEval",
+        "label": "Doctor evaluation",
+        "role": "doctor",
+        "meanMinutesByAcuity": {
+          "1": 60,
+          "2": 45,
+          "3": 35,
+          "4": 20,
+          "5": 15
+        },
+        "distribution": "lognormal",
+        "cv": 0.8,
+        "turnaroundMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [
+          "triage"
+        ],
+        "inBed": true,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      },
+      {
+        "id": "workup",
+        "kind": "workup",
+        "label": "Tests and results",
+        "role": null,
+        "meanMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "distribution": "lognormal",
+        "cv": 0.5,
+        "turnaroundMinutesByAcuity": {
+          "1": 90,
+          "2": 90,
+          "3": 75,
+          "4": 20,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [
+          "doctorEval"
+        ],
+        "inBed": true,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      },
+      {
+        "id": "disposition",
+        "kind": "disposition",
+        "label": "Disposition",
+        "role": "doctor",
+        "meanMinutesByAcuity": {
+          "1": 5,
+          "2": 5,
+          "3": 5,
+          "4": 5,
+          "5": 5
+        },
+        "distribution": "lognormal",
+        "cv": 0.5,
+        "turnaroundMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [
+          "workup"
+        ],
+        "inBed": true,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      }
+    ]
+  },
+  "liveCalls": {
+    "maxCallIns": 2
   }
 }

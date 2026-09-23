@@ -77,6 +77,15 @@
       "fastTrack.enabled",
       "boarding.escalation"
     ],
+    "liveCalls": [
+      "hallway",
+      "diversion",
+      "callIn"
+    ],
+    "stars": {
+      "two": 88,
+      "three": 96
+    },
     "limits": {
       "maxOnDuty": {
         "doctor": 8
@@ -89,5 +98,8 @@
     "trap": {
       "staffing.doctors": 8
     }
+  },
+  "liveCalls": {
+    "maxCallIns": 1
   }
 }

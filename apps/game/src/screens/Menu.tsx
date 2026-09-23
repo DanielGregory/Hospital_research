@@ -1,7 +1,19 @@
 import { LEVELS, type LevelConfig } from '../levels';
+import type { Daily } from '../play/daily';
+import type { Best } from '../play/stars';
+import { Stars } from './Debrief';
 
-export function Menu(props: { onPick: (l: LevelConfig) => void; onLayout: () => void; onSandbox: () => void; results: Record<string, boolean> }) {
-  const { onPick, onLayout, onSandbox, results } = props;
+export function Menu(props: {
+  onPick: (l: LevelConfig) => void;
+  onLayout: () => void;
+  onSandbox: () => void;
+  onDaily: () => void;
+  results: Record<string, boolean>;
+  best: Record<string, Best>;
+  daily: Daily;
+}) {
+  const { onPick, onLayout, onSandbox, results, best, daily } = props;
+  const todays = best[`daily:${daily.date}`];
   const next = LEVELS.find((l) => results[l.id] !== true) ?? LEVELS[0]!;
   return (
     <main className="screen menu">
@@ -19,6 +31,19 @@ export function Menu(props: { onPick: (l: LevelConfig) => void; onLayout: () => 
         </div>
       </section>
 
+      <button className="daily-card" onClick={props.onDaily} data-testid="daily">
+        <span className="eyebrow">Daily challenge · {daily.date}</span>
+        <strong>{daily.level.level.title}</strong>
+        <span>The same shift for everyone today. Beat your friends’ score.</span>
+        {todays ? (
+          <span className="daily-best">
+            <Stars n={todays.stars} /> best {Math.round(todays.score)}/100
+          </span>
+        ) : (
+          <span className="chip next">Not played yet</span>
+        )}
+      </button>
+
       <h2>Simulations</h2>
       <ol className="level-grid">
         {LEVELS.map((l) => {
@@ -30,6 +55,7 @@ export function Menu(props: { onPick: (l: LevelConfig) => void; onLayout: () => 
                 <span className="level-title">{l.level.title}</span>
                 {l.level.tagline && <span className="level-tagline">{l.level.tagline}</span>}
                 <span className="level-meta">
+                  {best[l.id] && <Stars n={best[l.id]!.stars} />}
                   {passed && <span className="chip pass">✓ Passed</span>}
                   {!passed && results[l.id] === false && <span className="chip">Tried</span>}
                   {l.id === next.id && !passed && <span className="chip next">Up next</span>}

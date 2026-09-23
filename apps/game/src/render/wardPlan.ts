@@ -214,6 +214,7 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
     waited: s.now - p.arrivalTime,
     boarding: p.boarding,
     special: p.source === 'walkIn' ? null : p.source,
+    byAmbulance: p.byAmbulance,
     area: area ?? '',
     inBed: p.location === 'bed',
     pose,
@@ -230,7 +231,7 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
   const waitingIds = s.patients.filter((p) => p.location === 'waiting').sort((a, b) => a.id - b.id);
   for (const p of waitingIds) {
     // Ambulance arrivals wait on trolleys in the corridor.
-    if (p.source === 'massCasualty') {
+    if (p.source === 'massCasualty' || p.byAmbulance) {
       // Spaced for the trolley and the paramedic waiting with it.
       const places = Math.max(1, Math.floor((height - 120) / 62));
       patients.push(dot(p, { x: corrX, y: height - 70 - (hallway++ % places) * 62 }, null, 'lie', 0));
@@ -252,6 +253,12 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
       const head = sl.head === 'up' ? 0 : sl.head === 'down' ? Math.PI : Math.PI / 2;
       patients.push({ ...dot(p, sl.lie, p.lane === 'fastTrack' ? 'fastTrack' : 'main', sl.recliner ? 'sit' : 'lie', sl.recliner ? SOUTH : head), bedLabel: sl.bay.label });
       p.staffIds.forEach((id, k) => staffPos.set(id, { pos: { x: sl.side.x + k * 14, y: sl.side.y + (k ? 10 : 0) }, area: p.lane === 'fastTrack' ? 'fastTrack' : 'main', face: 0, pose: 'stand' }));
+    } else if (p.location === 'intake' && p.byAmbulance) {
+      // Triaged on the trolley: the nurse comes out to them in the corridor.
+      const places = Math.max(1, Math.floor((height - 120) / 62));
+      const spot = { x: corrX, y: height - 70 - (hallway++ % places) * 62 };
+      patients.push(dot(p, spot, null, 'lie', 0));
+      p.staffIds.forEach((id, k) => staffPos.set(id, { pos: { x: spot.x - 16 - k * 12, y: spot.y + 12 }, area: null, face: Math.PI / 2, pose: 'stand' }));
     } else if (p.location === 'intake') {
       const booth = p.staffIds.map((id) => nurseBooth.get(id)).find((b) => b !== undefined);
       if (booth !== undefined) {
@@ -269,12 +276,12 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
   let atFt = 0;
   for (const m of s.staff) {
     const mark = { id: m.id, role: m.role, busy: m.busy, leaving: m.retiring, fatigue: m.fatigue, patientId: m.patientId };
+    const at = staffPos.get(m.id);
     const booth = nurseBooth.get(m.id);
-    if (booth !== undefined) {
+    if (booth !== undefined && !at) {
       staff.push({ ...mark, ...nurseSpot(booth), area: 'triage', pose: 'sit', face: SOUTH });
       continue;
     }
-    const at = staffPos.get(m.id);
     if (at) {
       staff.push({ ...mark, ...at.pos, area: at.area ?? '', pose: at.pose, face: at.face });
       continue;

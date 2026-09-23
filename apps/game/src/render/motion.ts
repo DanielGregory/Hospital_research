@@ -96,7 +96,7 @@ export class Crowd {
       existing.targetArea = data.area;
     };
 
-    for (const p of plan.patients) place(`p${p.id}`, 'patient', p, p.special === 'massCasualty' ? nav.doors.ambulance : nav.doors.entrance);
+    for (const p of plan.patients) place(`p${p.id}`, 'patient', p, p.byAmbulance || p.special === 'massCasualty' ? nav.doors.ambulance : nav.doors.entrance);
     for (const s of plan.staff) place(`s${s.id}`, 'staff', s, nav.doors.staff);
 
     for (const a of this.actors.values()) {

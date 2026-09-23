@@ -1,0 +1,319 @@
+{
+  "id": "level-08-new-build",
+  "name": "The New Build",
+  "durationMinutes": 1440,
+  "startDayOfWeek": 0,
+  "startHour": 0,
+  "modules": {
+    "layout": true,
+    "staffing": true
+  },
+  "layout": {
+    "footprint": [
+      "##################........",
+      "##################........",
+      "##################........",
+      "##################........",
+      "##################........",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################",
+      "##########################"
+    ],
+    "entrance": {
+      "x": 0,
+      "y": 8
+    },
+    "ambulanceDoor": {
+      "x": 23,
+      "y": 15
+    },
+    "rooms": [
+      {
+        "id": "waiting",
+        "type": "waiting",
+        "x": 1,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      {
+        "id": "trauma",
+        "type": "trauma",
+        "x": 1,
+        "y": 10,
+        "w": 5,
+        "h": 4
+      },
+      {
+        "id": "triage",
+        "type": "triage",
+        "x": 21,
+        "y": 6,
+        "w": 4,
+        "h": 3
+      },
+      {
+        "id": "station",
+        "type": "station",
+        "x": 22,
+        "y": 11,
+        "w": 3,
+        "h": 2
+      },
+      {
+        "id": "acute-a",
+        "type": "acute",
+        "x": 7,
+        "y": 1,
+        "w": 10,
+        "h": 5
+      },
+      {
+        "id": "acute-b",
+        "type": "acute",
+        "x": 8,
+        "y": 11,
+        "w": 8,
+        "h": 4
+      }
+    ]
+  },
+  "staffing": {
+    "triageNurses": 1,
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 22,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 8,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 10,
+          "hours": 12,
+          "count": 2
+        }
+      ]
+    }
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "score": {
+    "terms": [
+      {
+        "metric": "doorToDoctor.median",
+        "weight": 2,
+        "target": 10,
+        "worst": 60
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "weight": 2,
+        "target": 5,
+        "worst": 30
+      },
+      {
+        "metric": "lwbsRate",
+        "weight": 2,
+        "target": 0.01,
+        "worst": 0.1
+      },
+      {
+        "metric": "lengthOfStay.median",
+        "weight": 1,
+        "target": 120,
+        "worst": 360
+      },
+      {
+        "metric": "walking.shareOfBusyByRole.doctor",
+        "weight": 2,
+        "target": 0.02,
+        "worst": 0.12
+      }
+    ]
+  },
+  "level": {
+    "number": 8,
+    "title": "The New Build",
+    "tagline": "Design the department before it is built.",
+    "seed": 1,
+    "briefing": [
+      "The hospital is building a new emergency department on the old car park. The walls go up in six months, and the board wants the floor plan from you.",
+      "The shape is fixed: an L, with the public entrance on the west side and the ambulance bay at the south-east corner. So is the staffing. Everything inside is yours: where the waiting room, triage, the staff station, the bays and the trauma room go.",
+      "The architect's first draft is loaded. It looks tidy on paper. Run a day in it before you sign anything: every metre a doctor walks is a minute a patient waits."
+    ],
+    "debrief": {
+      "pass": [
+        "The board signs off on your plan. Staff walk short loops from the station, and the ambulance crew wheels trauma patients straight into the resuscitation room.",
+        "A good plan is invisible on the day. Nobody notices the corridor they did not have to walk."
+      ],
+      "fail": [
+        "On paper the plan fitted. On the day, doctors spent their shift in the corridors, and every trip between the station and the bays came out of someone's wait.",
+        "Look at the walking map: the brightest corridors are the ones to shorten. Put the station in the middle of the beds, triage beside the waiting room, and the trauma room by the ambulance door."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "doorToDoctor.median",
+        "max": 21,
+        "label": "Median door-to-doctor under 21 minutes"
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 21,
+        "label": "ESI 1–2: median door-to-doctor under 21 minutes",
+        "passIfNoData": true
+      },
+      {
+        "metric": "walking.shareOfBusyByRole.doctor",
+        "max": 0.06,
+        "label": "Doctors spend under 6% of their busy time walking"
+      }
+    ],
+    "playerControls": [
+      "layout.rooms"
+    ],
+    "limits": {
+      "requiredRooms": [
+        "waiting",
+        "triage",
+        "station",
+        "trauma",
+        "acute"
+      ],
+      "minBeds": {
+        "main": 20
+      },
+      "maxBeds": {
+        "main": 22
+      }
+    },
+    "stars": {
+      "two": 68,
+      "three": 72
+    },
+    "reference": {
+      "layout.rooms": [
+        {
+          "id": "waiting",
+          "type": "waiting",
+          "x": 1,
+          "y": 1,
+          "w": 5,
+          "h": 5
+        },
+        {
+          "id": "triage",
+          "type": "triage",
+          "x": 1,
+          "y": 10,
+          "w": 4,
+          "h": 3
+        },
+        {
+          "id": "station",
+          "type": "station",
+          "x": 11,
+          "y": 7,
+          "w": 3,
+          "h": 2
+        },
+        {
+          "id": "acute-a",
+          "type": "acute",
+          "x": 7,
+          "y": 1,
+          "w": 10,
+          "h": 5
+        },
+        {
+          "id": "acute-b",
+          "type": "acute",
+          "x": 7,
+          "y": 11,
+          "w": 8,
+          "h": 4
+        },
+        {
+          "id": "trauma",
+          "type": "trauma",
+          "x": 18,
+          "y": 10,
+          "w": 5,
+          "h": 4
+        }
+      ]
+    },
+    "designNote": "Staffing sits near the utilisation knee, so doctors' walking time decides door-to-doctor. The shipped draft puts the station in the far corner, triage away from the waiting room and the trauma room by the walk-in entrance, far from the ambulance door.",
+    "benchmark": {
+      "settings": {
+        "layout.rooms": [
+          {
+            "id": "waiting",
+            "type": "waiting",
+            "x": 1,
+            "y": 1,
+            "w": 5,
+            "h": 5
+          },
+          {
+            "id": "triage",
+            "type": "triage",
+            "x": 1,
+            "y": 10,
+            "w": 4,
+            "h": 3
+          },
+          {
+            "id": "station",
+            "type": "station",
+            "x": 9,
+            "y": 7,
+            "w": 3,
+            "h": 2
+          },
+          {
+            "id": "acute-a",
+            "type": "acute",
+            "x": 8,
+            "y": 1,
+            "w": 10,
+            "h": 5
+          },
+          {
+            "id": "acute-b",
+            "type": "acute",
+            "x": 9,
+            "y": 11,
+            "w": 8,
+            "h": 4
+          },
+          {
+            "id": "trauma",
+            "type": "trauma",
+            "x": 18,
+            "y": 10,
+            "w": 5,
+            "h": 4
+          }
+        ]
+      },
+      "score": 73.11,
+      "goalsMet": true,
+      "evaluated": 352
+    }
+  }
+}

@@ -7,6 +7,7 @@ import type { ResolvedConfig } from './config.js';
 import type { Metrics } from './metrics.js';
 import { onDutyCount, scheduleBoundaries } from './schedule.js';
 import { ROLES, type Role } from './types.js';
+import { ROOM_TYPES, type RoomType } from './layout.js';
 
 export interface Goal {
   /** Dot path into Metrics, e.g. "doorToDoctor.median" or "lwbsRate". */
@@ -35,6 +36,8 @@ export const PLAYER_CONTROLS = [
   'diagnosis.thoroughness',
   /** The patient process (needs the process module on in the level). */
   'process.steps',
+  /** The rooms of the floor plan (layout module on; the footprint, entrance and ambulance door stay fixed). */
+  'layout.rooms',
 ] as const;
 export type PlayerControl = (typeof PLAYER_CONTROLS)[number];
 
@@ -63,6 +66,10 @@ export interface LevelLimits {
   maxOnDuty?: Partial<Record<Role, number>>;
   /** Most treatment spaces per lane. */
   maxBeds?: Partial<Record<'main' | 'fastTrack', number>>;
+  /** Fewest treatment spaces per lane (main includes trauma bays). */
+  minBeds?: Partial<Record<'main' | 'fastTrack', number>>;
+  /** Room types a floor plan must include (layout module). */
+  requiredRooms?: RoomType[];
 }
 
 export interface LevelSpec {
@@ -117,6 +124,17 @@ export interface LevelBenchmark {
 export function beatsBenchmark(b: Pick<LevelBenchmark, 'score' | 'goalsMet'>, score: number, goalsMet: boolean): boolean {
   return goalsMet && (!b.goalsMet || Math.round(score * 100) / 100 > b.score);
 }
+
+const ROOM_LABEL: Record<RoomType, string> = {
+  waiting: 'waiting room',
+  triage: 'triage room',
+  trauma: 'trauma room',
+  acute: 'acute bay',
+  fastTrack: 'fast-track area',
+  station: 'staff station',
+  imaging: 'imaging room',
+  lab: 'lab',
+};
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const strings = (x: unknown) => Array.isArray(x) && x.every((s) => typeof s === 'string');
@@ -179,10 +197,15 @@ export function checkLevel(level: unknown): string[] {
         if (!isObj(m) || Object.entries(m).some(([r, v]) => !(ROLES as readonly string[]).includes(r) || typeof v !== 'number'))
           p.push(`level.limits.${key}: object of role -> number`);
       }
-    if (isObj(level.limits) && level.limits.maxBeds !== undefined) {
-      const m = level.limits.maxBeds;
-      if (!isObj(m) || Object.entries(m).some(([k, v]) => (k !== 'main' && k !== 'fastTrack') || typeof v !== 'number'))
-        p.push('level.limits.maxBeds: { main?: number, fastTrack?: number }');
+    for (const key of ['maxBeds', 'minBeds'] as const)
+      if (isObj(level.limits) && level.limits[key] !== undefined) {
+        const m = level.limits[key];
+        if (!isObj(m) || Object.entries(m).some(([k, v]) => (k !== 'main' && k !== 'fastTrack') || typeof v !== 'number'))
+          p.push(`level.limits.${key}: { main?: number, fastTrack?: number }`);
+      }
+    if (isObj(level.limits) && level.limits.requiredRooms !== undefined) {
+      const r = level.limits.requiredRooms;
+      if (!Array.isArray(r) || r.some((t) => !(ROOM_TYPES as readonly unknown[]).includes(t))) p.push(`level.limits.requiredRooms: array of ${ROOM_TYPES.join(', ')}`);
     }
   }
   return p;
@@ -249,6 +272,10 @@ export function checkLimits(c: ResolvedConfig): string[] {
   for (const lane of ['main', 'fastTrack'] as const) {
     const max = limits.maxBeds?.[lane];
     if (max !== undefined && c.beds[lane] > max) out.push(`${lane} beds: ${Number.isFinite(c.beds[lane]) ? c.beds[lane] : 'unlimited'} exceeds the limit of ${max}`);
+    const min = limits.minBeds?.[lane];
+    if (min !== undefined && c.beds[lane] < min) out.push(`${lane === 'main' ? 'Main ED' : 'Fast-track'} beds: ${c.beds[lane]}, at least ${min} needed`);
   }
+  if (limits.requiredRooms && c.layout)
+    for (const t of limits.requiredRooms) if (!c.layout.rooms.some((r) => r.type === t)) out.push(`The plan needs a ${ROOM_LABEL[t]}`);
   return out;
 }

@@ -17,6 +17,7 @@ import { checkCommand, ConfigError, resolveConfig, resolveStep, type ResolvedCon
 import { EventQueue } from './eventQueue.js';
 import { computeMetrics, type Metrics } from './metrics.js';
 import { PatientQueue } from './patientQueue.js';
+import type { WalkTrip } from './layout.js';
 import { DIAGNOSTIC_KINDS, type RoutingRule, type StepDef } from './pipeline.js';
 import { Rng } from './rng.js';
 import { occurrencesInRun, scheduleBoundaries } from './schedule.js';
@@ -274,6 +275,10 @@ export class Simulation {
   private readonly waitingLoc: number = 0;
   private readonly triageLocs: number[] = [];
   private readonly stationLoc: number = 0;
+  /** Ambulance door location (layout module), or -1: ambulance patients then wait with everyone else. */
+  private readonly ambulanceLoc: number = -1;
+  /** Walks inside the measurement window (layout module), keyed "who:from:to". */
+  private readonly trips = new Map<string, number>();
   /** Minutes spent walking, by role (inside the measurement window). */
   readonly walkingMinutes: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 };
 
@@ -377,6 +382,7 @@ export class Simulation {
       this.waitingLoc = locOf('waiting')[0]!;
       this.triageLocs = locOf('triage');
       this.stationLoc = locOf('station')[0] ?? this.bedLoc.main[0]!;
+      this.ambulanceLoc = c.layout.ambulanceLoc ?? -1;
     }
 
     for (const role of ROLES) {
@@ -1062,7 +1068,9 @@ export class Simulation {
       p.bedTime = this.clock;
       // Walk (or be wheeled) from the waiting room to the bed.
       const c = this.config;
-      const walk = c.layout ? c.layout.dist[this.waitingLoc]![this.bedLoc[lane][idx]!]! * c.walking.minutesPerCell : c.walking.disabledTransferMinutes;
+      const from = this.waitLoc(p);
+      const walk = c.layout ? c.layout.dist[from]![this.bedLoc[lane][idx]!]! * c.walking.minutesPerCell : c.walking.disabledTransferMinutes;
+      if (c.layout) this.recordTrip('patient', from, this.bedLoc[lane][idx]!, 1);
       if (walk > 0) this.push(this.clock + walk, { kind: 'transferEnd', patientId: id });
       else {
         this.rt[id]!.hasBed = true;
@@ -1258,10 +1266,11 @@ export class Simulation {
     if (c.layout) {
       // Staff work from a home base (station, or their triage room) and make a round trip for each task:
       // out to the patient and back to document. Triage nurses fetch the patient from the waiting room.
-      const where = step.kind === 'triage' ? this.waitingLoc : this.taskLocation(s, p, step);
+      const where = step.kind === 'triage' ? this.waitLoc(p) : this.taskLocation(s, p, step);
       const walk = 2 * c.layout.dist[s.loc]![where]! * c.walking.minutesPerCell;
       minutes += walk;
       if (this.clock >= c.warmupMinutes) this.walkingMinutes[s.role] += walk;
+      this.recordTrip('staff', s.loc, where, 2);
     }
     s.taskEnd = this.clock + minutes;
     this.push(s.taskEnd, { kind: 'taskEnd', staffId: s.id, token: ++s.taskToken });
@@ -1271,7 +1280,28 @@ export class Simulation {
   private taskLocation(s: Staff, p: Patient, step: StepDef): number {
     if (this.holdsBed(p)) return this.bedLoc[p.lane!][p.bed!]!;
     if (step.kind === 'triage' && this.triageLocs.length) return this.triageLocs[s.id % this.triageLocs.length]!;
-    return this.waitingLoc;
+    return this.waitLoc(p);
+  }
+
+  /** Where a patient waits before they have a bed: ambulance arrivals by the ambulance door, if there is one. */
+  private waitLoc(p: Patient): number {
+    return p.byAmbulance && this.ambulanceLoc >= 0 ? this.ambulanceLoc : this.waitingLoc;
+  }
+
+  private recordTrip(who: 'staff' | 'patient', from: number, to: number, count: number): void {
+    if (from === to || this.clock < this.config.warmupMinutes) return;
+    const key = `${who}:${from}:${to}`;
+    this.trips.set(key, (this.trips.get(key) ?? 0) + count);
+  }
+
+  /** Walks so far in the measurement window (layout module), for heat maps (`walkHeat`). */
+  walkTrips(who: 'staff' | 'patient' | 'all' = 'all'): WalkTrip[] {
+    const out: WalkTrip[] = [];
+    for (const [k, count] of this.trips) {
+      const [w, from, to] = k.split(':');
+      if (who === 'all' || w === who) out.push({ from: Number(from), to: Number(to), count });
+    }
+    return out.sort((a, b) => a.from - b.from || a.to - b.to);
   }
 
   private onTaskEnd(staffId: number): void {

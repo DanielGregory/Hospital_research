@@ -6,13 +6,14 @@ import level4 from '../../../configs/levels/level-04-flu-season.json';
 import level5 from '../../../configs/levels/level-05-boarding-crisis.json';
 import level6 from '../../../configs/levels/level-06-mass-casualty.json';
 import level7 from '../../../configs/levels/level-07-budget-mode.json';
+import level8 from '../../../configs/levels/level-08-new-build.json';
 import { resolveConfig, validateConfig } from '../src/config.js';
 import { Simulation } from '../src/engine.js';
 import { checkLimits, evaluateGoals, getMetric, staffingSummary } from '../src/levels.js';
 import { applySettings } from '../src/settings.js';
 import { checkSetup } from '../src/budget.js';
 
-const LEVELS: readonly any[] = [level1, level2, level3, level4, level5, level6, level7];
+const LEVELS: readonly any[] = [level1, level2, level3, level4, level5, level6, level7, level8];
 
 describe('goal evaluation', () => {
   const metrics = new Simulation({ id: 'x', durationMinutes: 600 }, 1).run().metrics;
@@ -110,5 +111,15 @@ describe('best-found benchmarks', () => {
 
   it('three stars never ask for more than the best found plan', () => {
     for (const l of LEVELS) expect(l.level.stars.three, `level ${l.level.number}`).toBeLessThanOrEqual(l.level.benchmark.score);
+  });
+});
+
+describe('floor plan limits (level 8)', () => {
+  const rooms = (level8 as any).level.reference['layout.rooms'] as { type: string; id: string }[];
+  const problems = (r: unknown[]) => checkSetup(resolveConfig(applySettings(level8, { 'layout.rooms': r })));
+  it('the reference plan fits; missing rooms and too few beds are flagged', () => {
+    expect(problems(rooms)).toEqual([]);
+    expect(problems(rooms.filter((r) => r.type !== 'trauma'))).toContain('The plan needs a trauma room');
+    expect(problems(rooms.filter((r) => r.id !== 'acute-b')).some((p) => /at least 20 needed/.test(p))).toBe(true);
   });
 });

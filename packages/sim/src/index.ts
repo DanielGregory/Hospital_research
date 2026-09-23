@@ -60,6 +60,7 @@ export {
   footprintPreset,
   defaultCapacity,
   exampleLayout,
+  walkHeat,
   ROOM_TYPES,
   FOOTPRINT_PRESETS,
   type LayoutSpec,
@@ -69,6 +70,7 @@ export {
   type ResolvedRoom,
   type Cell,
   type FootprintPreset,
+  type WalkTrip,
 } from './layout.js';
 export { plannedDailyCost, checkBudget, checkSetup, actualCost, type CostBreakdown } from './budget.js';
 export { compositeScore, type ScoreBreakdown } from './score.js';

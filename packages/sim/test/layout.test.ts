@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/config.js';
 import { Simulation } from '../src/engine.js';
-import { exampleLayout, footprintPreset, resolveLayout, type LayoutSpec } from '../src/layout.js';
+import { exampleLayout, footprintPreset, resolveLayout, walkHeat, type LayoutSpec } from '../src/layout.js';
 
 const corridor: LayoutSpec = {
   footprint: ['##########', '##########', '##########'],
@@ -119,5 +119,65 @@ describe('layout module in the simulation', () => {
     const b = new Simulation({ ...base, layout: exampleLayout() }, 4).run().metrics;
     expect(JSON.stringify(b)).toBe(JSON.stringify(a));
     expect(a.walking).toBeNull();
+  });
+});
+
+describe('ambulance door and walking heat', () => {
+  const base = {
+    footprint: { preset: 'rectangle' as const, width: 24, height: 14 },
+    entrance: { x: 0, y: 7 },
+    rooms: [
+      { id: 'waiting', type: 'waiting' as const, x: 1, y: 1, w: 5, h: 4 },
+      { id: 'triage', type: 'triage' as const, x: 1, y: 9, w: 4, h: 3 },
+      { id: 'station', type: 'station' as const, x: 10, y: 6, w: 3, h: 2 },
+      { id: 'acute', type: 'acute' as const, x: 8, y: 1, w: 8, h: 4 },
+      { id: 'acute-b', type: 'acute' as const, x: 8, y: 9, w: 8, h: 4 },
+    ],
+  };
+  const withTrauma = (x: number) => ({ ...base, ambulanceDoor: { x: 23, y: 7 }, rooms: [...base.rooms, { id: 'trauma', type: 'trauma' as const, x, y: 9, w: 4, h: 4 }] });
+  const cfg = (layout: object) => ({ id: 'amb', durationMinutes: 3 * 1440, modules: { layout: true }, layout, arrivals: { acuityMix: { '1': 0.1, '2': 0.3, '3': 0.4, '4': 0.1, '5': 0.1 } } });
+
+  it('resolves as an extra location after the rooms', () => {
+    const r = resolveLayout(withTrauma(19)).layout!;
+    expect(r.ambulanceLoc).toBe(r.rooms.length + 1);
+    expect(r.dist.length).toBe(r.rooms.length + 2);
+    expect(resolveLayout({ ...base, ambulanceDoor: { x: 2, y: 2 } }).problems[0]).toMatch(/ambulance door/);
+  });
+
+  it('no door: results are exactly as before', () => {
+    const a = new Simulation(cfg(base), 3).run().metrics;
+    const b = new Simulation(cfg({ ...base }), 3).run().metrics;
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it('a trauma room by the ambulance door means less walking than one across the floor', () => {
+    const near = new Simulation(cfg(withTrauma(19)), 5);
+    const far = new Simulation(cfg({ ...withTrauma(19), ambulanceDoor: { x: 0, y: 12 } }), 5);
+    const mn = near.run().metrics;
+    const mf = far.run().metrics;
+    // Minutes of wheeling into the trauma room, per patient taken there.
+    const toTrauma = (s: Simulation, spec: LayoutSpec) => {
+      const l = resolveLayout(spec).layout!;
+      const trauma = l.rooms.findIndex((r) => r.type === 'trauma') + 1;
+      const ts = s.walkTrips('patient').filter((w) => w.to === trauma);
+      return ts.reduce((t, w) => t + w.count * l.dist[w.from]![w.to]!, 0) / ts.reduce((t, w) => t + w.count, 0);
+    };
+    expect(toTrauma(near, withTrauma(19))).toBeLessThan(toTrauma(far, { ...withTrauma(19), ambulanceDoor: { x: 0, y: 12 } }));
+    expect(mn.arrivals).toBe(mf.arrivals);
+  });
+
+  it('heat follows the trips: each staff trip lights a path from base to patient', () => {
+    const s = new Simulation(cfg(withTrauma(19)), 2);
+    s.run();
+    const l = resolveLayout(withTrauma(19)).layout!;
+    const trips = s.walkTrips('staff');
+    expect(trips.length).toBeGreaterThan(0);
+    const heat = walkHeat(l, trips);
+    const station = l.rooms.find((r) => r.id === 'station')!;
+    expect(heat[station.access.y]![station.access.x]!).toBeGreaterThan(0);
+    // One trip of known length: path cells + doors.
+    const one = walkHeat(l, [{ from: 0, to: 1, count: 3 }]);
+    const total = one.flat().reduce((a, b) => a + b, 0);
+    expect(total).toBe(3 * (l.dist[0]![1]! - 1 + 1 + 1));
   });
 });

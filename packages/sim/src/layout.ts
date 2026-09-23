@@ -36,6 +36,8 @@ export interface LayoutSpec {
   /** Rows of '#' (inside) and '.' (outside), or a preset shape. */
   footprint: string[] | { preset: FootprintPreset; width: number; height: number };
   entrance: Cell;
+  /** Where ambulances bring patients in (a corridor cell). Default: the entrance. */
+  ambulanceDoor?: Cell;
   rooms: RoomSpec[];
 }
 
@@ -51,8 +53,15 @@ export interface ResolvedLayout {
   footprint: string[];
   entrance: Cell;
   rooms: ResolvedRoom[];
-  /** Walking distance in cells between locations: index 0 = entrance, i + 1 = rooms[i]. */
+  /** Location index of the ambulance door (rooms.length + 1), or null when ambulances use the entrance. */
+  ambulanceLoc: number | null;
+  /**
+   * Walking distance in cells between locations: index 0 = entrance, i + 1 = rooms[i],
+   * then the ambulance door if there is one.
+   */
   dist: number[][];
+  /** The corridor cell each location is walked from (same indexes as dist). */
+  points: Cell[];
 }
 
 /** Cells per bed or triage station when a room gives no capacity. */
@@ -106,6 +115,7 @@ export function checkLayoutShape(raw: unknown, path = 'layout'): string[] {
   } else if (!(isObj(fp) && (FOOTPRINT_PRESETS as readonly unknown[]).includes(fp.preset) && isInt(fp.width) && isInt(fp.height) && fp.width >= 4 && fp.height >= 4 && fp.width <= 80 && fp.height <= 80))
     p.push(`${path}.footprint: rows, or { preset: ${FOOTPRINT_PRESETS.join('|')}, width: 4..80, height: 4..80 }`);
   if (!isCell(raw.entrance)) p.push(`${path}.entrance: { x, y }`);
+  if (raw.ambulanceDoor !== undefined && !isCell(raw.ambulanceDoor)) p.push(`${path}.ambulanceDoor: { x, y }`);
   if (!Array.isArray(raw.rooms)) p.push(`${path}.rooms: array`);
   else
     raw.rooms.forEach((r, i) => {
@@ -149,6 +159,8 @@ export function resolveLayout(spec: LayoutSpec): { layout?: ResolvedLayout; prob
   const corridor = (x: number, y: number) => inside(x, y) && owner[y]![x] === -1;
   const e = spec.entrance;
   if (!corridor(e.x, e.y)) p.push('entrance: must be a footprint cell outside every room');
+  const amb = spec.ambulanceDoor;
+  if (amb && !corridor(amb.x, amb.y)) p.push('ambulance door: must be a footprint cell outside every room');
   if (p.length) return { problems: p };
 
   const bfs = (from: Cell): number[][] => {
@@ -202,15 +214,84 @@ export function resolveLayout(spec: LayoutSpec): { layout?: ResolvedLayout; prob
     if (pick && !Number.isFinite(fromEntrance[pick.access.y]![pick.access.x]!)) p.push(`${r.id}: cannot be reached from the entrance`);
     if (pick) rooms.push({ id: r.id, type: r.type, x: r.x, y: r.y, w: r.w, h: r.h, capacity: r.capacity ?? defaultCapacity(r.type, r.w, r.h), door: pick.door, access: pick.access });
   }
+  if (amb && !Number.isFinite(fromEntrance[amb.y]![amb.x]!)) p.push('ambulance door: cannot be reached from the entrance');
   if (p.length) return { problems: p };
 
-  // Distances between locations: entrance, then rooms (door to door, +1 cell to step in, +1 to step out).
-  const points: Cell[] = [e, ...rooms.map((r) => r.access)];
+  // Distances between locations: entrance, then rooms (door to door, +1 cell to step in, +1 to step out),
+  // then the ambulance door.
+  const points: Cell[] = [e, ...rooms.map((r) => r.access), ...(amb ? [amb] : [])];
+  const isRoom = (i: number) => i > 0 && i <= rooms.length;
   const dist = points.map((a, i) => {
     const d = bfs(a);
-    return points.map((b, j) => (i === j ? 0 : d[b.y]![b.x]! + (i > 0 ? 1 : 0) + (j > 0 ? 1 : 0)));
+    return points.map((b, j) => (i === j ? 0 : d[b.y]![b.x]! + (isRoom(i) ? 1 : 0) + (isRoom(j) ? 1 : 0)));
   });
-  return { layout: { width, height, footprint, entrance: e, rooms, dist }, problems: [] };
+  return { layout: { width, height, footprint, entrance: e, rooms, ambulanceLoc: amb ? rooms.length + 1 : null, dist, points }, problems: [] };
+}
+
+export interface WalkTrip {
+  /** Location indexes (see ResolvedLayout.dist). */
+  from: number;
+  to: number;
+  /** Times walked (one way). */
+  count: number;
+}
+
+/**
+ * How often each corridor cell was walked: every trip follows one shortest corridor path
+ * (the same path every time). Cells inside rooms count only their door. Returns rows × columns.
+ */
+export function walkHeat(l: ResolvedLayout, trips: readonly WalkTrip[]): number[][] {
+  const heat = Array.from({ length: l.height }, () => Array<number>(l.width).fill(0));
+  const owner = Array.from({ length: l.height }, () => Array<boolean>(l.width).fill(false));
+  for (const r of l.rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) owner[y]![x] = true;
+  const corridor = (x: number, y: number) => x >= 0 && y >= 0 && x < l.width && y < l.height && l.footprint[y]![x] === '#' && !owner[y]![x];
+  const parents = new Map<number, Int32Array>();
+  const treeFrom = (i: number) => {
+    let t = parents.get(i);
+    if (t) return t;
+    const src = l.points[i]!;
+    t = new Int32Array(l.width * l.height).fill(-2);
+    t[src.y * l.width + src.x] = -1;
+    const q = [src.y * l.width + src.x];
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h]!;
+      const cx = c % l.width;
+      const cy = (c - cx) / l.width;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const n = ny * l.width + nx;
+        if (corridor(nx, ny) && t[n] === -2) {
+          t[n] = c;
+          q.push(n);
+        }
+      }
+    }
+    parents.set(i, t);
+    return t;
+  };
+  const doorOf = (i: number) => (i > 0 && i <= l.rooms.length ? l.rooms[i - 1]!.door : null);
+  for (const trip of trips) {
+    if (trip.count <= 0 || trip.from === trip.to) continue;
+    // Always walk the tree of the lower index, so a trip and its return share one path.
+    const [a, b] = trip.from < trip.to ? [trip.from, trip.to] : [trip.to, trip.from];
+    const t = treeFrom(a);
+    const end = l.points[b]!;
+    let c = end.y * l.width + end.x;
+    if (t[c] === -2) continue;
+    while (c >= 0) {
+      const cx = c % l.width;
+      heat[(c - cx) / l.width]![cx]! += trip.count;
+      c = t[c]!;
+    }
+    for (const d of [doorOf(a), doorOf(b)]) if (d) heat[d.y]![d.x]! += trip.count;
+  }
+  return heat;
 }
 
 /** Requirements when the layout drives the simulation. */

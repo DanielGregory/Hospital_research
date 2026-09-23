@@ -12,6 +12,7 @@ const SCORE_LABEL: Record<string, string> = {
   'deterioration.per100Arrivals': 'Got worse while waiting (per 100)',
   'diagnosis.bounceBackRate72h': 'Came back within 72 h',
   'boarding.meanHours': 'Boarding time (hours)',
+  'walking.shareOfBusyByRole.doctor': "Doctors' time spent walking",
 };
 
 export function Debrief(props: {

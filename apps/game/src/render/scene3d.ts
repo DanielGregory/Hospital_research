@@ -49,6 +49,7 @@ function buildGeometry() {
     coat: new THREE.CylinderGeometry(0.2, 0.25, 0.86, 12, 1, true),
     stetho: new THREE.TorusGeometry(0.12, 0.012, 6, 16, Math.PI * 1.3),
     blanket: new THREE.BoxGeometry(0.44, 0.95, 0.14),
+    band: new THREE.CylinderGeometry(0.18, 0.18, 0.06, 12),
   };
 }
 
@@ -67,6 +68,11 @@ class Figure {
   readonly stetho: THREE.Mesh;
   readonly blanket: THREE.Mesh;
   readonly gurney: THREE.Group;
+  /** Whoever pushes the trolley: a paramedic bringing a casualty in, or a porter taking an admission up. */
+  readonly porter = new THREE.Group();
+  private readonly porterLegs: THREE.Group[] = [];
+  private readonly porterArms: THREE.Group[] = [];
+  private porterKind = '';
   heading = 0;
   lying = 0;
   sitting = 0;
@@ -112,7 +118,52 @@ class Figure {
     this.ring.position.y = 0.035;
     this.gurney = scene.gurney();
     this.gurney.visible = false;
-    this.root.add(this.badge, this.ring, this.gurney);
+    this.buildPorter(g);
+    this.root.add(this.badge, this.ring, this.gurney, this.porter);
+  }
+
+  private buildPorter(g: NonNullable<typeof geo>) {
+    const torso = new THREE.Mesh(g.torso);
+    torso.position.y = 1.2;
+    const head = new THREE.Mesh(g.head);
+    head.position.y = 1.68;
+    const hair = new THREE.Mesh(g.hair);
+    hair.position.y = 1.7;
+    const stripe = new THREE.Mesh(g.band);
+    stripe.position.y = 1.12;
+    this.porter.add(torso, head, hair, stripe);
+    for (const side of [-1, 1]) {
+      const leg = new THREE.Group();
+      leg.position.set(side * 0.09, 0.85, 0);
+      leg.add(new THREE.Mesh(g.leg));
+      const arm = new THREE.Group();
+      arm.position.set(side * 0.24, 1.46, 0);
+      arm.rotation.x = -1.15; // hands forward on the trolley rail
+      arm.add(new THREE.Mesh(g.arm));
+      this.porterLegs.push(leg);
+      this.porterArms.push(arm);
+      this.porter.add(leg, arm);
+    }
+    this.porter.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.castShadow = true;
+    });
+    // Behind the foot of the trolley, facing the way it goes.
+    this.porter.position.z = 1.38;
+    this.porter.rotation.y = Math.PI;
+    this.porter.visible = false;
+  }
+
+  private stylePorter(kind: 'paramedic' | 'porter', id: number) {
+    if (kind === this.porterKind) return;
+    this.porterKind = kind;
+    const m = (c: string) => this.scene.mat(c);
+    const uniform = kind === 'paramedic' ? '#2f5d46' : '#26416b';
+    const [torso, head, hair, stripe] = this.porter.children as THREE.Mesh[];
+    torso!.material = m(uniform);
+    head!.material = m(SKIN[(id * 11 + 2) % SKIN.length]!);
+    hair!.material = m(HAIR[(id * 5 + 1) % HAIR.length]!);
+    stripe!.material = m(kind === 'paramedic' ? '#d7ff3c' : '#c9d4e2'); // hi-vis band on paramedics
+    for (const l of [...this.porterLegs, ...this.porterArms]) (l.children[0] as THREE.Mesh).material = m(uniform);
   }
 
   /** Clothes, hair and badge; rebuilt only when what they show changes. */
@@ -168,9 +219,19 @@ class Figure {
     this.root.position.set(a.x * S, 0, a.y * S);
     const settled = !a.moving && a.path.length === 0;
     const d = a.data;
-    // Ambulance arrivals stay on their trolley until they are settled in a bed.
+    // Ambulance arrivals stay on their trolley until they are settled in a bed; admitted
+    // patients go up to the ward on one.
     const inBed = a.kind === 'patient' && a.data.inBed && settled;
-    const onGurney = a.kind === 'patient' && a.data.special === 'massCasualty' && !inBed;
+    const arriving = a.kind === 'patient' && a.data.special === 'massCasualty' && !inBed && !a.leaving;
+    const toWard = a.kind === 'patient' && a.leaving && a.data.boarding;
+    const onGurney = arriving || toWard;
+    this.porter.visible = onGurney;
+    if (onGurney) {
+      this.stylePorter(arriving ? 'paramedic' : 'porter', d.id);
+      const step = a.moving ? Math.sin(((a.stride * S) / 0.7) * Math.PI) : 0;
+      this.porterLegs[0]!.rotation.x = step * 0.55;
+      this.porterLegs[1]!.rotation.x = -step * 0.55;
+    }
     const lie = onGurney || (settled && d.pose === 'lie');
     const sit = !lie && settled && d.pose === 'sit';
     const k = 1 - Math.exp(-dt * 8);
@@ -237,6 +298,8 @@ export class Scene3D {
   private curtains = new Map<string, { mesh: THREE.Mesh; open: number; span: number; left: number }>();
   private monitors = new Map<string, THREE.Mesh>();
   private beacons: THREE.Mesh[] = [];
+  private boards: { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture }[] = [];
+  private lastBoard = -1;
   private ecg: THREE.CanvasTexture | null = null;
   private structureKey = '';
   private themeKey = '';
@@ -378,8 +441,8 @@ export class Scene3D {
         this.figures.set(a.key, f);
         this.people.add(f.root);
       }
-      // Into a gown once they are settled in the bed.
-      f.style(a, a.kind === 'patient' && a.data.inBed && a.data.pose === 'lie' && !a.moving && a.path.length === 0);
+      // Into a gown once they are settled in the bed (and still in it when wheeled up to the ward).
+      f.style(a, a.kind === 'patient' && a.data.inBed && a.data.pose === 'lie' && ((!a.moving && a.path.length === 0) || a.leaving));
       const patient = a.kind === 'staff' && a.data.patientId !== undefined ? byKey.get(`p${a.data.patientId}`) : undefined;
       f.pose(a, dt, t, patient ? { x: patient.x, y: patient.y } : null);
       if (a.kind === 'patient' && a.data.special === 'massCasualty' && a.moving) ambulanceBusy = true;
@@ -398,6 +461,10 @@ export class Scene3D {
       if (m) m.material = bed.occupied ? this.ecgMaterial() : this.mat('#101418');
     }
     if (this.ecg) this.ecg.offset.x = (t * 0.35) % 1;
+    if (this.boards.length && t - this.lastBoard > 1) {
+      this.lastBoard = t;
+      this.drawBoards(plan);
+    }
     const flash = Math.floor(t * 4) % 2 === 0;
     this.beacons.forEach((b, i) => {
       const on = ambulanceBusy && (i % 2 === 0 ? flash : !flash);
@@ -445,6 +512,88 @@ export class Scene3D {
       this.materials.set(key, m);
     }
     return m;
+  }
+
+  /** A group at plan (x, y) turned by `rot`, for furniture built in its own frame (front = +z). */
+  private local(x: number, y: number, rot: number): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(x * S, 0, y * S);
+    g.rotation.y = rot;
+    this.world.add(g);
+    return g;
+  }
+
+  /** A computer screen showing a patient record. */
+  private screenMaterial(): THREE.Material {
+    let m = this.materials.get('screen');
+    if (!m) {
+      const c = document.createElement('canvas');
+      c.width = 96;
+      c.height = 64;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#eaf2fb';
+      g.fillRect(0, 0, 96, 64);
+      g.fillStyle = '#2f6db5';
+      g.fillRect(0, 0, 96, 10);
+      g.fillStyle = '#9fb3c8';
+      for (let i = 0; i < 6; i++) g.fillRect(6, 16 + i * 8, 40 + ((i * 17) % 40), 3);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      m = new THREE.MeshBasicMaterial({ map: tex });
+      this.materials.set('screen', m);
+    }
+    return m;
+  }
+
+  /** The tracking board's canvas; redrawn from the plan about once a second. */
+  private boardTexture(): THREE.CanvasTexture {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 296;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.boards.push({ canvas: c, tex });
+    return tex;
+  }
+
+  private drawBoards(plan: FloorPlan) {
+    const rows = plan.patients
+      .filter((p) => p.inBed && p.bedLabel)
+      .sort((a, b) => (a.acuity ?? 6) - (b.acuity ?? 6) || b.waited - a.waited)
+      .slice(0, 9);
+    const waiting = plan.patients.filter((p) => !p.inBed).length;
+    for (const { canvas, tex } of this.boards) {
+      const g = canvas.getContext('2d')!;
+      g.fillStyle = '#0f1419';
+      g.fillRect(0, 0, 512, 296);
+      g.fillStyle = '#e8eef5';
+      g.font = '700 22px system-ui, sans-serif';
+      g.fillText('ED TRACKING BOARD', 14, 30);
+      g.font = '500 16px system-ui, sans-serif';
+      g.fillStyle = '#9fb3c8';
+      g.fillText(`Waiting: ${waiting}`, 380, 30);
+      g.fillStyle = '#2a3440';
+      g.fillRect(10, 40, 492, 2);
+      rows.forEach((p, i) => {
+        const y = 66 + i * 25;
+        g.fillStyle = i % 2 ? '#141b22' : '#18212a';
+        g.fillRect(10, y - 18, 492, 24);
+        g.fillStyle = p.acuity ? acuityColor(p.acuity) : '#777';
+        g.fillRect(16, y - 14, 26, 18);
+        g.fillStyle = p.acuity ? inkOn(acuityColor(p.acuity)) : '#fff';
+        g.font = '700 14px system-ui, sans-serif';
+        g.fillText(p.acuity ? String(p.acuity) : '–', 25, y);
+        g.fillStyle = '#e8eef5';
+        g.font = '600 16px system-ui, sans-serif';
+        g.fillText(p.bedLabel!, 54, y);
+        g.fillStyle = '#9fb3c8';
+        g.fillText(`#${p.id}`, 150, y);
+        g.fillText(p.boarding ? 'Admitted – awaiting bed' : 'In treatment', 220, y);
+        g.fillStyle = p.waited > 240 ? '#ff8a80' : '#e8eef5';
+        g.fillText(`${Math.floor(p.waited / 60)}h ${String(Math.round(p.waited % 60)).padStart(2, '0')}m`, 430, y);
+      });
+      tex.needsUpdate = true;
+    }
   }
 
   private ecgMaterial(): THREE.Material {
@@ -529,6 +678,8 @@ export class Scene3D {
     this.curtains.clear();
     this.monitors.clear();
     this.beacons = [];
+    this.boards = [];
+    this.lastBoard = -1;
   }
 
   private buildWorld(plan: FloorPlan) {
@@ -582,7 +733,8 @@ export class Scene3D {
     for (const a of plan.areas) {
       this.world.add(this.slab(a.x, a.y, a.w, a.h, css(`--room-${roomKind(a)}`, '#ffffff'), 0.03));
       this.walls(a, plan.nav.openings.filter((o) => o.area === a.id), wallMat, capMat);
-      if (plan.grid) this.label(a.label, a.x + 4, a.y + 4, Math.min(a.w - 8, 90));
+      // Furnished bed rooms have cubicles along the walls: name them in the aisle.
+      if (plan.grid) this.label(a.label, a.x + 6, plan.bays?.length && ['acute', 'trauma', 'fastTrack'].includes(a.kind ?? '') ? a.y + a.h / 2 - 7 : a.y + 4, Math.min(a.w - 12, 90));
       else if (a.id === 'waiting') this.label(a.label, a.x + 12, a.y + 8, Math.min(a.w - 24, 170));
       else if (plan.props) this.label(a.label, a.x + (a.id === 'main' ? 44 : 14), a.id === 'main' ? a.y + a.h / 2 - 11 : a.y + (a.id === 'fastTrack' ? 72 : a.h - 18), Math.min(a.w * 0.22, 120));
       else this.label(a.label, a.x + a.w - 12, a.y + 8, Math.min(a.w * 0.4, 170), undefined, 'right');
@@ -837,21 +989,103 @@ export class Scene3D {
         this.put(this.box(0.05, 1.5, ph * S), this.see(th.dark ? '#546170' : '#c9d6e3', 0.8), p.x, p.y, 0.75);
         break;
       }
-      case 'island': {
-        this.put(this.box(pw * S, 1.05, ph * S), this.mat(th.dark ? '#4b4640' : '#e9e4da'), p.x, p.y, 0.525);
-        this.put(this.box(pw * S + 0.1, 0.05, ph * S + 0.1), this.mat(th.wood), p.x, p.y, 1.075);
-        // Computers along both sides, facing the chairs.
-        const n = Math.max(1, Math.floor((pw - 20) / 36));
-        for (let i = 0; i < n; i++) {
-          const x = p.x - pw / 2 + 22 + i * 36;
-          for (const side of [-1, 1]) {
-            const y = p.y + side * (ph / 2 - 8);
-            const face = side < 0 ? Math.PI : 0;
-            this.put(this.box(0.46, 0.3, 0.03), this.mat('#1e2226'), x, y, 1.3, face);
-            this.put(new THREE.PlaneGeometry(0.42, 0.26), this.mat(th.dark ? '#3d6fb8' : '#6fa8ff'), x, y + side * 0.9, 1.3, face, false);
-          }
+      case 'counter': {
+        // Desk-height worktop inside; on the outer edge a raised panel with a ledge, like a real station.
+        const along = pw >= ph ? 'x' : 'z';
+        const len = (along === 'x' ? pw : ph) * S;
+        const depth = (along === 'x' ? ph : pw) * S;
+        const g = this.local(p.x, p.y, along === 'x' ? 0 : Math.PI / 2);
+        const out = along === 'x' ? Math.cos(rot) : Math.sin(rot); // +1: outer edge on the group's +z side
+        const u = (m: number) => m / S;
+        this.put(this.box(len, 0.74, depth), this.mat(th.dark ? '#4b4640' : '#e9e4da'), 0, 0, 0.37, 0, true, g);
+        this.put(this.box(len + 0.04, 0.04, depth + 0.04), this.mat(th.wood), 0, 0, 0.76, 0, true, g);
+        this.put(this.box(len, 0.42, 0.06), this.mat(th.dark ? '#5a544c' : '#f3efe6'), 0, u(out * (depth / 2 - 0.03)), 0.99, 0, true, g);
+        this.put(this.box(len + 0.06, 0.04, 0.3), this.mat(th.wood), 0, u(out * (depth / 2 + 0.05)), 1.2, 0, true, g);
+        this.put(this.box(len, 0.08, 0.005), this.mat(th.dark ? '#3f7f78' : '#5fa8a0'), 0, u(out * (depth / 2 + 0.003)), 0.55, 0, false, g);
+        break;
+      }
+      case 'workstation': {
+        const g = this.local(p.x, p.y, rot);
+        const u = (m: number) => m / S;
+        this.put(this.box(0.05, 0.25, 0.05), this.mat('#2a2d31'), 0, u(-0.06), 0.9, 0, false, g);
+        this.put(this.box(0.52, 0.32, 0.03), this.mat('#1e2226'), 0, u(-0.08), 1.1, 0, true, g);
+        this.put(new THREE.PlaneGeometry(0.48, 0.28), this.screenMaterial(), 0, u(-0.063), 1.1, 0, false, g);
+        this.put(this.box(0.42, 0.02, 0.14), this.mat('#2a2d31'), 0, u(0.12), 0.79, 0, false, g);
+        this.put(this.box(0.06, 0.02, 0.09), this.mat('#2a2d31'), u(0.3), u(0.12), 0.79, 0, false, g);
+        break;
+      }
+      case 'officeChair': {
+        const g = this.local(p.x, p.y, rot);
+        const u = (m: number) => m / S;
+        const fabric = this.mat(th.dark ? '#2f3b4a' : '#3d4e63');
+        this.put(this.box(0.48, 0.08, 0.46), fabric, 0, 0, 0.48, 0, true, g);
+        this.put(this.box(0.46, 0.5, 0.07), fabric, 0, u(-0.24), 0.8, 0, true, g);
+        this.put(this.cyl(0.03, 0.03, 0.38, 6), this.mat(th.metal), 0, 0, 0.27, 0, false, g);
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          const leg = this.put(this.box(0.05, 0.04, 0.3), this.mat('#2a2d31'), u(Math.sin(a) * 0.14), u(Math.cos(a) * 0.14), 0.07, a, false, g);
+          leg.castShadow = false;
+          this.put(new THREE.SphereGeometry(0.03, 6, 4), this.mat('#1d1d1d'), u(Math.sin(a) * 0.28), u(Math.cos(a) * 0.28), 0.03, 0, false, g);
         }
-        this.label(p.label ?? 'Station', p.x - pw / 2 + 8, p.y - 7, pw - 16, css('--ink-2', '#4a4843'), 'left', 1.11);
+        break;
+      }
+      case 'printer': {
+        this.put(this.box(0.46, 0.3, 0.4), this.mat(th.dark ? '#7a7f86' : '#d9dcdf'), p.x, p.y, 0.93);
+        this.put(this.box(0.3, 0.02, 0.2), this.mat('#ffffff'), p.x, p.y + 2, 1.09, 0, false);
+        break;
+      }
+      case 'phone': {
+        this.put(this.box(0.2, 0.06, 0.18), this.mat('#2a2d31'), p.x, p.y, 0.81, 0, false);
+        this.put(this.box(0.2, 0.04, 0.05), this.mat('#1d1d1d'), p.x, p.y - 3, 0.86, 0, false);
+        break;
+      }
+      case 'pyxis': {
+        // Automated medicine cabinet: drawers under a touch screen.
+        const g = this.local(p.x, p.y, rot);
+        const u = (m: number) => m / S;
+        this.put(this.box(0.9, 1.6, 0.6), this.mat(th.dark ? '#9aa3ab' : '#e7eaed'), 0, 0, 0.8, 0, true, g);
+        for (let i = 0; i < 5; i++) this.put(this.box(0.8, 0.14, 0.02), this.mat(i % 2 ? '#4f7fb5' : '#6b93c2'), 0, u(0.31), 0.25 + i * 0.2, 0, false, g);
+        this.put(new THREE.PlaneGeometry(0.4, 0.28), this.screenMaterial(), 0, u(0.305), 1.35, 0, false, g);
+        break;
+      }
+      case 'board': {
+        // The patient tracking board: a big screen on a stand listing who is in which bed.
+        const g = this.local(p.x, p.y, rot);
+        const u = (m: number) => m / S;
+        this.put(this.cyl(0.05, 0.05, 1.5, 8), this.mat(th.metal), 0, 0, 0.75, 0, true, g);
+        this.put(this.box(0.6, 0.04, 0.4), this.mat(th.metal), 0, 0, 0.02, 0, false, g);
+        this.put(this.box(2.0, 1.2, 0.08), this.mat('#16191d'), 0, 0, 2.05, 0, true, g);
+        const tex = this.boardTexture();
+        this.put(new THREE.PlaneGeometry(1.9, 1.1), new THREE.MeshBasicMaterial({ map: tex }), 0, u(0.045), 2.05, 0, false, g);
+        break;
+      }
+      case 'hangingSign': {
+        this.sign(p.label ?? 'Station', p.x, p.y, 2.75, 2.2, css('--accent', '#2553c9'));
+        for (const dx of [-18, 18]) this.put(this.cyl(0.006, 0.006, 0.5, 4), this.mat('#888888'), p.x + dx, p.y, 3.15, 0, false);
+        break;
+      }
+      case 'scanner': {
+        // CT scanner: gantry ring and a sliding table.
+        const g = this.local(p.x, p.y, rot);
+        const u = (m: number) => m / S;
+        const ring = this.put(new THREE.TorusGeometry(0.75, 0.32, 12, 28), this.mat('#eef0f2'), 0, 0, 1.1, 0, true, g);
+        ring.rotation.y = Math.PI / 2;
+        this.put(this.box(0.3, 1.3, 1.6), this.mat('#eef0f2'), 0, 0, 0.65, 0, true, g).rotation.y = Math.PI / 2;
+        this.put(this.box(0.6, 0.12, 2.2), this.mat('#d6dde5'), 0, u(1.2), 0.85, 0, true, g);
+        this.put(this.box(0.4, 0.7, 1.2), this.mat('#c9d2dc'), 0, u(1.3), 0.4, 0, true, g);
+        break;
+      }
+      case 'bench': {
+        // Lab bench: cabinets, a worktop, a microscope and an analyser.
+        const g = this.local(p.x, p.y, rot);
+        const u = (m: number) => m / S;
+        const len = Math.max(pw, ph) * S;
+        this.put(this.box(len, 0.86, 0.7), this.mat(th.dark ? '#5a6068' : '#dfe4e8'), 0, 0, 0.43, 0, true, g);
+        this.put(this.box(len + 0.04, 0.04, 0.74), this.mat('#2d3238'), 0, 0, 0.88, 0, true, g);
+        this.put(this.box(0.25, 0.4, 0.3), this.mat('#f1f1f1'), u(-len / 4), 0, 1.1, 0, true, g);
+        this.put(this.cyl(0.03, 0.03, 0.3, 6), this.mat('#2a2a2a'), u(-len / 4), u(0.05), 1.35, 0, false, g);
+        this.put(this.box(0.5, 0.45, 0.45), this.mat('#e8ecef'), u(len / 5), 0, 1.13, 0, true, g);
+        this.put(new THREE.PlaneGeometry(0.2, 0.12), this.screenMaterial(), u(len / 5), u(0.23), 1.2, 0, false, g);
         break;
       }
       case 'reception': {

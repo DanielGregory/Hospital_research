@@ -65,7 +65,6 @@ export interface Prop extends Point {
     | 'plant'
     | 'vending'
     | 'water'
-    | 'island'
     | 'desk'
     | 'chair'
     | 'partition'
@@ -75,7 +74,17 @@ export interface Prop extends Point {
     | 'tree'
     | 'sign'
     | 'road'
-    | 'shelves';
+    | 'shelves'
+    | 'counter'
+    | 'workstation'
+    | 'officeChair'
+    | 'printer'
+    | 'phone'
+    | 'pyxis'
+    | 'board'
+    | 'hangingSign'
+    | 'scanner'
+    | 'bench';
   w?: number;
   h?: number;
   rot?: number;
@@ -117,6 +126,8 @@ export interface PatientDot {
   face?: number;
   /** What they are waiting for, if anything (for tooltips). */
   waitingFor?: string;
+  /** Name of their bed or cubicle (3D tracking board). */
+  bedLabel?: string;
 }
 
 /** A way in or out of the building: people appear at `outside` and walk in through `inside`. */

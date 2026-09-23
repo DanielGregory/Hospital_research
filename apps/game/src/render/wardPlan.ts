@@ -22,6 +22,8 @@ const AISLE = 200;
 const FT_H = 170;
 const FT_BAY_D = 66;
 const FT_BAY_W = 54;
+const STATION_H = 84;
+const COUNTER_D = 13;
 const BED_W = 22;
 const BED_L = 42;
 
@@ -76,7 +78,8 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
   /** Where each bed is: its cubicle, where the patient lies, and where a clinician stands. */
   const slot = new Map<string, { bay: Bay; lie: Point; head: 'up' | 'down' | 'left'; side: Point; recliner: boolean }>();
   const addBay = (lane: 'main' | 'fastTrack', index: number, kind: Bay['kind'], x: number, top: boolean, w: number, d: number, rowY: number, label?: string) => {
-    const bay: Bay = { kind, lane, index, x, y: top ? rowY : rowY - d, w, h: d, front: top ? 'down' : 'up', label, attended: false };
+    const name = label ?? (lane === 'fastTrack' ? `FT ${index + 1}` : `Bay ${index - K + 1}`);
+    const bay: Bay = { kind, lane, index, x, y: top ? rowY : rowY - d, w, h: d, front: top ? 'down' : 'up', label: name, attended: false };
     const p = occupant.get(`${lane}:${index}`);
     bay.attended = !!p && p.staffIds.length > 0;
     const cx = x + w / 2;
@@ -108,18 +111,41 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
     const col = Math.floor(j / 2);
     addBay('main', K + j, 'bay', main.x + PAD + 40 + col * bayW, top, bayW, BAY_D, top ? main.y : main.y + mainH);
   }
-  // The staff island in the middle of the aisle, with seats on both sides.
-  const islandW = Math.min(240, Math.max(120, regularSpan * 0.45));
-  const island = { x: main.x + PAD + 40 + regularSpan / 2 - islandW / 2, y: cy - 30, w: islandW, h: 60 };
-  props.push({ type: 'island', x: island.x + island.w / 2, y: island.y + island.h / 2, w: island.w, h: island.h, label: 'Nurses’ station' });
-  const perSide = Math.max(1, Math.floor((islandW - 20) / 36));
-  const stationSpots: (Point & { face: number; sit: boolean })[] = [];
+  // The nurses' station: a U of counters in the middle of the aisle, open at the end nearest the
+  // door. Staff sit inside at workstations facing out towards the cubicles; the outer edge has a
+  // raised ledge. The tracking board and the medicine cabinet stand at the closed end.
+  const islandW = Math.min(220, Math.max(140, regularSpan * 0.42));
+  const island = { x: main.x + PAD + 40 + regularSpan / 2 - islandW / 2, y: cy - STATION_H / 2, w: islandW, h: STATION_H };
+  const T = COUNTER_D;
+  const gap = 34;
+  const side = (STATION_H - gap) / 2;
+  for (const c of [
+    { x: island.x, y: island.y, w: island.w, h: T, rot: NORTH }, // top run, ledge on the north side
+    { x: island.x, y: island.y + island.h - T, w: island.w, h: T, rot: SOUTH },
+    { x: island.x + island.w - T, y: island.y + T, w: T, h: island.h - 2 * T, rot: Math.PI / 2 }, // `rot` points outwards
+    { x: island.x, y: island.y + T, w: T, h: side - T, rot: -Math.PI / 2 },
+    { x: island.x, y: cy + gap / 2, w: T, h: side - T, rot: -Math.PI / 2 },
+  ])
+    props.push({ type: 'counter', x: c.x + c.w / 2, y: c.y + c.h / 2, w: c.w, h: c.h, rot: c.rot });
+  const stationSpots: (Point & { face: number })[] = [];
+  const perSide = Math.max(1, Math.floor((island.w - 80) / 36) + 1);
   for (let i = 0; i < perSide * 2; i++) {
     const topSide = i % 2 === 0;
-    const x = island.x + 22 + Math.floor(i / 2) * 36;
-    stationSpots.push({ x, y: topSide ? island.y - 13 : island.y + island.h + 13, face: topSide ? SOUTH : NORTH, sit: true });
+    const x = island.x + 34 + Math.floor(i / 2) * 36;
+    // Seated just inside the counter, facing out over it.
+    stationSpots.push({ x, y: topSide ? island.y + T + 15 : island.y + island.h - T - 15, face: topSide ? NORTH : SOUTH });
   }
-  for (const spot of stationSpots) props.push({ type: 'chair', x: spot.x, y: spot.y + (spot.face === SOUTH ? -3 : 3), rot: spot.face });
+  for (const spot of stationSpots) {
+    props.push({ type: 'officeChair', x: spot.x, y: spot.y, rot: spot.face });
+    // A monitor and keyboard on the counter in front of each seat, facing the person sitting there.
+    props.push({ type: 'workstation', x: spot.x, y: spot.face === NORTH ? island.y + T - 3 : island.y + island.h - T + 3, rot: spot.face === NORTH ? SOUTH : NORTH });
+  }
+  props.push({ type: 'printer', x: island.x + island.w - 26, y: island.y + T / 2 });
+  props.push({ type: 'phone', x: island.x + 20, y: island.y + T / 2 }, { type: 'phone', x: island.x + 20, y: island.y + island.h - T / 2 });
+  props.push({ type: 'pyxis', x: island.x + island.w - T - 14, y: cy + 12, rot: -Math.PI / 2 });
+  // Angled so both the staff inside and the camera can read it.
+  props.push({ type: 'board', x: island.x + island.w - T - 14, y: cy - 16, rot: -Math.PI / 2 + 0.6, w: 40 });
+  props.push({ type: 'hangingSign', x: island.x + island.w / 2, y: cy, label: 'Nurses’ station' });
 
   // ---- Triage: booths with a desk, the nurse behind it and a chair for the patient.
   const walkT = triage.y + TRIAGE_H - 22;
@@ -205,7 +231,9 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
   for (const p of waitingIds) {
     // Ambulance arrivals wait on trolleys in the corridor.
     if (p.source === 'massCasualty') {
-      patients.push(dot(p, { x: corrX, y: height - 60 - (hallway++ % 14) * 46 }, null, 'lie', 0));
+      // Spaced for the trolley and the paramedic waiting with it.
+      const places = Math.max(1, Math.floor((height - 120) / 62));
+      patients.push(dot(p, { x: corrX, y: height - 70 - (hallway++ % places) * 62 }, null, 'lie', 0));
       continue;
     }
     let i = (p.id * 7919) % Math.max(1, seats.length);
@@ -222,7 +250,7 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
       const sl = slot.get(`${p.lane}:${p.bed}`);
       if (!sl) continue;
       const head = sl.head === 'up' ? 0 : sl.head === 'down' ? Math.PI : Math.PI / 2;
-      patients.push(dot(p, sl.lie, p.lane === 'fastTrack' ? 'fastTrack' : 'main', sl.recliner ? 'sit' : 'lie', sl.recliner ? SOUTH : head));
+      patients.push({ ...dot(p, sl.lie, p.lane === 'fastTrack' ? 'fastTrack' : 'main', sl.recliner ? 'sit' : 'lie', sl.recliner ? SOUTH : head), bedLabel: sl.bay.label });
       p.staffIds.forEach((id, k) => staffPos.set(id, { pos: { x: sl.side.x + k * 14, y: sl.side.y + (k ? 10 : 0) }, area: p.lane === 'fastTrack' ? 'fastTrack' : 'main', face: 0, pose: 'stand' }));
     } else if (p.location === 'intake') {
       const booth = p.staffIds.map((id) => nurseBooth.get(id)).find((b) => b !== undefined);
@@ -303,6 +331,13 @@ function wardNav(n: NavInput): Nav {
   /** How to reach `p` from its area's walkway: the point on the walkway, then the steps off it. */
   const fromWalk = (area: string, p: Point): { walk: Point; steps: Point[] } => {
     const a = byId.get(area)!;
+    const isl = n.island;
+    if (area === 'main' && p.x > isl.x && p.x < isl.x + isl.w && p.y > isl.y && p.y < isl.y + isl.h) {
+      // Into the station through the open end, then along its middle to the seat.
+      const outside = isl.x - 20;
+      const mid = isl.y + isl.h / 2;
+      return { walk: { x: outside, y: p.y < mid ? n.topWalk : n.bottomWalk }, steps: [{ x: outside, y: mid }, { x: isl.x + 22, y: mid }, { x: p.x, y: mid }, p] };
+    }
     if (area === 'main' || area === 'fastTrack') {
       const bay = bayAt(p);
       const y = area === 'fastTrack' ? n.walkF : bay ? (bay.front === 'down' ? n.topWalk : n.bottomWalk) : p.y < n.cy ? n.topWalk : n.bottomWalk;

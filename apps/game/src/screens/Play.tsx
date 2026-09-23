@@ -5,6 +5,7 @@ import { clockLabel, minutes } from '../format';
 import type { GameConfig } from '../sandbox';
 import { acuityColor, drawFloor, inkOn } from '../render/draw';
 import { layoutFloor, type FloorPlan } from '../render/floorPlan';
+import { furnishGrid } from '../render/gridFurnish';
 import { layoutGrid } from '../render/gridPlan';
 import { Crowd, withActors, type Actor } from '../render/motion';
 import type { Scene3D } from '../render/scene3d';
@@ -127,7 +128,9 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
             size = `${w}x${h}`;
             scene.resize(w, h);
           }
-          const plan: FloorPlan = layout ? layoutGrid(s, layout, layout.width * GRID_CELL_3D, layout.height * GRID_CELL_3D) : layoutWard(s, showFastTrack);
+          const plan: FloorPlan = layout
+            ? furnishGrid(layoutGrid(s, layout, layout.width * GRID_CELL_3D, layout.height * GRID_CELL_3D), s, layout)
+            : layoutWard(s, showFastTrack);
           const actors = crowd.update(plan, dt, { speed: 50 * pace, instant });
           scene.render(plan, actors, dt, t / 1000);
           // Tooltip for whoever is under the pointer, a few times a second.

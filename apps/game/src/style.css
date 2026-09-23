@@ -536,3 +536,46 @@ p.small, .muted.small { font-size: 0.85rem; }
 .badge-beat { display: inline-block; font-weight: 700; color: var(--warn); margin-right: 6px; }
 .chip.beat { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
 @media (max-width: 560px) { .benchmark-head { flex-direction: column; align-items: flex-start; gap: 6px; } }
+
+/* Career */
+.week-chart svg { width: 100%; height: auto; display: block; }
+.week-chart .grid-line { stroke: var(--viz-grid); stroke-width: 1; }
+.week-chart .zero-line { stroke: var(--line-strong); stroke-width: 1.5; }
+.week-chart .tick { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.week-chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.week-chart .s1 .line { stroke: var(--series-1); }
+.week-chart .s2 .line { stroke: var(--series-2); }
+.week-chart .s3 .line { stroke: var(--series-3); }
+.week-chart .s1 .pt { fill: var(--series-1); }
+.week-chart .s2 .pt { fill: var(--series-2); }
+.week-chart .s3 .pt { fill: var(--series-3); }
+.week-chart .end-label { fill: var(--ink-2); font: 600 11px system-ui; font-variant-numeric: tabular-nums; }
+.career-head { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: flex-end; margin-bottom: 16px; }
+.career-head h1 { margin: 0; }
+.career-stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
+.career-stats > div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; min-width: 110px; }
+.career-stats dt { font-size: 0.75rem; color: var(--muted); }
+.career-stats dd { margin: 0; font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.career-stats .neg { color: var(--fail); }
+.rep-meter { display: block; height: 5px; border-radius: 3px; background: var(--line); margin-top: 4px; overflow: hidden; }
+.rep-meter span { display: block; height: 100%; background: var(--accent); }
+.career-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.career-grid > * { min-width: 0; }
+.forecast { margin: 0; padding-left: 18px; }
+.forecast li { margin: 2px 0; }
+.shop { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.shop li { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.shop li.owned { background: var(--pass-soft); border-color: color-mix(in srgb, var(--pass) 35%, transparent); }
+.shop .effect { grid-column: 1 / -1; font-size: 0.85rem; color: var(--ink-2); }
+.shop .price { font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--muted); }
+.ledger td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.ledger tr.total th, .ledger tr.total td { border-top: 2px solid var(--line-strong); font-weight: 700; }
+.ledger .neg { color: var(--fail); }
+.milestones { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.milestones li { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+.milestones li.got { color: var(--ink); }
+.milestones li.new { font-weight: 700; }
+.milestones .mark { width: 20px; text-align: center; }
+.career-over { border-color: color-mix(in srgb, var(--fail) 40%, transparent); background: var(--fail-soft); }
+.bed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0; }
+.career-quick { margin: 0 0 0 auto; }

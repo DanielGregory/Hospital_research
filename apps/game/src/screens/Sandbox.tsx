@@ -91,6 +91,14 @@ export function defaultSandbox(): SandboxState {
   };
 }
 
+/** Days an endless run can last; in practice the player stops it. */
+export const ENDLESS_DAYS = 365;
+
+/** The same setup, running until the player stops it (no warm-up: every patient counts). */
+export function endless(c: GameConfig): GameConfig {
+  return { ...c, id: 'sandbox-endless', name: 'Sandbox (endless)', durationMinutes: ENDLESS_DAYS * 1440, warmupMinutes: 0 };
+}
+
 /** Turn the sandbox form into a runnable config. */
 export function sandboxConfig(s: SandboxState): GameConfig {
   const m = s.modules;
@@ -298,7 +306,10 @@ export function Sandbox(props: {
         <button onClick={test} disabled={problems.length > 0} data-testid="sandbox-test">
           Test (three runs)
         </button>
-        <button className="primary push" onClick={() => props.onPlay(config)} disabled={problems.length > 0} data-testid="sandbox-play">
+        <button className="push" onClick={() => props.onPlay(endless(config))} disabled={problems.length > 0} data-testid="sandbox-endless">
+          Keep it running
+        </button>
+        <button className="primary" onClick={() => props.onPlay(config)} disabled={problems.length > 0} data-testid="sandbox-play">
           Watch it run
         </button>
       </div>

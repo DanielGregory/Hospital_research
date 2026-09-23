@@ -113,6 +113,57 @@ async function main() {
         await page.getByTestId('schedule-doctor').waitFor();
         await shot(page, `setup-${scheme}`);
 
+        // Beat the best found: reveal it, load it, play it; the debrief compares (matching is not beating).
+        await page.getByTestId('benchmark').waitFor();
+        await page.getByTestId('benchmark-reveal').click();
+        await shot(page, `benchmark-${scheme}`);
+        await page.getByTestId('benchmark-use').click();
+        await page.getByTestId('start').click();
+        await unhold(page);
+        await page.getByTestId('skip').click();
+        const bm = await page.getByTestId('benchmark-result').textContent();
+        if (!bm?.includes('Best found on this shift')) fail(`benchmark comparison missing: ${bm}`);
+        if ((await page.getByTestId('result').textContent()) !== 'Goals met') fail('the best found setup should meet the level 2 goals');
+
+        // Career: found a hospital, buy an upgrade, simulate a week, then run one live.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('career').click();
+        await page.getByTestId('career-name').fill('Test General');
+        await page.getByTestId('career-start').click();
+        await page.getByTestId('career-hq').waitFor();
+        const before = await page.getByTestId('career-money').textContent();
+        await page.getByTestId('buy-triageTraining').click();
+        if ((await page.getByTestId('career-money').textContent()) === before) fail('buying an upgrade did not cost money');
+        await shot(page, `career-hq-${scheme}`);
+        await page.getByTestId('career-simulate').click();
+        await page.getByTestId('career-week').waitFor({ timeout: 20_000 });
+        await page.getByTestId('ledger').waitFor();
+        await shot(page, `career-week-${scheme}`);
+        await page.getByTestId('career-continue').click();
+        await page.getByTestId('chart-score').waitFor();
+        await page.getByTestId('career-play').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(1500);
+        await unhold(page);
+        await page.getByTestId('skip').click();
+        await page.getByTestId('career-week').waitFor({ timeout: 20_000 });
+        await page.getByTestId('career-continue').click();
+        await page.reload();
+        await page.getByTestId('career').click();
+        if (!(await page.getByTestId('career-hq').textContent())?.includes('week 3')) fail('career did not save two weeks');
+        await shot(page, `career-history-${scheme}`);
+
+        // Endless sandbox: runs until stopped, then shows results so far.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('sandbox').click();
+        await page.getByTestId('sandbox-endless').click();
+        await page.getByTestId('endless-day').waitFor();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(1500);
+        await unhold(page);
+        await page.getByTestId('stop-here').click();
+        if ((await page.getByTestId('result').textContent()) !== 'Shift complete') fail('stopping an endless run did not show results');
+
         // Level 6: the incident is announced and pauses the game; call in help; change the process mid-shift.
         await page.goto(`http://localhost:${PORT}/`);
         await page.getByTestId('level-6').click();

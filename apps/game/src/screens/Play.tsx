@@ -93,7 +93,21 @@ interface Hold {
   resumeTo: Speed;
 }
 
-export function Play(props: { config: GameConfig; seed: number; values: SetupValues; onFinish: (runner: GameRunner) => void; onQuit: () => void }) {
+export function Play(props: {
+  config: GameConfig;
+  seed: number;
+  values: SetupValues;
+  onFinish: (runner: GameRunner) => void;
+  onQuit: () => void;
+  /** Live controls and calls when there is no level (default: the sandbox's). */
+  live?: { controls: PlayerControl[]; calls: readonly LiveCall[] };
+  /** Endless runs: "Stop here" ends the run now and shows the results so far. */
+  canStop?: boolean;
+  /** What the run is called on the buttons ("shift", "week"). */
+  unit?: string;
+  /** Header label when there is no level (default "Sandbox"). */
+  title?: string;
+}) {
   const { config, seed, onFinish, onQuit } = props;
   const runnerRef = useRef<GameRunner | null>(null);
   runnerRef.current ??= new GameRunner(config, seed);
@@ -126,8 +140,9 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
   const alertKey = useRef(0);
 
   const level = config.level ?? null;
-  const controls = level?.playerControls ?? SANDBOX_LIVE;
-  const calls: readonly LiveCall[] = level ? (level.liveCalls ?? []) : LIVE_CALLS;
+  const controls = level?.playerControls ?? props.live?.controls ?? SANDBOX_LIVE;
+  const calls: readonly LiveCall[] = level ? (level.liveCalls ?? []) : (props.live?.calls ?? LIVE_CALLS);
+  const unit = props.unit ?? 'shift';
   const planControls = controls.filter((c) => PLANNED.includes(c));
   const showFastTrack =
     runner.sim.config.fastTrack.enabled ||
@@ -154,6 +169,7 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
     const layout = runner.sim.config.layout;
     const tips = level?.coach ?? [];
     const frame = (t: number) => {
+      if (finished.current) return;
       const dt = Math.min(0.1, (t - last) / 1000);
       runner.advance(t - last);
       last = t;
@@ -340,13 +356,19 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
     <main className="screen play" onPointerDown={() => sound.current?.start()}>
       <header className="hud">
         <div className="clock-tile">
-          <p className="eyebrow">{level ? `Simulation ${String(level.number).padStart(2, '0')}` : 'Sandbox'}</p>
+          <p className="eyebrow">{level ? `Simulation ${String(level.number).padStart(2, '0')}` : (props.title ?? 'Sandbox')}</p>
           <strong className="clock" data-testid="clock">
             {clockLabel(c.startDayOfWeek, c.startHour, snap.now)}
           </strong>
-          <div className="progress" aria-label={`${Math.round(progress * 100)}% of the shift`}>
-            <span style={{ width: `${progress * 100}%` }} />
-          </div>
+          {props.canStop ? (
+            <p className="muted small" style={{ margin: 0 }} data-testid="endless-day">
+              Day {Math.floor(snap.now / 1440) + 1} · runs until you stop it
+            </p>
+          ) : (
+            <div className="progress" aria-label={`${Math.round(progress * 100)}% of the ${unit}`}>
+              <span style={{ width: `${progress * 100}%` }} />
+            </div>
+          )}
         </div>
         <dl className="stats">
           <Stat label="Waiting for triage" value={waitingTriage} />
@@ -490,9 +512,21 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
             <Legend view={view} />
           </section>
           <div className="actions" style={{ marginTop: 0 }}>
-            <button onClick={() => runner.skipToEnd()} data-testid="skip">
-              End shift now
-            </button>
+            {props.canStop ? (
+              <button
+                onClick={() => {
+                  finished.current = true;
+                  onFinishRef.current(runner);
+                }}
+                data-testid="stop-here"
+              >
+                Stop here
+              </button>
+            ) : (
+              <button onClick={() => runner.skipToEnd()} data-testid="skip">
+                End {unit} now
+              </button>
+            )}
             <button className="ghost" onClick={onQuit}>
               Quit
             </button>

@@ -1,3 +1,5 @@
+import type { CareerState } from '@er/sim';
+import { money } from '../career/store';
 import { LEVELS, type LevelConfig } from '../levels';
 import type { Daily } from '../play/daily';
 import type { Best } from '../play/stars';
@@ -11,6 +13,8 @@ export function Menu(props: {
   results: Record<string, boolean>;
   best: Record<string, Best>;
   daily: Daily;
+  career: CareerState | null;
+  onCareer: () => void;
 }) {
   const { onPick, onLayout, onSandbox, results, best, daily } = props;
   const todays = best[`daily:${daily.date}`];
@@ -70,6 +74,20 @@ export function Menu(props: {
           );
         })}
       </ol>
+
+      <h2>Career</h2>
+      <div className="sandbox-grid">
+        <button className="sandbox-card" onClick={props.onCareer} data-testid="career">
+          <strong>{props.career ? props.career.hospital.name : 'Run your own hospital'}</strong>
+          <span>
+            {props.career
+              ? props.career.over
+                ? `Career over after ${props.career.history.length} weeks.`
+                : `Week ${props.career.week} · balance ${money(props.career.money)} · reputation ${Math.round(props.career.reputation)}`
+              : 'Week after week: money, reputation, upgrades, flu seasons and major incidents. Keep improving your department.'}
+          </span>
+        </button>
+      </div>
 
       <h2>Sandbox</h2>
       <div className="sandbox-grid">

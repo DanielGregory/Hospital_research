@@ -1,4 +1,7 @@
-import { beatsBenchmark, evaluateGoals, type LayoutSpec, type Metrics } from '@er/sim';
+import { beatsBenchmark, evaluateGoals, Simulation, type CareerState, type LayoutSpec, type Metrics, type Settlement } from '@er/sim';
+import { Career } from './career/Career';
+import { CareerWeek } from './career/CareerWeek';
+import { career, careerLive, loadCareer, saveCareer } from './career/store';
 import { dailyChallenge, dateKey, shareText, type Daily } from './play/daily';
 import { loadBest, recordBest, starsFor, type Best } from './play/stars';
 import type { RunAnalysis } from './play/Why';
@@ -20,7 +23,8 @@ import { Shell } from './screens/Shell';
 type Origin =
   | { kind: 'level'; level: LevelConfig; values: SetupValues; daily?: Daily }
   | { kind: 'layout'; layout: LayoutSpec }
-  | { kind: 'sandbox' };
+  | { kind: 'sandbox' }
+  | { kind: 'career'; state: CareerState };
 
 type Screen =
   | { name: 'menu' }
@@ -29,7 +33,9 @@ type Screen =
   | { name: 'layout'; layout?: LayoutSpec }
   | { name: 'sandbox' }
   | { name: 'play'; config: GameConfig; seed: number; values: SetupValues; origin: Origin; run: number }
-  | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin; run: RunAnalysis; stars?: number };
+  | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin; run: RunAnalysis; stars?: number }
+  | { name: 'career' }
+  | { name: 'careerWeek'; before: { money: number; reputation: number }; settlement: Settlement; metrics: Metrics; run: RunAnalysis };
 
 const RESULTS_KEY = 'er-shift-results';
 
@@ -47,6 +53,17 @@ function saveResults(r: Record<string, boolean>) {
   } catch {
     // Storage unavailable (private mode etc.): results just aren't remembered.
   }
+}
+
+/** What the debrief needs to explain a run, read from the finished (or stopped) simulation. */
+function analysisOf(sim: Simulation): RunAnalysis {
+  const c = sim.config;
+  return {
+    timeline: [...sim.timeline],
+    log: sim.commandLog(),
+    clock: { startDayOfWeek: c.startDayOfWeek, startHour: c.startHour },
+    incidents: c.shocks.filter((s) => s.type === 'massCasualty').map((s) => ({ start: s.atMinute, end: s.atMinute + s.overMinutes })),
+  };
 }
 
 export function App() {
@@ -72,16 +89,24 @@ function Screens() {
   const [results, setResults] = useState(loadResults);
   const [best, setBest] = useState<Record<string, Best>>(loadBest);
   const [sandbox, setSandbox] = useState<SandboxState>(defaultSandbox);
+  const [careerState, setCareerState] = useState<CareerState | null>(loadCareer);
+  const setCareer = (s: CareerState | null) => {
+    saveCareer(s);
+    setCareerState(s);
+  };
+
+  /** Close a career week: settle the accounts and save before showing the result. */
+  const endWeek = (state: CareerState, sim: Simulation) => {
+    const metrics = sim.metrics();
+    const settlement = career.settleWeek(state, metrics);
+    setCareer(settlement.state);
+    setScreen({ name: 'careerWeek', before: { money: state.money, reputation: state.reputation }, settlement, metrics, run: analysisOf(sim) });
+  };
 
   const finish = (config: GameConfig, origin: Origin, runner: GameRunner) => {
+    if (origin.kind === 'career') return endWeek(origin.state, runner.sim);
     const metrics = runner.sim.metrics();
-    const c = runner.sim.config;
-    const run: RunAnalysis = {
-      timeline: [...runner.sim.timeline],
-      log: runner.sim.commandLog(),
-      clock: { startDayOfWeek: c.startDayOfWeek, startHour: c.startHour },
-      incidents: c.shocks.filter((s) => s.type === 'massCasualty').map((s) => ({ start: s.atMinute, end: s.atMinute + s.overMinutes })),
-    };
+    const run = analysisOf(runner.sim);
     let stars: number | undefined;
     if (origin.kind === 'level') {
       stars = starsFor(origin.level.level, metrics);
@@ -118,7 +143,11 @@ function Screens() {
           ? 'Layout editor'
           : screen.name === 'sandbox'
             ? 'Sandbox'
-            : (screen.config.level?.title ?? 'Sandbox');
+            : screen.name === 'career' || screen.name === 'careerWeek'
+              ? 'Career'
+              : screen.origin.kind === 'career'
+                ? 'Career'
+                : (screen.config.level?.title ?? 'Sandbox');
   return (
     <Shell crumb={crumb} onHome={home}>
       {body()}
@@ -137,8 +166,31 @@ function Screens() {
             onPick={(level) => setScreen({ name: 'briefing', level })}
             onLayout={() => setScreen({ name: 'layout' })}
             onSandbox={() => setScreen({ name: 'sandbox' })}
+            career={careerState}
+            onCareer={() => setScreen({ name: 'career' })}
           />
         );
+      case 'career':
+        return (
+          <Career
+            state={careerState}
+            onChange={setCareer}
+            onBack={home}
+            onPlay={() => {
+              const s = careerState!;
+              const config = career.weekConfig(s);
+              setScreen({ name: 'play', config, seed: career.weekSeed(s), values: valuesFor(config, careerLive(s).controls), origin: { kind: 'career', state: s }, run: Date.now() });
+            }}
+            onSimulate={() => {
+              const s = careerState!;
+              const sim = new Simulation(career.weekConfig(s), career.weekSeed(s));
+              sim.run();
+              endWeek(s, sim);
+            }}
+          />
+        );
+      case 'careerWeek':
+        return <CareerWeek before={screen.before} settlement={screen.settlement} metrics={screen.metrics} run={screen.run} onContinue={() => setScreen({ name: 'career' })} />;
       case 'sandbox':
         return (
           <Sandbox
@@ -206,7 +258,11 @@ function Screens() {
             seed={screen.seed}
             values={screen.values}
             onFinish={(runner) => finish(screen.config, screen.origin, runner)}
-            onQuit={() => setScreen({ name: 'menu' })}
+            onQuit={() => setScreen(screen.origin.kind === 'career' ? { name: 'career' } : { name: 'menu' })}
+            live={screen.origin.kind === 'career' ? careerLive(screen.origin.state) : undefined}
+            unit={screen.origin.kind === 'career' ? 'week' : 'shift'}
+            title={screen.origin.kind === 'career' ? `${screen.origin.state.hospital.name} · week ${screen.origin.state.week}` : undefined}
+            canStop={screen.config.id === 'sandbox-endless'}
           />
         );
       case 'debrief': {

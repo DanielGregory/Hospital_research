@@ -1,16 +1,16 @@
 import { hourlyLoad, onDutyByHour, resolveConfig, staffingSummary, type Role, type Shift } from '@er/sim';
 import { ROLE_LABEL } from '../controls';
 import { hourLabel } from '../format';
-import type { LevelConfig } from '../levels';
+import type { GameConfig } from '../sandbox';
 
 const LENGTHS = [4, 6, 8, 10, 12];
 
-export function ScheduleEditor(props: { role: Role; shifts: Shift[]; config: LevelConfig; onChange: (s: Shift[]) => void }) {
+export function ScheduleEditor(props: { role: Role; shifts: Shift[]; config: GameConfig; onChange: (s: Shift[]) => void }) {
   const { role, shifts, config, onChange } = props;
   const resolved = resolveConfig(config);
   const summary = staffingSummary(resolved)[role];
-  const limit = config.level.limits?.staffHoursPerDay?.[role];
-  const maxOnDuty = config.level.limits?.maxOnDuty?.[role];
+  const limit = config.level?.limits?.staffHoursPerDay?.[role];
+  const maxOnDuty = config.level?.limits?.maxOnDuty?.[role];
   const onDuty = onDutyByHour(resolved, role).slice(0, 24);
   const load = role === 'doctor' ? hourlyLoad(resolved).slice(0, 24) : [];
   const peak = Math.max(1, ...onDuty, ...load.map((l) => l.doctorLoad), maxOnDuty ?? 0);

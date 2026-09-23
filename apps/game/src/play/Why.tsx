@@ -2,11 +2,12 @@
  * The debrief's "why": the main bottleneck in plain words, where the waiting went, and the shift
  * as a timeline with the player's decisions marked on it.
  */
-import { WAIT_CAUSES, type Metrics, type PatientStory, type TimedCommand, type TimelineSample } from '@er/sim';
+import { WAIT_CAUSES, type Metrics, type PatientStory, type ResolvedLayout, type TimedCommand, type TimelineSample } from '@er/sim';
 import { useMemo, useState } from 'react';
 import { clockLabel } from '../format';
 import { commandLabel, explain, WAIT_LABEL } from './explain';
 import { storyText } from './profiles';
+import { WalkMap, type Walks } from './WalkMap';
 
 export interface RunAnalysis {
   timeline: TimelineSample[];
@@ -17,6 +18,8 @@ export interface RunAnalysis {
   /** Notable patients (sim `patientStories`), and the run seed their names come from. */
   stories?: PatientStory[];
   seed?: number;
+  /** Walking records and floor plan (layout module runs). */
+  walks?: { layout: ResolvedLayout; walks: Walks };
 }
 
 export function Why({ m, run }: { m: Metrics; run: RunAnalysis }) {
@@ -37,6 +40,7 @@ export function Why({ m, run }: { m: Metrics; run: RunAnalysis }) {
         <WaitBars m={m} />
         <Timeline run={run} />
       </div>
+      {run.walks && <WalkMap layout={run.walks.layout} walks={run.walks.walks} />}
       {run.stories && run.stories.length > 0 && <Stories stories={run.stories} seed={run.seed ?? 1} />}
     </section>
   );

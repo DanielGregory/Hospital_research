@@ -226,6 +226,10 @@ async function main() {
         await page.mouse.move(b.x, b.y, { steps: 5 });
         await page.mouse.up();
         if (!(await page.getByText('Acute beds (4×4)').count())) fail('dragging on the grid did not add a room');
+        await page.getByTestId('undo').click();
+        if (await page.getByText('Acute beds (4×4)').count()) fail('undo did not remove the room');
+        await page.getByTestId('redo').click();
+        if (!(await page.getByText('Acute beds (4×4)').count())) fail('redo did not bring the room back');
         await page.getByTestId('test-layout').click();
         await page.getByTestId('layout-score').waitFor();
         await shot(page, `layout-editor-${scheme}`);
@@ -250,6 +254,32 @@ async function main() {
         await page.getByTestId('skip').click();
         if ((await page.getByTestId('result').textContent()) !== 'Shift complete') fail('sandbox (everything on) did not finish');
         await shot(page, `sandbox-debrief-${scheme}`);
+
+        // Level 8: design the floor. The architect's draft fails; the best found plan passes; the debrief maps the walking.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('level-8').click();
+        await page.getByTestId('continue').click();
+        await page.getByTestId('plan-section').waitFor();
+        await page.getByTestId('layout-hints').waitFor();
+        await page.getByTestId('test-plan').click();
+        await page.getByTestId('plan-test').getByTestId('walk-map').waitFor({ timeout: 20_000 });
+        await shot(page, `design-${scheme}`);
+        await page.getByTestId('start').click();
+        await unhold(page);
+        await page.getByTestId('skip').click();
+        if ((await page.getByTestId('result').textContent()) !== 'Goals not met') fail("level 8: the architect's draft should fail");
+        await page.getByTestId('walk-map').waitFor();
+        await shot(page, `design-debrief-${scheme}`);
+        await page.getByTestId('retry').click();
+        await page.getByTestId('benchmark-reveal').click();
+        await page.getByTestId('benchmark-use').click();
+        await page.getByTestId('start').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(1500);
+        await unhold(page);
+        await shot(page, `design-play-${scheme}`);
+        await page.getByTestId('skip').click();
+        if ((await page.getByTestId('result').textContent()) !== 'Goals met') fail('level 8: the best found plan should meet the goals');
 
         // Level 7 shows the budget line and blocks an over-budget plan.
         await page.goto(`http://localhost:${PORT}/`);

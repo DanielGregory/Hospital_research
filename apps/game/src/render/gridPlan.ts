@@ -203,10 +203,14 @@ function gridNav(layout: ResolvedLayout, cell: number, ox: number, oy: number): 
   const e = layout.entrance;
   const out = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dx, dy]) => layout.footprint[e.y + dy]?.[e.x + dx] !== '#') ?? [0, 1];
   const entrance: Door = { outside: centre({ x: e.x + out[0] * 2, y: e.y + out[1] * 2 }), inside: centre(e), area: null };
+  // Ambulances come in by their own door when the plan has one.
+  const a = layout.ambulanceLoc !== null ? layout.points[layout.ambulanceLoc]! : null;
+  const aOut = a ? (([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dx, dy]) => layout.footprint[a.y + dy]?.[a.x + dx] !== '#') ?? [0, 1]) : null;
+  const ambulance: Door = a && aOut ? { outside: centre({ x: a.x + aOut[0] * 2, y: a.y + aOut[1] * 2 }), inside: centre(a), area: null } : entrance;
   const openings = layout.rooms.map((r) => {
     const d = centre(r.door);
     const acc = centre(r.access);
     return { area: r.id, x: (d.x + acc.x) / 2, y: (d.y + acc.y) / 2, width: cell * 0.8 };
   });
-  return { areaAt, route, doors: { entrance, ambulance: entrance, staff: entrance, ward: entrance }, openings };
+  return { areaAt, route, doors: { entrance, ambulance, staff: entrance, ward: entrance }, openings };
 }

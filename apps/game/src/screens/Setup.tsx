@@ -2,6 +2,11 @@ import { plannedDailyCost, resolveConfig, type Acuity, type PlayerControl, type 
 import { buildConfig, scheduleRole, setupProblems, type SetupValues } from '../controls';
 import type { LevelConfig } from '../levels';
 import { BenchmarkCard } from '../play/benchmark';
+import { WalkMap } from '../play/WalkMap';
+import { quickScore, type QuickScore } from '../sandbox';
+import { useState } from 'react';
+import type { LayoutSpec, RoomSpec } from '@er/sim';
+import { FloorDesigner, type Tool } from './FloorDesigner';
 import { ScheduleEditor, Stepper } from './ScheduleEditor';
 
 export function Setup(props: {
@@ -29,10 +34,13 @@ export function Setup(props: {
       {level.level.playerControls.filter(scheduleRole).map((ctl) => (
         <ScheduleEditor key={ctl} role={scheduleRole(ctl)!} shifts={(values[ctl] as Shift[]) ?? []} config={config} onChange={(s) => set(ctl, s)} />
       ))}
-      {level.level.playerControls.some((c) => !scheduleRole(c)) && (
+      {level.level.playerControls.includes('layout.rooms') && level.layout && (
+        <PlanSection level={level} rooms={(values['layout.rooms'] as RoomSpec[]) ?? level.layout.rooms} onChange={(rooms) => set('layout.rooms', rooms)} problems={problems} />
+      )}
+      {level.level.playerControls.some((c) => !scheduleRole(c) && c !== 'layout.rooms') && (
         <section className="card">
           {level.level.playerControls
-            .filter((c) => !scheduleRole(c))
+            .filter((c) => !scheduleRole(c) && c !== 'layout.rooms')
             .map((ctl) => (
               <SimpleControl key={ctl} control={ctl} value={values[ctl]} onChange={(v) => set(ctl, v)} />
             ))}
@@ -53,6 +61,54 @@ export function Setup(props: {
         </button>
       </div>
     </main>
+  );
+}
+
+const LEVEL_TOOLS: Tool[] = ['waiting', 'triage', 'trauma', 'acute', 'station', 'door', 'erase'];
+
+/** A level that hands the player the floor plan: the designer, and a test on days other than the level's. */
+function PlanSection(props: { level: LevelConfig; rooms: RoomSpec[]; onChange: (rooms: RoomSpec[]) => void; problems: string[] }) {
+  const spec: LayoutSpec = { ...props.level.layout!, rooms: props.rooms };
+  const [test, setTest] = useState<QuickScore | null>(null);
+  const run = () => setTest(quickScore(buildConfig(props.level, { 'layout.rooms': props.rooms }), [101, 102, 103]));
+  return (
+    <section className="plan-section" data-testid="plan-section">
+      <FloorDesigner
+        spec={spec}
+        onChange={(next) => {
+          props.onChange(next.rooms);
+          setTest(null);
+        }}
+        tools={LEVEL_TOOLS}
+      />
+      <div className="actions" style={{ marginTop: 8 }}>
+        <button onClick={run} disabled={props.problems.length > 0} data-testid="test-plan">
+          Try it on three other days
+        </button>
+      </div>
+      {test && (
+        <section className="card score" data-testid="plan-test">
+          <h3>Three practice days (not the day you will play)</h3>
+          <table className="metrics">
+            <tbody>
+              <tr>
+                <th scope="row">Door to doctor, median</th>
+                <td>{Math.round(test.doorToDoctorMedian)} min</td>
+              </tr>
+              <tr>
+                <th scope="row">Doctors&apos; busy time spent walking</th>
+                <td>{test.doctorWalkingShare === null ? '—' : `${(test.doctorWalkingShare * 100).toFixed(1)}%`}</td>
+              </tr>
+              <tr>
+                <th scope="row">Left without being seen</th>
+                <td>{(test.lwbsRate * 100).toFixed(1)}%</td>
+              </tr>
+            </tbody>
+          </table>
+          {test.walks && <WalkMap layout={test.walks.layout} walks={test.walks.walks} caption="Where people walked (first practice day)" />}
+        </section>
+      )}
+    </section>
   );
 }
 

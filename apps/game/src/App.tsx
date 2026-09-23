@@ -61,6 +61,7 @@ function analysisOf(sim: Simulation, seed: number): RunAnalysis {
   return {
     stories: patientStories(sim.allPatients(), sim.now, c.warmupMinutes),
     seed,
+    ...(c.layout ? { walks: { layout: c.layout, walks: { staff: sim.walkTrips('staff'), patient: sim.walkTrips('patient') } } } : {}),
     timeline: [...sim.timeline],
     log: sim.commandLog(),
     clock: { startDayOfWeek: c.startDayOfWeek, startHour: c.startHour },

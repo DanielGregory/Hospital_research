@@ -149,13 +149,14 @@ export function furnishGrid(base: FloorPlan, s: SimSnapshot, layout: ResolvedLay
     }
   }
 
-  // Corridor cells in order of distance from the entrance: where ambulance arrivals wait on trolleys.
+  // Corridor cells in order of distance from the ambulance door (or the entrance): where ambulance arrivals wait on trolleys.
   const inRoom = (x: number, y: number) => layout.rooms.some((q) => x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h);
   const walkable = (x: number, y: number) => x >= 0 && y >= 0 && x < layout.width && y < layout.height && layout.footprint[y]![x] === '#' && !inRoom(x, y);
   const corridor: Point[] = [];
   {
-    const seen = new Set([`${layout.entrance.x},${layout.entrance.y}`]);
-    const queue = [layout.entrance];
+    const start = layout.ambulanceLoc !== null ? layout.points[layout.ambulanceLoc]! : layout.entrance;
+    const seen = new Set([`${start.x},${start.y}`]);
+    const queue = [start];
     for (let i = 0; i < queue.length; i++) {
       const c = queue[i]!;
       corridor.push(centre(c));

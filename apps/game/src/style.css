@@ -589,3 +589,30 @@ p.small, .muted.small { font-size: 0.85rem; }
 .story.missed, .story.becameCritical { border-left-color: var(--fail); }
 .story.leftUnseen, .story.boardedLongest, .story.longestWait { border-left-color: var(--warn); }
 .story.quickResponse { border-left-color: var(--pass); }
+
+/* Walking heat map: one-hue sequential ramp (validated blue steps), five bins; dark mode flips the anchor. */
+.walk-map { --heat-0: var(--corridor); --heat-1: #b7d3f6; --heat-2: #86b6ef; --heat-3: #5598e7; --heat-4: #256abf; --heat-5: #104281; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .walk-map { --heat-1: #184f95; --heat-2: #256abf; --heat-3: #3987e5; --heat-4: #6da7ec; --heat-5: #b7d3f6; }
+}
+:root[data-theme='dark'] .walk-map { --heat-1: #184f95; --heat-2: #256abf; --heat-3: #3987e5; --heat-4: #6da7ec; --heat-5: #b7d3f6; }
+.walk-map svg { width: 100%; height: auto; display: block; }
+.walk-map .heat-cell { stroke: var(--surface); stroke-width: 1; }
+.heat-0 { fill: var(--heat-0); } .heat-1 { fill: var(--heat-1); background: var(--heat-1); } .heat-2 { fill: var(--heat-2); background: var(--heat-2); }
+.heat-3 { fill: var(--heat-3); background: var(--heat-3); } .heat-4 { fill: var(--heat-4); background: var(--heat-4); } .heat-5 { fill: var(--heat-5); background: var(--heat-5); }
+.walk-map .heat-room { fill: var(--area-head); }
+.walk-map .heat-room-outline { fill: none; stroke: var(--line-strong); stroke-width: 1.5; }
+.walk-map .heat-room-label { font-size: 8px; font-weight: 650; fill: var(--ink-2); }
+.walk-map .heat-marker { font: 700 10px system-ui; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.walk-map .heat-hover { fill: none; stroke: var(--ink); stroke-width: 2; }
+.heat-legend { align-items: center; }
+.heat-swatch { display: inline-block; width: 22px; height: 10px; border-radius: 2px; }
+.walk-map figcaption .seg { display: inline-flex; gap: 4px; }
+.walk-map figcaption .seg button { padding: 2px 10px; font-size: 0.8rem; }
+.walk-map figcaption .seg button.on { border-color: var(--accent); background: var(--accent-soft); }
+.walk-map .routes caption { text-align: left; font-weight: 650; margin: 10px 0 4px; }
+.grid .ambulance-door { fill: var(--trauma); }
+.grid .marker-label { font: 700 10px system-ui; fill: #fff; pointer-events: none; }
+.designer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 12px; }
+.designer-grid > * { min-width: 0; margin: 0; }
+.tools .push { margin-left: auto; }

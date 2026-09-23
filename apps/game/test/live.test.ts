@@ -1,4 +1,4 @@
-import { applySettings, beatsBenchmark, PARAMS, patientStories, Simulation } from '@er/sim';
+import { applySettings, beatsBenchmark, PARAMS, patientStories, resolveLayout, Simulation } from '@er/sim';
 import { describe, expect, it } from 'vitest';
 import { buildConfig, initialValues } from '../src/controls';
 import { LEVELS } from '../src/levels';
@@ -8,6 +8,8 @@ import { nextTip, triggered } from '../src/play/coach';
 import { dailyChallenge, shareText } from '../src/play/daily';
 import { commandLabel, explain } from '../src/play/explain';
 import { personName } from '../src/play/names';
+import { busiestRoutes, locationName } from '../src/play/WalkMap';
+import { layoutHints } from '../src/screens/FloorDesigner';
 import { COMPLAINTS, profileLine, storyText } from '../src/play/profiles';
 import { recordBest, starsFor } from '../src/play/stars';
 
@@ -154,5 +156,28 @@ describe('patient profiles and stories', () => {
     const line = profileLine(p.id, p.profile, 3);
     expect(line).toContain(String(p.profile.age));
     expect(line).not.toContain(PARAMS.conditions.find((c) => c.id === p.conditionId)!.label);
+  });
+});
+
+describe('floor design (level 8)', () => {
+  const l8 = level(8);
+  const plan = (rooms: unknown) => resolveLayout({ ...l8.layout!, rooms: rooms as never }).layout!;
+
+  it('hints show the draft walks further than the reference plan', () => {
+    const draft = layoutHints(plan(l8.layout!.rooms));
+    const ref = layoutHints(plan(l8.level.reference!['layout.rooms']));
+    const get = (h: typeof draft, k: string) => h.find((x) => x.label.startsWith(k))!.cells!;
+    expect(get(ref, 'Staff station')).toBeLessThan(get(draft, 'Staff station'));
+    expect(get(ref, 'Ambulance door')).toBeLessThan(get(draft, 'Ambulance door'));
+  });
+
+  it('the debrief map names the busiest routes from real walks', () => {
+    const cfg = buildConfig(l8, initialValues(l8));
+    const sim = new Simulation(cfg, l8.level.seed!);
+    sim.run();
+    const routes = busiestRoutes(sim.config.layout!, sim.walkTrips('staff'));
+    expect(routes.length).toBeGreaterThan(0);
+    expect(locationName(sim.config.layout!, routes[0]!.a)).toMatch(/\w/);
+    expect(describeValue('layout.rooms', l8.layout!.rooms)).toContain('Staff station at');
   });
 });

@@ -6,6 +6,7 @@ import { beatsBenchmark, type LevelBenchmark, type PlayerControl, type Shift } f
 import { useState } from 'react';
 import { ROLE_LABEL, type SetupValues } from '../controls';
 import { hourLabel } from '../format';
+import { TOOL_LABEL } from '../screens/FloorDesigner';
 
 export const CONTROL_LABEL: Record<PlayerControl, string> = {
   'queue.discipline': 'Who sees a doctor next',
@@ -22,10 +23,15 @@ export const CONTROL_LABEL: Record<PlayerControl, string> = {
   'boarding.escalation': 'Full-capacity protocol',
   'diagnosis.thoroughness': 'Thoroughness',
   'process.steps': 'Patient process',
+  'layout.rooms': 'Floor plan',
 } as Record<PlayerControl, string>;
 
 /** A setting in words, e.g. "2 from 22:00 for 12 h · 3 from 08:00 for 12 h". */
 export function describeValue(ctl: PlayerControl, v: unknown): string {
+  if (ctl === 'layout.rooms') {
+    const rooms = (v as { type: string; x: number; y: number }[]) ?? [];
+    return rooms.map((r) => `${TOOL_LABEL[r.type as keyof typeof TOOL_LABEL] ?? r.type} at ${r.x},${r.y}`).join(' · ');
+  }
   if (ctl.startsWith('staffing.schedule.')) {
     const shifts = (v as Shift[]) ?? [];
     return shifts.length ? shifts.map((s) => `${s.count} from ${hourLabel(s.startHour)} for ${s.hours} h`).join(' · ') : 'none';

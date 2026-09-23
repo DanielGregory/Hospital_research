@@ -3,7 +3,7 @@
  * (common random numbers), so differences come from the settings, not the dice.
  * The result is the best setup *found*, not a proven optimum.
  */
-import { applySettings, checkSetup, ConfigError, getPath, resolveConfig, Rng, Simulation } from '@er/sim';
+import { applySettings, checkSetup, ConfigError, getPath, resolveConfig, Rng, Simulation, type Metrics } from '@er/sim';
 
 export interface Dimension {
   /** Dot path into the config. */
@@ -20,6 +20,8 @@ export interface Objective {
   /** Metric dot path to maximise (e.g. "compositeScore"), or to minimise with direction "min". */
   metric: string;
   direction?: 'max' | 'min';
+  /** Custom objective computed from the metrics (to maximise); `metric` then only names it. */
+  fn?: (m: Metrics) => number;
 }
 
 export interface OptimizeOptions {
@@ -61,7 +63,8 @@ export function evaluate(base: unknown, settings: Record<string, unknown>, seeds
   const sign = objective.direction === 'min' ? -1 : 1;
   let sum = 0;
   for (const s of seeds) {
-    const v = getPath(new Simulation(config, s).run().metrics, objective.metric);
+    const m = new Simulation(config, s).run().metrics;
+    const v = objective.fn ? objective.fn(m) : getPath(m, objective.metric);
     if (typeof v !== 'number') return { settings, value: -Infinity, problems: [`objective ${objective.metric} is not a number`] };
     sum += sign * v;
   }

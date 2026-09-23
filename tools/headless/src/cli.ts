@@ -12,8 +12,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { BASELINES, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
-import { applySettings, balanceReport, career, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
+import { BASELINES, benchmarkLevel, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
+import { applySettings, balanceReport, career, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
@@ -27,6 +27,9 @@ export const USAGE = `Usage:
       Simulated annealing over the settings in the space file. Reports the best setup found.
   calibrate --config <base.json> --targets <targets.json> [--seeds 1-3] [--out fitted.json]
       Fit admission, patience and workup scales so the sim matches published aggregates.
+  benchmark --config <level.json> [--space <space.json>] [--iterations 300] [--write]
+      Search the level's own controls on its day for the best setup found (the "beat the best
+      found" target). Default space: configs/benchmarks/level-NN.space.json. --write stores it in the level.
   career [--seed <n>] [--weeks 12] [--out <file>]
       Play a career without changing anything between weeks: money, reputation and events per week.
   serve
@@ -43,7 +46,8 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark';
+  write?: boolean;
   weeks?: number;
   targets?: string;
   policy?: string;
@@ -62,13 +66,18 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career')
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark')
     throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
   const overrides: [string, unknown][] = [];
+  let write = false;
   for (let i = 0; i < rest.length; i++) {
     const key = rest[i]!;
+    if (key === '--write' && cmd === 'benchmark') {
+      write = true;
+      continue;
+    }
     if (!key.startsWith('--')) throw new UsageError(`Unexpected argument '${key}'`);
     const val = rest[i + 1];
     if (val === undefined || val.startsWith('--')) throw new UsageError(`Missing value for ${key}`);
@@ -115,6 +124,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     iterations: opts.iterations ? Number(opts.iterations) : undefined,
     objective: opts.objective,
     targets: opts.targets,
+    ...(cmd === 'benchmark' ? { write } : {}),
   };
 }
 
@@ -283,6 +293,23 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       });
       process.stderr.write(`Best found ${objective.metric}: ${r.bestFound.value.toFixed(2)} (start ${r.start.value.toFixed(2)}, ${r.evaluations} setups tried)\n`);
       write(JSON.stringify({ objective, seeds, iterations, bestFound: r.bestFound, start: r.start, evaluations: r.evaluations, bestConfig: applySettings(config, r.bestFound.settings) }, null, 2) + '\n');
+      return 0;
+    }
+    if (args.command === 'benchmark') {
+      const level = (config as { level?: LevelSpec }).level;
+      if (!level) throw new UsageError('benchmark needs a level config');
+      const spacePath = resolve(cwd, args.space ?? `configs/benchmarks/level-${String(level.number).padStart(2, '0')}.space.json`);
+      const space = JSON.parse(readFileSync(spacePath, 'utf8')) as SearchSpace;
+      const { searched, ...b } = benchmarkLevel(config as { level: LevelSpec }, space, { iterations: args.iterations });
+      process.stderr.write(
+        `Level ${level.number}: best found score ${b.score.toFixed(2)} (${b.goalsMet ? 'goals met' : 'goals NOT met'}), ${b.evaluated} setups tried (${searched})\n`,
+      );
+      if (args.write) {
+        const raw = JSON.parse(readFileSync(configPath, 'utf8')) as { level: LevelSpec };
+        raw.level.benchmark = b;
+        writeFileSync(configPath, JSON.stringify(raw, null, 2) + '\n');
+        process.stderr.write(`Wrote level.benchmark to ${args.config}\n`);
+      } else write(JSON.stringify(b, null, 2) + '\n');
       return 0;
     }
     if (args.command === 'balance') {

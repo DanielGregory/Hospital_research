@@ -89,11 +89,28 @@ export interface LevelSpec {
   coach?: CoachTip[];
   /** Balanced-score thresholds for the second and third star (the first is for meeting the goals). */
   stars?: { two: number; three: number };
+  /**
+   * The best setup a search found for this level's day (`pnpm headless benchmark`): the target in
+   * "beat the best found". Never called optimal: it is only the best of the setups tried.
+   */
+  benchmark?: LevelBenchmark;
   briefing: string[];
   debrief: { pass: string[]; fail: string[] };
   goals: Goal[];
   playerControls: PlayerControl[];
   limits?: LevelLimits;
+}
+
+export interface LevelBenchmark {
+  /** Player control -> value (a planned setup; no live calls). */
+  settings: Partial<Record<PlayerControl, unknown>>;
+  /** Balanced score of that setup on the level seed. */
+  score: number;
+  goalsMet: boolean;
+  /** Distinct setups scored during the search. */
+  evaluated: number;
+  /** Controls the search did not vary (kept as shipped). */
+  fixed?: PlayerControl[];
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -117,6 +134,14 @@ export function checkLevel(level: unknown): string[] {
       else if (g.max === undefined && g.min === undefined) p.push(`level.goals[${i}]: needs max or min`);
       else if ([g.max, g.min].some((v) => v !== undefined && typeof v !== 'number')) p.push(`level.goals[${i}]: max/min must be numbers`);
     });
+  if (level.benchmark !== undefined) {
+    const b = level.benchmark;
+    if (!isObj(b) || !isObj(b.settings) || typeof b.score !== 'number' || typeof b.goalsMet !== 'boolean' || typeof b.evaluated !== 'number')
+      p.push('level.benchmark: { settings, score, goalsMet, evaluated, fixed? }');
+    else
+      for (const k of Object.keys(b.settings))
+        if (!Array.isArray(level.playerControls) || !level.playerControls.includes(k)) p.push(`level.benchmark.settings.${k}: not one of this level's player controls`);
+  }
   for (const key of ['reference', 'trap'] as const) {
     const v = level[key];
     if (v === undefined) continue;

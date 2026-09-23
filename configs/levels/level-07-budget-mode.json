@@ -216,6 +216,56 @@
     "trap": {
       "beds.main": 30,
       "diagnosis.thoroughness": 0.9
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.schedule.doctor": [
+          {
+            "startHour": 22,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 8,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 10,
+            "hours": 12,
+            "count": 2
+          }
+        ],
+        "staffing.schedule.triageNurse": [
+          {
+            "startHour": 0,
+            "hours": 24,
+            "count": 2
+          }
+        ],
+        "staffing.schedule.fastTrackClinician": [
+          {
+            "startHour": 9,
+            "hours": 12,
+            "count": 1
+          },
+          {
+            "startHour": 12,
+            "hours": 12,
+            "count": 1
+          }
+        ],
+        "beds.main": 14,
+        "beds.fastTrack": 8,
+        "fastTrack.enabled": true,
+        "fastTrack.minAcuity": 4,
+        "queue.discipline": "acuity",
+        "diagnosis.thoroughness": 0.8,
+        "boarding.escalation": false
+      },
+      "score": 95.83,
+      "goalsMet": true,
+      "evaluated": 324
     }
   },
   "liveCalls": {

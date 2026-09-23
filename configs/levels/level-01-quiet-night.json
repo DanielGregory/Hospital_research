@@ -48,7 +48,7 @@
       {
         "metric": "doorToDoctorByGroup.urgent.median",
         "max": 15,
-        "label": "ESI 1\u20132: median door-to-doctor under 15 minutes",
+        "label": "ESI 1–2: median door-to-doctor under 15 minutes",
         "passIfNoData": true
       },
       {
@@ -63,7 +63,7 @@
     "liveCalls": [],
     "stars": {
       "two": 85,
-      "three": 96
+      "three": 94
     },
     "designNote": "One doctor, 22:00-08:00. With ESI 1 pre-emption, acuity order passes ~58% of nights vs ~34% for arrival order (80 nights). The level seed is a night where arrival order fails and acuity order passes.",
     "reference": {
@@ -79,7 +79,7 @@
       },
       {
         "when": "start",
-        "text": "These buttons set the pace: pause any time to think, or speed up to 8\u00d7 when it's quiet.",
+        "text": "These buttons set the pace: pause any time to think, or speed up to 8× when it's quiet.",
         "highlight": "speed"
       },
       {
@@ -97,6 +97,14 @@
         "when": "firstLeft",
         "text": "Someone just gave up and left without being seen. Long waits cost patients, not just minutes."
       }
-    ]
+    ],
+    "benchmark": {
+      "settings": {
+        "queue.discipline": "acuity"
+      },
+      "score": 94.29,
+      "goalsMet": true,
+      "evaluated": 2
+    }
   }
 }

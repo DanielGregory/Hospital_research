@@ -1,0 +1,114 @@
+{
+ "dims": [
+  {
+   "path": "staffing.schedule.doctor",
+   "values": [
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 3
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 4
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 20,
+      "hours": 8,
+      "count": 2
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 20,
+      "hours": 8,
+      "count": 3
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 20,
+      "hours": 8,
+      "count": 4
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 20,
+      "hours": 8,
+      "count": 5
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 4
+     },
+     {
+      "startHour": 20,
+      "hours": 8,
+      "count": 4
+     }
+    ],
+    [
+     {
+      "startHour": 20,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 22,
+      "hours": 6,
+      "count": 5
+     }
+    ]
+   ]
+  },
+  {
+   "path": "beds.main",
+   "values": [
+    16,
+    18,
+    20,
+    22,
+    24,
+    26,
+    28
+   ]
+  },
+  {
+   "path": "queue.discipline",
+   "values": [
+    "fifo",
+    "acuity"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,206 @@
+{
+ "dims": [
+  {
+   "path": "staffing.schedule.doctor",
+   "values": [
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 3
+     }
+    ],
+    [
+     {
+      "startHour": 0,
+      "hours": 24,
+      "count": 2
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 2
+     }
+    ],
+    [
+     {
+      "startHour": 6,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 18,
+      "hours": 12,
+      "count": 5
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 2
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 13,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 12,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 6,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 9,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 14,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 1
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 13,
+      "hours": 12,
+      "count": 2
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 2
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 9,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 12,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 2
+     }
+    ]
+   ]
+  }
+ ]
+}

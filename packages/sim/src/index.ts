@@ -30,6 +30,7 @@ export {
   type Goal,
   type GoalResult,
   type LevelSpec,
+  type LevelBenchmark,
   type LevelLimits,
   type PlayerControl,
 } from './levels.js';

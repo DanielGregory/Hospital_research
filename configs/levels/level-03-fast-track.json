@@ -99,7 +99,7 @@
     ],
     "stars": {
       "two": 94,
-      "three": 98.5
+      "three": 97.5
     },
     "limits": {
       "staffHoursPerDay": {
@@ -119,6 +119,22 @@
           "count": 1
         }
       ]
+    },
+    "benchmark": {
+      "settings": {
+        "fastTrack.enabled": true,
+        "fastTrack.minAcuity": 4,
+        "staffing.schedule.fastTrackClinician": [
+          {
+            "startHour": 9,
+            "hours": 12,
+            "count": 1
+          }
+        ]
+      },
+      "score": 97.68,
+      "goalsMet": true,
+      "evaluated": 54
     }
   },
   "liveCalls": {

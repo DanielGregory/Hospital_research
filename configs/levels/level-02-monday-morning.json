@@ -76,7 +76,7 @@
     ],
     "stars": {
       "two": 85,
-      "three": 97
+      "three": 96
     },
     "limits": {
       "staffHoursPerDay": {
@@ -109,6 +109,35 @@
           "count": 1
         }
       ]
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.schedule.doctor": [
+          {
+            "startHour": 22,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 8,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 10,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 12,
+            "hours": 12,
+            "count": 1
+          }
+        ]
+      },
+      "score": 96.02,
+      "goalsMet": true,
+      "evaluated": 11
     }
   },
   "liveCalls": {

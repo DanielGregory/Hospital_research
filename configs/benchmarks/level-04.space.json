@@ -1,0 +1,286 @@
+{
+ "dims": [
+  {
+   "path": "staffing.schedule.doctor",
+   "values": [
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 2
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 3
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 13,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 7,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 13,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 6,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 14,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 3
+     }
+    ],
+    [
+     {
+      "startHour": 22,
+      "hours": 12,
+      "count": 3
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 2
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 3
+     }
+    ]
+   ]
+  },
+  {
+   "path": "staffing.schedule.triageNurse",
+   "values": [
+    [
+     {
+      "startHour": 0,
+      "hours": 24,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 0,
+      "hours": 24,
+      "count": 1
+     },
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 0,
+      "hours": 24,
+      "count": 1
+     },
+     {
+      "startHour": 9,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 0,
+      "hours": 24,
+      "count": 1
+     },
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 0,
+      "hours": 24,
+      "count": 1
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 1
+     }
+    ]
+   ]
+  },
+  {
+   "path": "staffing.schedule.fastTrackClinician",
+   "values": [
+    [],
+    [
+     {
+      "startHour": 10,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 9,
+      "hours": 12,
+      "count": 1
+     },
+     {
+      "startHour": 12,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 1
+     },
+     {
+      "startHour": 12,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 9,
+      "hours": 12,
+      "count": 1
+     },
+     {
+      "startHour": 11,
+      "hours": 12,
+      "count": 1
+     }
+    ],
+    [
+     {
+      "startHour": 8,
+      "hours": 12,
+      "count": 1
+     },
+     {
+      "startHour": 14,
+      "hours": 10,
+      "count": 1
+     }
+    ]
+   ]
+  },
+  {
+   "path": "fastTrack.enabled",
+   "values": [
+    false,
+    true
+   ]
+  },
+  {
+   "path": "fastTrack.minAcuity",
+   "values": [
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "path": "queue.discipline",
+   "values": [
+    "fifo",
+    "acuity"
+   ]
+  }
+ ]
+}

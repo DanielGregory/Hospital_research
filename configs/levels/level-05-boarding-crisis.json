@@ -97,6 +97,16 @@
     },
     "trap": {
       "staffing.doctors": 8
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.doctors": 6,
+        "fastTrack.enabled": false,
+        "boarding.escalation": true
+      },
+      "score": 96.09,
+      "goalsMet": true,
+      "evaluated": 28
     }
   },
   "liveCalls": {

@@ -96,7 +96,7 @@
     ],
     "stars": {
       "two": 45,
-      "three": 65
+      "three": 56
     },
     "limits": {
       "maxOnDuty": {
@@ -123,6 +123,30 @@
     },
     "trap": {
       "beds.main": 28
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.schedule.doctor": [
+          {
+            "startHour": 20,
+            "hours": 12,
+            "count": 3
+          },
+          {
+            "startHour": 20,
+            "hours": 8,
+            "count": 5
+          }
+        ],
+        "beds.main": 28,
+        "queue.discipline": "acuity"
+      },
+      "score": 57,
+      "goalsMet": true,
+      "evaluated": 112,
+      "fixed": [
+        "process.steps"
+      ]
     }
   },
   "process": {

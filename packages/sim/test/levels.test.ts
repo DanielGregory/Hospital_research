@@ -94,3 +94,21 @@ describe.each(LEVELS.map((l) => [l.id as string, l] as const))('%s', (id, level)
     expect(rate(ref) - rate(level)).toBeGreaterThanOrEqual(level.level.minCrossSeedGap ?? 0.25);
   });
 });
+
+describe('best-found benchmarks', () => {
+  it.each(LEVELS.map((l) => [l.level.number, l] as const))('level %i: the stored best found still scores what it says on the level seed', (_n, l) => {
+    const b = l.level.benchmark;
+    expect(b, 'run: pnpm headless benchmark --config <level> --write').toBeDefined();
+    const cfg = applySettings(l, b.settings);
+    expect(checkSetup(resolveConfig(cfg))).toEqual([]);
+    const m = new Simulation(cfg, l.level.seed).run().metrics;
+    // Stale after an engine or params change: re-run `pnpm headless benchmark --config <level> --write`.
+    expect(Math.round(m.compositeScore * 100) / 100).toBe(b.score);
+    expect(evaluateGoals(m, l.level.goals).passed).toBe(b.goalsMet);
+    expect(b.goalsMet).toBe(true);
+  });
+
+  it('three stars never ask for more than the best found plan', () => {
+    for (const l of LEVELS) expect(l.level.stars.three, `level ${l.level.number}`).toBeLessThanOrEqual(l.level.benchmark.score);
+  });
+});

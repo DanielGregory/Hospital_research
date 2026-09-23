@@ -1,7 +1,7 @@
 import { Simulation } from '@er/sim';
 import { describe, expect, it } from 'vitest';
 import level5 from '../../../configs/levels/level-05-boarding-crisis.json';
-import { escalateWhenBoarding, evaluate, optimize, runWithPolicy, Session, staticPolicy, surgeStaffing } from '../src/index.js';
+import { beatsBenchmark, benchmarkLevel, escalateWhenBoarding, levelObjective, evaluate, optimize, runWithPolicy, Session, staticPolicy, surgeStaffing } from '../src/index.js';
 
 const busyWeek = { id: 'r', durationMinutes: 4 * 1440, warmupMinutes: 1440, staffing: { doctors: 2 }, arrivals: { rateMultiplier: 1.1 } };
 
@@ -110,4 +110,50 @@ describe('fit to aggregate targets', () => {
     expect(fit.scales.patience).toBeLessThan(0.7);
     expect(fit.scales.workup).toBeGreaterThan(1.3);
   }, 60_000);
+});
+
+describe('level benchmark', () => {
+  const level = {
+    id: 'bench',
+    durationMinutes: 600,
+    startHour: 22,
+    staffing: { doctors: 1, triageNurses: 1 },
+    queue: { discipline: 'fifo' },
+    level: {
+      number: 1,
+      title: 'Bench',
+      seed: 13,
+      briefing: [],
+      debrief: { pass: [], fail: [] },
+      goals: [{ metric: 'lwbsRate', max: 0.2, label: 'few leave' }],
+      playerControls: ['queue.discipline', 'staffing.doctors'],
+    },
+  } as never;
+  const space = { dims: [{ path: 'queue.discipline', values: ['fifo', 'acuity'] }] };
+
+  it('tries a small space in full, is deterministic, and lists the controls it did not vary', () => {
+    const a = benchmarkLevel(level, space);
+    expect(a.searched).toBe('exhaustive');
+    expect(a.evaluated).toBe(2);
+    expect(a.fixed).toEqual(['staffing.doctors']);
+    expect(benchmarkLevel(level, space)).toEqual(a);
+  });
+
+  it('ranks setups that meet the goals above ones that do not', () => {
+    const obj = levelObjective((level as { level: never }).level);
+    const base = { compositeScore: 90, lwbsRate: 0.5 } as never;
+    const ok = { compositeScore: 40, lwbsRate: 0.1 } as never;
+    expect(obj.fn(ok)).toBeGreaterThan(obj.fn(base));
+  });
+
+  it('refuses controls the level does not unlock', () => {
+    expect(() => benchmarkLevel(level, { dims: [{ path: 'beds.main', values: [10] }] })).toThrow(/not a player control/);
+  });
+
+  it('beating needs the goals met and a higher score', () => {
+    const b = { score: 80, goalsMet: true };
+    expect(beatsBenchmark(b, 81, true)).toBe(true);
+    expect(beatsBenchmark(b, 80, true)).toBe(false);
+    expect(beatsBenchmark(b, 95, false)).toBe(false);
+  });
 });

@@ -40,3 +40,13 @@ describe('config', () => {
     expect(() => validateConfig({ id: 'x', commands: [{ atMinute: 5, command: { type: 'fireEveryone' } }] })).toThrow(/unknown command/);
   });
 });
+
+describe('ambulance share from data', () => {
+  it('can be set per config (calibration output) and is validated', () => {
+    const r = resolveConfig({ id: 'amb', arrivals: { ambulanceShareByAcuity: { '1': 0.9, '4': 0.03 } } });
+    expect(r.ambulanceShareByAcuity[1]).toBe(0.9);
+    expect(r.ambulanceShareByAcuity[4]).toBe(0.03);
+    expect(r.ambulanceShareByAcuity[2]).toBe(PARAMS.arrivals.ambulanceShareByAcuity[2]);
+    expect(() => resolveConfig({ id: 'amb', arrivals: { ambulanceShareByAcuity: { '1': 1.5 } } })).toThrow(/between 0 and 1/);
+  });
+});

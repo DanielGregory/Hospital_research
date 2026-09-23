@@ -283,7 +283,7 @@ export class Scene3D {
   readonly renderer: THREE.WebGLRenderer;
   theme: Theme = themeNow();
   /** Display name for a patient id (tracking board). */
-  namer: ((id: number) => string) | null = null;
+  namer: ((id: number, sex?: 'F' | 'M') => string) | null = null;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(36, 1, 0.1, 500);
   private readonly controls: OrbitControls;
@@ -589,7 +589,7 @@ export class Scene3D {
         g.font = '600 16px system-ui, sans-serif';
         g.fillText(p.bedLabel!, 54, y);
         g.fillStyle = '#9fb3c8';
-        g.fillText((this.namer?.(p.id) ?? `#${p.id}`).slice(0, 14), 130, y);
+        g.fillText((this.namer?.(p.id, p.profile?.sex) ?? `#${p.id}`).slice(0, 14), 130, y);
         g.fillText(p.boarding ? 'Admitted – awaiting bed' : 'In treatment', 220, y);
         g.fillStyle = p.waited > 240 ? '#ff8a80' : '#e8eef5';
         g.fillText(`${Math.floor(p.waited / 60)}h ${String(Math.round(p.waited % 60)).padStart(2, '0')}m`, 430, y);

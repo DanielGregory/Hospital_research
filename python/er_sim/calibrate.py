@@ -7,6 +7,7 @@ Reads `edstays.csv[.gz]` (stay_id, intime, outtime, disposition, ...) and
 - arrivals.dayOfWeekMultipliers
 - arrivals.acuityMix          share of triaged stays by ESI level
 - disposition.admitProbabilityByAcuity
+- arrivals.ambulanceShareByAcuity (if `arrival_transport` is present)
 
 plus a report of what the data says about things the simulation produces
 rather than takes as input (length of stay by acuity, LWBS rate). With
@@ -38,6 +39,8 @@ from .client import run_headless
 TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S")
 ADMITTED = {"ADMITTED"}
 LWBS = {"LEFT WITHOUT BEING SEEN", "ELOPED"}
+AMBULANCE = {"AMBULANCE", "HELICOPTER"}
+WALK_IN = {"WALK IN"}
 
 
 def _open(path: str | Path) -> Iterator[dict[str, str]]:
@@ -84,6 +87,9 @@ def load(edstays: str | Path, triage: str | Path) -> list[dict[str, Any]]:
                 "los": (t_out - t_in).total_seconds() / 60 if t_out and t_out >= t_in else None,
                 "acuity": acuity.get(row["stay_id"]),
                 "disposition": (row.get("disposition") or "").strip().upper(),
+                # Optional columns (MIMIC-IV-ED has both): how they came, and sex.
+                "transport": (row.get("arrival_transport") or "").strip().upper(),
+                "gender": (row.get("gender") or "").strip().upper(),
             }
         )
     if not stays:
@@ -123,8 +129,20 @@ def fit(stays: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
         treated = [s["los"] for s in group if s["los"] is not None and s["disposition"] not in LWBS]
         los_by[str(a)] = {"n": len(treated), "median": _quantile(treated, 0.5), "p90": _quantile(treated, 0.9)}
 
+    # Ambulance share by acuity, from stays whose arrival transport is known.
+    known = [s for s in triaged if s["transport"] in AMBULANCE | WALK_IN]
+    ambulance: dict[str, float] = {}
+    for a in range(1, 6):
+        group = [s for s in known if s["acuity"] == a]
+        if group:
+            ambulance[str(a)] = round(sum(s["transport"] in AMBULANCE for s in group) / len(group), 4)
+    sexed = [s for s in stays if s["gender"] in ("F", "M")]
+
+    arrivals: dict[str, Any] = {"hourlyRates": hourly, "dayOfWeekMultipliers": dow, "acuityMix": mix}
+    if ambulance:
+        arrivals["ambulanceShareByAcuity"] = ambulance
     fragment = {
-        "arrivals": {"hourlyRates": hourly, "dayOfWeekMultipliers": dow, "acuityMix": mix},
+        "arrivals": arrivals,
         "disposition": {"admitProbabilityByAcuity": admit},
     }
     report = {
@@ -136,6 +154,8 @@ def fit(stays: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
         "admissionRate": round(sum(s["disposition"] in ADMITTED for s in stays) / len(stays), 4),
         "lengthOfStayByAcuity": los_by,
         "dispositions": dict(Counter(s["disposition"] for s in stays).most_common()),
+        "femaleShare": round(sum(s["gender"] == "F" for s in sexed) / len(sexed), 4) if sexed else None,
+        "arrivalTransport": dict(Counter(s["transport"] for s in stays if s["transport"]).most_common()),
     }
     return fragment, report
 

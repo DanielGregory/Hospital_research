@@ -92,6 +92,8 @@ export interface SimConfig {
     /** Scales every rate (e.g. flu season). */
     rateMultiplier?: number;
     acuityMix?: AcuityMap;
+    /** Share of walk-in-stream arrivals who come by ambulance, by true acuity (0–1). */
+    ambulanceShareByAcuity?: AcuityMap;
   };
   staffing?: {
     doctors?: number;
@@ -295,6 +297,7 @@ export function validateConfig(raw: unknown): SimConfig {
     field(a, 'arrivals', 'dayOfWeekMultipliers', (x) => Array.isArray(x) && x.length === 7 && x.every(nonNeg), 'array of 7 non-negative numbers (Monday first)', p);
     field(a, 'arrivals', 'rateMultiplier', nonNeg, 'non-negative number', p);
     if (a.acuityMix !== undefined) p.push(...checkAcuityMap(a.acuityMix, 'arrivals.acuityMix', nonNeg, 'non-negative'));
+    if (a.ambulanceShareByAcuity !== undefined) p.push(...checkAcuityMap(a.ambulanceShareByAcuity, 'arrivals.ambulanceShareByAcuity', prob, 'between 0 and 1'));
   });
 
   section(c, 'staffing', p, (s) => {
@@ -755,7 +758,9 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     conditions: PARAMS.conditions,
     pipeline,
     routing,
-    ambulanceShareByAcuity: { ...PARAMS.arrivals.ambulanceShareByAcuity },
+    ambulanceShareByAcuity: Object.fromEntries(
+      ACUITIES.map((a) => [a, c.arrivals?.ambulanceShareByAcuity?.[`${a}`] ?? PARAMS.arrivals.ambulanceShareByAcuity[a]]),
+    ) as Record<Acuity, number>,
     liveCalls: { ...PARAMS.liveCalls, maxCallIns: c.liveCalls?.maxCallIns ?? PARAMS.liveCalls.maxCallIns },
     commands: (c.commands ?? []).map(copy),
     level: c.level,

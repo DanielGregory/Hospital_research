@@ -1,4 +1,4 @@
-import { applySettings, beatsBenchmark, Simulation } from '@er/sim';
+import { applySettings, beatsBenchmark, PARAMS, patientStories, Simulation } from '@er/sim';
 import { describe, expect, it } from 'vitest';
 import { buildConfig, initialValues } from '../src/controls';
 import { LEVELS } from '../src/levels';
@@ -8,6 +8,7 @@ import { nextTip, triggered } from '../src/play/coach';
 import { dailyChallenge, shareText } from '../src/play/daily';
 import { commandLabel, explain } from '../src/play/explain';
 import { personName } from '../src/play/names';
+import { COMPLAINTS, profileLine, storyText } from '../src/play/profiles';
 import { recordBest, starsFor } from '../src/play/stars';
 
 const level = (n: number) => LEVELS.find((l) => l.level.number === n)!;
@@ -134,5 +135,24 @@ describe('beat the best found', () => {
   it('describes settings in words', () => {
     expect(describeValue('staffing.schedule.doctor', [{ startHour: 22, hours: 12, count: 2 }])).toBe('2 from 22:00 for 12 h');
     expect(describeValue('queue.discipline', 'acuity')).toBe('Sickest first');
+  });
+});
+
+describe('patient profiles and stories', () => {
+  it('every complaint the sim can give has words', () => {
+    for (const c of PARAMS.conditions) for (const k of c.complaints ?? []) expect(COMPLAINTS[k], k).toBeDefined();
+  });
+
+  it('tells stories without giving the diagnosis away before the run ends', () => {
+    const cfg = level(5);
+    const sim = new Simulation(cfg, cfg.level.seed!);
+    sim.run();
+    const stories = patientStories(sim.allPatients(), sim.now);
+    expect(stories.length).toBeGreaterThan(0);
+    for (const s of stories) expect(storyText(s, 3).body).toContain(s.condition.toLowerCase());
+    const p = sim.allPatients()[0]!;
+    const line = profileLine(p.id, p.profile, 3);
+    expect(line).toContain(String(p.profile.age));
+    expect(line).not.toContain(PARAMS.conditions.find((c) => c.id === p.conditionId)!.label);
   });
 });

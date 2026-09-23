@@ -212,6 +212,7 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
     y: pos.y,
     acuity: p.assignedAcuity,
     waited: s.now - p.arrivalTime,
+    profile: p.profile,
     boarding: p.boarding,
     special: p.source === 'walkIn' ? null : p.source,
     byAmbulance: p.byAmbulance,

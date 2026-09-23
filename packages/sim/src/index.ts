@@ -74,3 +74,5 @@ export { plannedDailyCost, checkBudget, checkSetup, actualCost, type CostBreakdo
 export { compositeScore, type ScoreBreakdown } from './score.js';
 export * as career from './career.js';
 export type { CareerState, Hospital, UpgradeId, WeekEvent, WeekRecord, MilestoneId, Settlement, LedgerLine } from './career.js';
+export { patientStories, STORY_KINDS, type PatientStory, type StoryKind } from './stories.js';
+export { drawProfile } from './engine.js';

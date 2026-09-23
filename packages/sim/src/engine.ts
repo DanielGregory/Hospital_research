@@ -31,6 +31,7 @@ import {
   type Lane,
   type Outcome,
   type Patient,
+  type PatientProfile,
   type QueueDiscipline,
   type Role,
   type Shift,
@@ -164,6 +165,8 @@ export interface PatientView {
   staffIds: number[];
   source: ArrivalSource;
   byAmbulance: boolean;
+  /** Age, sex and what they say brings them in (never the hidden diagnosis). */
+  profile: PatientProfile;
   /** In a hallway space (main ED, past the regular beds). */
   hallway: boolean;
 }
@@ -560,6 +563,7 @@ export class Simulation {
         staffIds,
         source: p.source,
         byAmbulance: p.byAmbulance === true,
+        profile: p.profile,
         hallway: r.hasBed && p.lane !== undefined && this.isHallway(p.lane, p.bed!),
       });
     }
@@ -713,6 +717,8 @@ export class Simulation {
       source: spec.source,
       bounceOf: spec.bounceOf,
       conditionId: condition.id,
+      // The same person comes back after a missed diagnosis; everyone else gets a profile from a stream of their own.
+      profile: spec.bounceOf !== undefined ? this.patients[spec.bounceOf]!.profile : drawProfile(this.root.stream(`profile:${spec.stream}`), condition),
       initialAcuity: acuity,
       trueAcuity: acuity,
       patienceMinutes,
@@ -1495,4 +1501,15 @@ function drawDuration(rng: Rng, mean: number, cv: number, distribution: 'exponen
   if (distribution === 'exponential') return rng.exponential(mean);
   if (!(cv > 0)) return mean;
   return rng.lognormal(mean, cv);
+}
+
+/** Age (triangular over the condition's range), sex and presenting complaint. */
+export function drawProfile(rng: Rng, c: ConditionSpec): PatientProfile {
+  const [lo, mode, hi] = c.ages ?? [18, 45, 90];
+  const u = rng.next();
+  const f = (mode - lo) / Math.max(1e-9, hi - lo);
+  const x = u < f ? lo + Math.sqrt(u * (hi - lo) * (mode - lo)) : hi - Math.sqrt((1 - u) * (hi - lo) * (hi - mode));
+  const sex = rng.next() < (c.femaleShare ?? 0.5) ? 'F' : 'M';
+  const complaints = c.complaints?.length ? c.complaints : ['unwell'];
+  return { age: Math.floor(x), sex, complaint: complaints[rng.int(complaints.length)]! };
 }

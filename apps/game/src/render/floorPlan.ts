@@ -2,7 +2,7 @@
  * Pure layout of the top-down view: where each area, bed, staff member and
  * patient dot goes for a given snapshot and canvas size. No drawing, no sim logic.
  */
-import type { Acuity, Lane, Role, SimSnapshot } from '@er/sim';
+import type { Acuity, Lane, PatientProfile, Role, SimSnapshot } from '@er/sim';
 
 export interface Point {
   x: number;
@@ -115,6 +115,8 @@ export interface PatientDot {
   acuity?: Acuity;
   /** Minutes since arrival. */
   waited: number;
+  /** Age, sex and presenting complaint (for tooltips; never the diagnosis). */
+  profile?: PatientProfile;
   boarding: boolean;
   /** Arrived by ambulance in a mass-casualty event, or came back after discharge. */
   special: 'massCasualty' | 'bounceBack' | null;
@@ -247,6 +249,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     y,
     acuity: p.assignedAcuity,
     waited: s.now - p.arrivalTime,
+      profile: p.profile,
     boarding: p.boarding,
     special: p.source === 'walkIn' ? null : p.source,
     byAmbulance: p.byAmbulance,

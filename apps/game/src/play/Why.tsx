@@ -2,10 +2,11 @@
  * The debrief's "why": the main bottleneck in plain words, where the waiting went, and the shift
  * as a timeline with the player's decisions marked on it.
  */
-import { WAIT_CAUSES, type Metrics, type TimedCommand, type TimelineSample } from '@er/sim';
+import { WAIT_CAUSES, type Metrics, type PatientStory, type TimedCommand, type TimelineSample } from '@er/sim';
 import { useMemo, useState } from 'react';
 import { clockLabel } from '../format';
 import { commandLabel, explain, WAIT_LABEL } from './explain';
+import { storyText } from './profiles';
 
 export interface RunAnalysis {
   timeline: TimelineSample[];
@@ -13,6 +14,9 @@ export interface RunAnalysis {
   clock: { startDayOfWeek: number; startHour: number };
   /** Mass-casualty windows to shade, in sim minutes. */
   incidents: { start: number; end: number }[];
+  /** Notable patients (sim `patientStories`), and the run seed their names come from. */
+  stories?: PatientStory[];
+  seed?: number;
 }
 
 export function Why({ m, run }: { m: Metrics; run: RunAnalysis }) {
@@ -33,7 +37,29 @@ export function Why({ m, run }: { m: Metrics; run: RunAnalysis }) {
         <WaitBars m={m} />
         <Timeline run={run} />
       </div>
+      {run.stories && run.stories.length > 0 && <Stories stories={run.stories} seed={run.seed ?? 1} />}
     </section>
+  );
+}
+
+/** A few real patients from the run, with what was wrong revealed. */
+function Stories({ stories, seed }: { stories: PatientStory[]; seed: number }) {
+  return (
+    <div className="stories" data-testid="stories">
+      <h4>Patients from this shift</h4>
+      <ul>
+        {stories.map((s) => {
+          const t = storyText(s, seed);
+          return (
+            <li key={s.patientId} className={`story ${s.kind}`}>
+              <strong>{t.title}</strong>
+              <span>{t.body}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted small">Names and people are made up; the cases come from this run.</p>
+    </div>
   );
 }
 

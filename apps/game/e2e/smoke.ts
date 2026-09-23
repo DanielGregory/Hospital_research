@@ -95,6 +95,7 @@ async function main() {
         const r1 = await page.getByTestId('result').textContent();
         if (r1 !== 'Goals not met') fail(`level 1 with arrival order: expected failure, got "${r1}"`);
         await page.getByTestId('why').waitFor();
+        await page.getByTestId('stories').waitFor();
         if ((await page.getByTestId('stars').getAttribute('aria-label')) !== '0 of 3 stars') fail('a failed level should earn no stars');
 
         // Retry with acuity order: should pass and unlock "next".

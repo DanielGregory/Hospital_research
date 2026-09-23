@@ -4,7 +4,8 @@
  *
  *   run --config <file.json> [--seed 42 | --seeds 1-10] [--set path=value ...] [--out results.json] [--format json|csv]
  *
- * Output schema (JSON): { configPath, configId, overrides, limitProblems, level?, runs: [{ seed, metrics, commandLog, goals? }] }
+ * Output schema (JSON): { configPath, configId, overrides, limitProblems, level?, runs: [{ seed, metrics, commandLog, stories, goals? }] }
+ * (stories: notable patients with age, complaint and the revealed condition).
  * CSV: one row per seed, metric keys flattened with dots, plus goal results for levels.
  */
 
@@ -13,7 +14,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { BASELINES, benchmarkLevel, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
-import { applySettings, balanceReport, career, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
+import { applySettings, balanceReport, career, patientStories, type PatientStory, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
@@ -154,7 +155,7 @@ export interface RunOutput {
   /** Starting config versus the level's staffing limits; empty when within limits or not a level. */
   limitProblems: string[];
   level?: { number: number; title: string; passRate: number };
-  runs: { seed: number; metrics: Metrics; commandLog: TimedCommand[]; goals?: { passed: boolean; results: GoalResult[] } }[];
+  runs: { seed: number; metrics: Metrics; commandLog: TimedCommand[]; stories: PatientStory[]; goals?: { passed: boolean; results: GoalResult[] } }[];
 }
 
 export function runConfig(config: unknown, configPath: string, seeds: readonly number[], overrides: readonly [string, unknown][] = []): RunOutput {
@@ -162,8 +163,10 @@ export function runConfig(config: unknown, configPath: string, seeds: readonly n
   const goals = resolved.level?.goals;
   if (seeds.length === 0) seeds = [resolved.level?.seed ?? 1];
   const runs = seeds.map((seed) => {
-    const { metrics, commandLog } = new Simulation(config, seed).run();
-    return { seed, metrics, commandLog, ...(goals ? { goals: evaluateGoals(metrics, goals) } : {}) };
+    const sim = new Simulation(config, seed);
+    const { metrics, commandLog } = sim.run();
+    const stories = patientStories(sim.allPatients(), sim.now, resolved.warmupMinutes);
+    return { seed, metrics, commandLog, stories, ...(goals ? { goals: evaluateGoals(metrics, goals) } : {}) };
   });
   const out: RunOutput = {
     configPath,

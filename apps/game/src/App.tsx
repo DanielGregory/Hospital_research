@@ -1,4 +1,4 @@
-import { beatsBenchmark, evaluateGoals, Simulation, type CareerState, type LayoutSpec, type Metrics, type Settlement } from '@er/sim';
+import { beatsBenchmark, evaluateGoals, patientStories, Simulation, type CareerState, type LayoutSpec, type Metrics, type Settlement } from '@er/sim';
 import { Career } from './career/Career';
 import { CareerWeek } from './career/CareerWeek';
 import { career, careerLive, loadCareer, saveCareer } from './career/store';
@@ -56,9 +56,11 @@ function saveResults(r: Record<string, boolean>) {
 }
 
 /** What the debrief needs to explain a run, read from the finished (or stopped) simulation. */
-function analysisOf(sim: Simulation): RunAnalysis {
+function analysisOf(sim: Simulation, seed: number): RunAnalysis {
   const c = sim.config;
   return {
+    stories: patientStories(sim.allPatients(), sim.now, c.warmupMinutes),
+    seed,
     timeline: [...sim.timeline],
     log: sim.commandLog(),
     clock: { startDayOfWeek: c.startDayOfWeek, startHour: c.startHour },
@@ -97,16 +99,17 @@ function Screens() {
 
   /** Close a career week: settle the accounts and save before showing the result. */
   const endWeek = (state: CareerState, sim: Simulation) => {
+    const seed = career.weekSeed(state);
     const metrics = sim.metrics();
     const settlement = career.settleWeek(state, metrics);
     setCareer(settlement.state);
-    setScreen({ name: 'careerWeek', before: { money: state.money, reputation: state.reputation }, settlement, metrics, run: analysisOf(sim) });
+    setScreen({ name: 'careerWeek', before: { money: state.money, reputation: state.reputation }, settlement, metrics, run: analysisOf(sim, seed) });
   };
 
-  const finish = (config: GameConfig, origin: Origin, runner: GameRunner) => {
+  const finish = (config: GameConfig, origin: Origin, runner: GameRunner, seed: number) => {
     if (origin.kind === 'career') return endWeek(origin.state, runner.sim);
     const metrics = runner.sim.metrics();
-    const run = analysisOf(runner.sim);
+    const run = analysisOf(runner.sim, seed);
     let stars: number | undefined;
     if (origin.kind === 'level') {
       stars = starsFor(origin.level.level, metrics);
@@ -257,7 +260,7 @@ function Screens() {
             config={screen.config}
             seed={screen.seed}
             values={screen.values}
-            onFinish={(runner) => finish(screen.config, screen.origin, runner)}
+            onFinish={(runner) => finish(screen.config, screen.origin, runner, screen.seed)}
             onQuit={() => setScreen(screen.origin.kind === 'career' ? { name: 'career' } : { name: 'menu' })}
             live={screen.origin.kind === 'career' ? careerLive(screen.origin.state) : undefined}
             unit={screen.origin.kind === 'career' ? 'week' : 'shift'}

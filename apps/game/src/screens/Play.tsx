@@ -6,7 +6,8 @@ import type { LevelConfig } from '../levels';
 import { AlertWatch, type Alert } from '../play/alerts';
 import { nextTip } from '../play/coach';
 import { LivePanel, PLANNED, QUICK } from '../play/LivePanel';
-import { personName } from '../play/names';
+import { patientName, personName } from '../play/names';
+import { profileLine } from '../play/profiles';
 import { initialPlan, PlanDrawer, type PlanState } from '../play/PlanDrawer';
 import { soundPreference, Soundscape } from '../play/sound';
 import { acuityColor, drawFloor, inkOn } from '../render/draw';
@@ -37,11 +38,6 @@ const WAITING_FOR: Record<string, string> = {
   disposition: 'waiting for a decision',
 };
 
-/** Display name for a patient. */
-export function patientName(id: number, seed: number): string {
-  const n = personName('patient', id, seed);
-  return `${n.first} ${n.last}`;
-}
 
 /** One line about a person, for the hover tooltip. Names are made up. */
 export function describe(a: Actor, seed = 1): string {
@@ -62,7 +58,8 @@ export function describe(a: Actor, seed = 1): string {
         : d.waitingFor
           ? (WAITING_FOR[d.waitingFor] ?? `waiting (${d.waitingFor})`)
           : 'being seen';
-  return [patientName(d.id, seed), level, status, `here ${minutes(d.waited)}`, d.special === 'massCasualty' ? 'came by ambulance' : d.special === 'bounceBack' ? 'came back' : null]
+  const who = d.profile ? profileLine(d.id, d.profile, seed) : patientName(d.id, seed);
+  return [who, level, status, `here ${minutes(d.waited)}`, d.special === 'massCasualty' ? 'came by ambulance' : d.special === 'bounceBack' ? 'came back' : null]
     .filter(Boolean)
     .join(' · ');
 }
@@ -268,8 +265,8 @@ export function Play(props: {
         .then(({ Scene3D }) => {
           if (cancelled) return;
           scene = new Scene3D(canvas);
-          scene.namer = (id) => {
-            const n = personName('patient', id, seed);
+          scene.namer = (id, sex) => {
+            const n = personName('patient', id, seed, sex);
             return `${n.first[0]}. ${n.last}`;
           };
           sceneRef.current = scene;

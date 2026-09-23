@@ -579,3 +579,13 @@ p.small, .muted.small { font-size: 0.85rem; }
 .career-over { border-color: color-mix(in srgb, var(--fail) 40%, transparent); background: var(--fail-soft); }
 .bed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0; }
 .career-quick { margin: 0 0 0 auto; }
+
+/* Patient stories */
+.stories { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.stories h4 { margin: 0 0 8px; }
+.stories ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.story { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 8px; font-size: 0.9rem; min-width: 0; }
+.story strong { font-size: 0.85rem; }
+.story.missed, .story.becameCritical { border-left-color: var(--fail); }
+.story.leftUnseen, .story.boardedLongest, .story.longestWait { border-left-color: var(--warn); }
+.story.quickResponse { border-left-color: var(--pass); }

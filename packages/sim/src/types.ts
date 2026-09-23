@@ -29,6 +29,20 @@ export interface ConditionSpec {
   admit: number;
   /** Probability of misdiagnosis at default thoroughness, before fatigue. */
   missRisk: number;
+  /** Age range [min, most common, max] (triangular). */
+  ages?: readonly [number, number, number];
+  /** Share of patients who are women. Default 0.5. */
+  femaleShare?: number;
+  /** Presenting complaints (what the patient says), chosen uniformly. */
+  complaints?: readonly string[];
+}
+
+/** Who the patient is and what they say brings them in. Visible to the player (unlike the condition). */
+export interface PatientProfile {
+  age: number;
+  sex: 'F' | 'M';
+  /** Complaint key (see PARAMS.conditions[].complaints). */
+  complaint: string;
 }
 
 export type Lane = 'main' | 'fastTrack';
@@ -44,6 +58,8 @@ export interface Patient {
   bounceOf?: number;
   /** Hidden condition (see PARAMS.conditions). */
   conditionId: string;
+  /** Age, sex and presenting complaint (from their own `profile:` stream; bounce-backs keep theirs). */
+  profile: PatientProfile;
   /** True acuity at arrival (metrics group by this). */
   initialAcuity: Acuity;
   /** Current true acuity; can worsen while waiting. */

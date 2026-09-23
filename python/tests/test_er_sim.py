@@ -107,11 +107,13 @@ class CalibrateTest(unittest.TestCase):
                     u = rng.random()
                     dispo = "LEFT WITHOUT BEING SEEN" if u < 0.05 else ("ADMITTED" if rng.random() < (0.5 if esi <= 2 else 0.1) else "HOME")
                     los = 60 + 30 * (5 - esi)
-                    stays.append({"subject_id": sid, "hadm_id": "", "stay_id": sid, "intime": t.strftime("%Y-%m-%d %H:%M:%S"), "outtime": (t + timedelta(minutes=los)).strftime("%Y-%m-%d %H:%M:%S"), "disposition": dispo})
+                    transport = "AMBULANCE" if rng.random() < (0.7 if esi <= 2 else 0.1) else "WALK IN"
+                    gender = "F" if rng.random() < 0.55 else "M"
+                    stays.append({"subject_id": sid, "hadm_id": "", "stay_id": sid, "intime": t.strftime("%Y-%m-%d %H:%M:%S"), "outtime": (t + timedelta(minutes=los)).strftime("%Y-%m-%d %H:%M:%S"), "disposition": dispo, "arrival_transport": transport, "gender": gender})
                     triage.append({"subject_id": sid, "stay_id": sid, "acuity": f"{esi}.0" if rng.random() > 0.02 else ""})
         self.edstays = d / "edstays.csv.gz"
         self.triage = d / "triage.csv.gz"
-        _write_csv(self.edstays, stays, ["subject_id", "hadm_id", "stay_id", "intime", "outtime", "disposition"])
+        _write_csv(self.edstays, stays, ["subject_id", "hadm_id", "stay_id", "intime", "outtime", "disposition", "arrival_transport", "gender"])
         _write_csv(self.triage, triage, ["subject_id", "stay_id", "acuity"])
 
     def tearDown(self):
@@ -129,6 +131,10 @@ class CalibrateTest(unittest.TestCase):
         self.assertAlmostEqual(fragment["disposition"]["admitProbabilityByAcuity"]["1"], 0.5 * 0.95, delta=0.1)
         self.assertAlmostEqual(report["lwbsRate"], 0.05, delta=0.015)
         self.assertEqual(report["lengthOfStayByAcuity"]["5"]["median"], 60)
+        amb = fragment["arrivals"]["ambulanceShareByAcuity"]
+        self.assertAlmostEqual(amb["1"], 0.7, delta=0.1)
+        self.assertAlmostEqual(amb["4"], 0.1, delta=0.05)
+        self.assertAlmostEqual(report["femaleShare"], 0.55, delta=0.05)
 
     def test_cli_writes_a_runnable_fragment_and_compares(self):
         out = Path(self.dir.name) / "calibrated.json"

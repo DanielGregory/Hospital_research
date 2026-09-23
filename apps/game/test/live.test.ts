@@ -1,6 +1,8 @@
-import { applySettings, Simulation } from '@er/sim';
+import { applySettings, beatsBenchmark, Simulation } from '@er/sim';
 import { describe, expect, it } from 'vitest';
+import { buildConfig, initialValues } from '../src/controls';
 import { LEVELS } from '../src/levels';
+import { describeValue, differences } from '../src/play/benchmark';
 import { AlertWatch } from '../src/play/alerts';
 import { nextTip, triggered } from '../src/play/coach';
 import { dailyChallenge, shareText } from '../src/play/daily';
@@ -107,5 +109,30 @@ describe('stars and the daily challenge', () => {
     expect(personName('patient', 7, 3)).toEqual(personName('patient', 7, 3));
     const names = new Set(Array.from({ length: 50 }, (_, i) => JSON.stringify(personName('patient', i, 3))));
     expect(names.size).toBeGreaterThan(40);
+  });
+});
+
+describe('beat the best found', () => {
+  it('loading the best found setup through the game reproduces its score on the level day', () => {
+    for (const level of LEVELS) {
+      const b = level.level.benchmark!;
+      const values = { ...initialValues(level), ...b.settings };
+      expect(differences(b, values)).toEqual([]);
+      const m = new Simulation(buildConfig(level, values), level.level.seed!).run().metrics;
+      expect(Math.round(m.compositeScore * 100) / 100).toBe(b.score);
+      expect(beatsBenchmark(b, m.compositeScore, true)).toBe(false); // matching is not beating
+    }
+  });
+
+  it('the shipped setup differs from the best found, and a beat is remembered', () => {
+    const l2 = LEVELS[1]!;
+    expect(differences(l2.level.benchmark!, initialValues(l2))).toEqual(['staffing.schedule.doctor']);
+    const t = recordBest(recordBest({}, 'x', { stars: 3, score: 97, beat: true }), 'x', { stars: 1, score: 60 });
+    expect(t.x!.beat).toBe(true);
+  });
+
+  it('describes settings in words', () => {
+    expect(describeValue('staffing.schedule.doctor', [{ startHour: 22, hours: 12, count: 2 }])).toBe('2 from 22:00 for 12 h');
+    expect(describeValue('queue.discipline', 'acuity')).toBe('Sickest first');
   });
 });

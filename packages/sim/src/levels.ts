@@ -113,6 +113,11 @@ export interface LevelBenchmark {
   fixed?: PlayerControl[];
 }
 
+/** Did a run beat the best found? Its goals must be met and its score higher (rounded as stored). */
+export function beatsBenchmark(b: Pick<LevelBenchmark, 'score' | 'goalsMet'>, score: number, goalsMet: boolean): boolean {
+  return goalsMet && (!b.goalsMet || Math.round(score * 100) / 100 > b.score);
+}
+
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const strings = (x: unknown) => Array.isArray(x) && x.every((s) => typeof s === 'string');
 

@@ -75,8 +75,3 @@ export function levelMetrics(config: { level: LevelSpec }, settings: Record<stri
 }
 
 export const round2 = (x: number) => Math.round(x * 100) / 100;
-
-/** Did the player beat the best found? Goals must be met, and the score must be higher. */
-export function beatsBenchmark(b: Pick<LevelBenchmark, 'score' | 'goalsMet'>, score: number, goalsMet: boolean): boolean {
-  return goalsMet && (!b.goalsMet || score > b.score);
-}

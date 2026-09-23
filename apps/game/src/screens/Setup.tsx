@@ -1,9 +1,19 @@
 import { plannedDailyCost, resolveConfig, type Acuity, type PlayerControl, type QueueDiscipline, type Shift } from '@er/sim';
 import { buildConfig, scheduleRole, setupProblems, type SetupValues } from '../controls';
 import type { LevelConfig } from '../levels';
+import { BenchmarkCard } from '../play/benchmark';
 import { ScheduleEditor, Stepper } from './ScheduleEditor';
 
-export function Setup(props: { level: LevelConfig; values: SetupValues; onChange: (v: SetupValues) => void; onStart: () => void; onBack: () => void }) {
+export function Setup(props: {
+  level: LevelConfig;
+  values: SetupValues;
+  onChange: (v: SetupValues) => void;
+  onStart: () => void;
+  onBack: () => void;
+  /** Show the level's best found setup as a target (not on daily challenges: they play another day). */
+  showBenchmark?: boolean;
+  beaten?: boolean;
+}) {
   const { level, values, onChange, onStart, onBack } = props;
   const problems = setupProblems(level, values);
   const config = buildConfig(level, values);
@@ -15,6 +25,7 @@ export function Setup(props: { level: LevelConfig; values: SetupValues; onChange
       <h1>{level.level.title}</h1>
       <p className="lede">Set things up before the shift starts. Everything else is locked for this simulation.</p>
       {level.level.playerControls.length === 0 && <p>Nothing to set up. Watch closely.</p>}
+      {props.showBenchmark && level.level.benchmark && <BenchmarkCard benchmark={level.level.benchmark} values={values} onUse={onChange} beaten={props.beaten} />}
       {level.level.playerControls.filter(scheduleRole).map((ctl) => (
         <ScheduleEditor key={ctl} role={scheduleRole(ctl)!} shifts={(values[ctl] as Shift[]) ?? []} config={config} onChange={(s) => set(ctl, s)} />
       ))}

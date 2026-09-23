@@ -56,6 +56,11 @@ export function Menu(props: {
                 {l.level.tagline && <span className="level-tagline">{l.level.tagline}</span>}
                 <span className="level-meta">
                   {best[l.id] && <Stars n={best[l.id]!.stars} />}
+                  {best[l.id]?.beat && (
+                    <span className="chip beat" title="You beat the best found setup">
+                      ★ Beat best found
+                    </span>
+                  )}
                   {passed && <span className="chip pass">✓ Passed</span>}
                   {!passed && results[l.id] === false && <span className="chip">Tried</span>}
                   {l.id === next.id && !passed && <span className="chip next">Up next</span>}

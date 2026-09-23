@@ -1,4 +1,4 @@
-import { evaluateGoals, type LayoutSpec, type Metrics } from '@er/sim';
+import { beatsBenchmark, evaluateGoals, type LayoutSpec, type Metrics } from '@er/sim';
 import { dailyChallenge, dateKey, shareText, type Daily } from './play/daily';
 import { loadBest, recordBest, starsFor, type Best } from './play/stars';
 import type { RunAnalysis } from './play/Why';
@@ -86,9 +86,11 @@ function Screens() {
     if (origin.kind === 'level') {
       stars = starsFor(origin.level.level, metrics);
       const key = origin.daily ? `daily:${origin.daily.date}` : origin.level.id;
-      setBest(recordBest(best, key, { stars, score: metrics.compositeScore }));
+      const passed = evaluateGoals(metrics, origin.level.level.goals).passed;
+      const bm = origin.level.level.benchmark;
+      const beat = !origin.daily && bm !== undefined && beatsBenchmark(bm, metrics.compositeScore, passed);
+      setBest(recordBest(best, key, { stars, score: metrics.compositeScore, ...(beat ? { beat } : {}) }));
       if (!origin.daily) {
-        const passed = evaluateGoals(metrics, origin.level.level.goals).passed;
         const next = { ...results, [origin.level.id]: results[origin.level.id] === true || passed };
         setResults(next);
         saveResults(next);
@@ -164,6 +166,8 @@ function Screens() {
             level={screen.level}
             values={screen.values}
             onChange={(values) => setScreen({ ...screen, values })}
+            showBenchmark={!screen.daily}
+            beaten={best[screen.level.id]?.beat === true}
             onBack={() => setScreen({ name: 'briefing', level: screen.level, daily: screen.daily })}
             onStart={() =>
               setScreen({
@@ -215,6 +219,7 @@ function Screens() {
             metrics={screen.metrics}
             run={screen.run}
             stars={screen.stars}
+            showBenchmark={o.kind === 'level' && !o.daily}
             share={
               o.kind === 'level' && o.daily
                 ? shareText(o.daily, screen.stars ?? 0, screen.metrics.compositeScore, `${window.location.origin}${window.location.pathname}`)

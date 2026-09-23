@@ -1,7 +1,7 @@
-import { Simulation } from '@er/sim';
+import { beatsBenchmark, Simulation } from '@er/sim';
 import { describe, expect, it } from 'vitest';
 import level5 from '../../../configs/levels/level-05-boarding-crisis.json';
-import { beatsBenchmark, benchmarkLevel, escalateWhenBoarding, levelObjective, evaluate, optimize, runWithPolicy, Session, staticPolicy, surgeStaffing } from '../src/index.js';
+import { benchmarkLevel, escalateWhenBoarding, levelObjective, evaluate, optimize, runWithPolicy, Session, staticPolicy, surgeStaffing } from '../src/index.js';
 
 const busyWeek = { id: 'r', durationMinutes: 4 * 1440, warmupMinutes: 1440, staffing: { doctors: 2 }, arrivals: { rateMultiplier: 1.1 } };
 

@@ -13,6 +13,8 @@ export function starsFor(level: LevelSpec, m: Metrics): number {
 export interface Best {
   stars: number;
   score: number;
+  /** Beaten the level's best found setup at least once. */
+  beat?: boolean;
 }
 
 const KEY = 'er-shift-best';
@@ -28,7 +30,10 @@ export function loadBest(): Record<string, Best> {
 /** Record a run; returns the updated table. */
 export function recordBest(table: Record<string, Best>, id: string, run: Best): Record<string, Best> {
   const old = table[id];
-  const next = { ...table, [id]: old ? { stars: Math.max(old.stars, run.stars), score: Math.max(old.score, run.score) } : run };
+  const next = {
+    ...table,
+    [id]: old ? { stars: Math.max(old.stars, run.stars), score: Math.max(old.score, run.score), ...(old.beat || run.beat ? { beat: true } : {}) } : run,
+  };
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {

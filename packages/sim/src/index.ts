@@ -31,6 +31,7 @@ export {
   type GoalResult,
   type LevelSpec,
   type LevelBenchmark,
+  beatsBenchmark,
   type LevelLimits,
   type PlayerControl,
 } from './levels.js';

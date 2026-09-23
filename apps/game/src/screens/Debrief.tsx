@@ -1,6 +1,7 @@
 import { evaluateGoals, type LevelSpec, type Metrics } from '@er/sim';
 import { useState } from 'react';
 import { metricValue, minutes, percent } from '../format';
+import { BenchmarkResult } from '../play/benchmark';
 import { Why, type RunAnalysis } from '../play/Why';
 
 const SCORE_LABEL: Record<string, string> = {
@@ -21,6 +22,8 @@ export function Debrief(props: {
   stars?: number;
   /** Text to share (daily challenge). */
   share?: string;
+  /** Compare with the level's best found setup (story levels on their own day). */
+  showBenchmark?: boolean;
   onRetry: () => void;
   onNext?: () => void;
   onMenu: () => void;
@@ -77,6 +80,8 @@ export function Debrief(props: {
           )}
         </div>
       </section>
+
+      {props.showBenchmark && level?.benchmark && <BenchmarkResult benchmark={level.benchmark} score={m.compositeScore} goalsMet={passed} />}
 
       {results.length > 0 && (
         <ul className="goals results">

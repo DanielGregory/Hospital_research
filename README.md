@@ -13,6 +13,8 @@ pnpm headless run --config configs/validation/mmc.json --seeds 1-8 --out results
 pnpm headless run --config configs/levels/level-02-monday-morning.json --seeds 1-40   # prints level pass rate
 ```
 
+**The game** (`pnpm game`) shows the department in 3D by default, with staff and patients walking between rooms; a 2D view is one click away.
+
 **Deploying the game:** it is a static site (the simulation runs in the browser). `vercel.json` builds it from the repo root: import the repo in Vercel and keep the root directory as `./`.
 
 Layout: `packages/sim` (engine, no DOM), `packages/research` (policies, optimizer, stdio server), `apps/game` (browser game: `pnpm game`), `tools/headless` (CLI), `python/` (Gym-style wrapper, MIMIC-IV-ED calibration), `configs/` (JSON levels and scenarios). 

@@ -2,7 +2,7 @@
 import type { Acuity, Role } from '@er/sim';
 import type { FloorPlan } from './floorPlan';
 
-function css(name: string, fallback: string): string {
+export function css(name: string, fallback: string): string {
   if (typeof getComputedStyle === 'undefined') return fallback;
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }

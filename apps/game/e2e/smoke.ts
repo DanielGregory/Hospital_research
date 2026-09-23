@@ -43,7 +43,11 @@ async function main() {
         }
       });
     });
-    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium' });
+    // Software WebGL so the 3D view renders without a GPU.
+    const browser = await chromium.launch({
+      executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium',
+      args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
+    });
     try {
       for (const scheme of ['light', 'dark'] as const) {
         const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, colorScheme: scheme });
@@ -64,7 +68,15 @@ async function main() {
         await page.waitForTimeout(500);
         const clock2 = await page.getByTestId('clock').textContent();
         if (clock1 === clock2) fail(`clock did not advance at 8x (${clock1})`);
+        // The 3D view is the default; the 2D view is one click away and the choice sticks.
+        await page.getByTestId('floor-3d').waitFor();
         await shot(page, `play-${scheme}`);
+        await page.getByTestId('view-2d').click();
+        await page.getByTestId('floor-2d').waitFor();
+        await page.waitForTimeout(300);
+        await shot(page, `play-2d-${scheme}`);
+        await page.getByTestId('view-3d').click();
+        await page.getByTestId('floor-3d').waitFor();
         await page.getByTestId('skip').click();
         const r1 = await page.getByTestId('result').textContent();
         if (r1 !== 'Goals not met') fail(`level 1 with arrival order: expected failure, got "${r1}"`);

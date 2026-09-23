@@ -1,9 +1,10 @@
 import { Simulation } from './engine.js';
 
-export { Simulation, type SimSnapshot, type RunResult, type PatientView, type PatientLocation, type FatigueRecord } from './engine.js';
+export { Simulation, TIMELINE_STEP, type SimSnapshot, type RunResult, type PatientView, type PatientLocation, type FatigueRecord, type TimelineSample } from './engine.js';
 export {
   resolveConfig,
   validateConfig,
+  pipelineAsSteps,
   ConfigError,
   MODULES,
   MODULE_PHASE,
@@ -14,7 +15,7 @@ export {
   type StepInput,
   type ModuleName,
 } from './config.js';
-export { computeMetrics, NOT_YET_MODELED, type Metrics, type AcuityGroup } from './metrics.js';
+export { computeMetrics, NOT_YET_MODELED, WAIT_CAUSES, type Metrics, type AcuityGroup, type WaitCause } from './metrics.js';
 export {
   evaluateGoals,
   checkLimits,

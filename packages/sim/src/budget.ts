@@ -11,6 +11,8 @@ export interface CostBreakdown {
   beds: number;
   escalation: number;
   space: number;
+  /** Live decisions: call-in premium pay and patients turned away by diversion. */
+  calls: number;
   total: number;
 }
 
@@ -31,7 +33,7 @@ export function plannedDailyCost(c: ResolvedConfig): CostBreakdown {
   const beds = bedsOf('main') * b.bedPerDay.main + bedsOf('fastTrack') * b.bedPerDay.fastTrack;
   const escalation = c.modules.boarding && c.boarding.escalation ? 24 * b.escalationPerHour : 0;
   const space = footprintCells(c) * b.spacePerCellPerDay;
-  return { staff, beds, escalation, space, total: staff + beds + escalation + space };
+  return { staff, beds, escalation, space, calls: 0, total: staff + beds + escalation + space };
 }
 
 /** Problems with a setup against the budget cap (budget module), empty when within it or no cap. */
@@ -48,13 +50,17 @@ export function actualCost(
   bedMinutes: Record<Lane, number>,
   escalatedMinutes: number,
   windowMinutes: number,
+  live: { callInMinutes: Record<Role, number>; diverted: number } = { callInMinutes: { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 }, diverted: 0 },
 ): CostBreakdown {
   const b = c.budgetRates;
   const staff = ROLES.reduce((s, r) => s + (staffMinutes[r] / 60) * b.hourlyWage[r], 0);
   const beds = (bedMinutes.main / 1440) * b.bedPerDay.main + (bedMinutes.fastTrack / 1440) * b.bedPerDay.fastTrack;
   const escalation = (escalatedMinutes / 60) * b.escalationPerHour;
   const space = footprintCells(c) * b.spacePerCellPerDay * (windowMinutes / 1440);
-  return { staff, beds, escalation, space, total: staff + beds + escalation + space };
+  // Called-in staff are already in `staff` at the normal wage; this adds the premium.
+  const premium = ROLES.reduce((s, r) => s + (live.callInMinutes[r] / 60) * b.hourlyWage[r] * (c.liveCalls.callInWageMultiplier - 1), 0);
+  const calls = premium + live.diverted * c.liveCalls.diversionCostPerPatient;
+  return { staff, beds, escalation, space, calls, total: staff + beds + escalation + space + calls };
 }
 
 /** Everything that stops a setup from starting: level limits and the budget cap. */

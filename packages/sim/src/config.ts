@@ -165,6 +165,8 @@ export interface SimConfig {
   layout?: LayoutSpec;
   /** Custom step graph, used when the `process` module is on. */
   process?: { steps: StepInput[]; routing?: RoutingRule[] };
+  /** Live decisions: how many on-call staff may be called in (default PARAMS.liveCalls.maxCallIns). */
+  liveCalls?: { maxCallIns?: number };
   commands?: TimedCommand[];
   /** Story-mode data: narrative, goals, player controls. The engine ignores it when simulating. */
   level?: LevelSpec;
@@ -229,6 +231,8 @@ export interface ResolvedConfig {
   pipeline: StepDef[];
   /** Routing rules from the process module; empty = fast-track settings decide. */
   routing: RoutingRule[];
+  ambulanceShareByAcuity: Record<Acuity, number>;
+  liveCalls: { -readonly [K in keyof typeof PARAMS.liveCalls]: number };
   commands: TimedCommand[];
   level?: LevelSpec;
 }
@@ -338,6 +342,7 @@ export function validateConfig(raw: unknown): SimConfig {
       p.push(...checkAcuityMap(l.patienceMeanMinutesByAcuity, 'lwbs.patienceMeanMinutesByAcuity', (x) => x === null || positive(x), 'positive number or null (never leaves)'));
   });
 
+  section(c, 'liveCalls', p, (l) => field(l, 'liveCalls', 'maxCallIns', count, 'non-negative integer', p));
   section(c, 'beds', p, (b) => {
     for (const k of ['main', 'fastTrack']) field(b, 'beds', k, (x) => x === null || (count(x) && (x as number) > 0), 'positive integer or null (unlimited)', p);
     field(b, 'beds', 'traumaBays', count, 'non-negative integer', p);
@@ -503,6 +508,28 @@ export function checkCommand(cmd: unknown, path: string): string[] {
         ...(isLane(cmd.lane) ? [] : [`${path}.lane: 'main' or 'fastTrack'`]),
         ...(cmd.count === null || (count(cmd.count) && (cmd.count as number) > 0) ? [] : [`${path}.count: positive integer or null`]),
       ];
+    case 'setProcess': {
+      if (!Array.isArray(cmd.steps) || cmd.steps.length === 0) return [`${path}.steps: a non-empty array of steps`];
+      const out = cmd.steps.flatMap((s, i) => checkStepInput(s, `${path}.steps[${i}]`));
+      if (out.length === 0) out.push(...checkPipeline(cmd.steps.map((s) => resolveStep(s as StepInput)), `${path}.steps`));
+      if (cmd.routing !== undefined && (!Array.isArray(cmd.routing) || cmd.routing.some((r) => !isObj(r) || !isAcuity(r.minAcuity) || !isAcuity(r.maxAcuity) || !isLane(r.lane))))
+        out.push(`${path}.routing: [{ minAcuity, maxAcuity, lane }]`);
+      return out;
+    }
+    case 'setThoroughness':
+      return typeof cmd.value === 'number' && cmd.value >= 0 && cmd.value <= 1 ? [] : [`${path}.value: number 0..1`];
+    case 'callIn':
+      return isRole(cmd.role) ? [] : [`${path}.role: one of ${ROLES.join(', ')}`];
+    case 'setDiversion':
+      return bool(cmd.enabled) ? [] : [`${path}.enabled: true or false`];
+    case 'setHallwayBeds':
+      return count(cmd.count) && (cmd.count as number) <= PARAMS.liveCalls.maxHallwayBeds ? [] : [`${path}.count: integer 0..${PARAMS.liveCalls.maxHallwayBeds}`];
+    case 'moveStaff':
+      return [
+        ...(isRole(cmd.from) ? [] : [`${path}.from: one of ${ROLES.join(', ')}`]),
+        ...(isRole(cmd.to) ? [] : [`${path}.to: one of ${ROLES.join(', ')}`]),
+        ...(cmd.from !== cmd.to ? [] : [`${path}: from and to must differ`]),
+      ];
     default:
       return [`${path}.type: unknown command '${String(cmd.type)}'`];
   }
@@ -521,7 +548,28 @@ function acuityMapOr(base: Record<Acuity, number>, override?: AcuityMap, all?: n
   return out;
 }
 
-function resolveStep(s: StepInput): StepDef {
+/** A resolved step graph written back out as process steps (resolving them gives the same graph). */
+export function pipelineAsSteps(steps: readonly StepDef[]): StepInput[] {
+  return steps.map((s) => ({
+    id: s.id,
+    kind: s.kind,
+    label: s.label,
+    role: s.role,
+    meanMinutesByAcuity: Object.fromEntries(Object.entries(s.meanMinutesByAcuity)) as AcuityMap,
+    distribution: s.distribution,
+    cv: s.cv,
+    turnaroundMinutesByAcuity: Object.fromEntries(Object.entries(s.turnaroundMinutesByAcuity)) as AcuityMap,
+    turnaroundCv: s.turnaroundCv,
+    thoroughness: s.thoroughness,
+    after: [...s.after],
+    inBed: s.inBed,
+    minAcuity: s.minAcuity,
+    maxAcuity: s.maxAcuity,
+    lanes: [...s.lanes],
+  }));
+}
+
+export function resolveStep(s: StepInput): StepDef {
   const zero: Record<Acuity, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   return makeStep({
     id: s.id,
@@ -707,6 +755,8 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     conditions: PARAMS.conditions,
     pipeline,
     routing,
+    ambulanceShareByAcuity: { ...PARAMS.arrivals.ambulanceShareByAcuity },
+    liveCalls: { ...PARAMS.liveCalls, maxCallIns: c.liveCalls?.maxCallIns ?? PARAMS.liveCalls.maxCallIns },
     commands: (c.commands ?? []).map(copy),
     level: c.level,
   };

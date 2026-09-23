@@ -1,3 +1,5 @@
+import type { StepInput } from './config.js';
+
 /** ESI acuity: 1 = most critical, 5 = least. */
 export type Acuity = 1 | 2 | 3 | 4 | 5;
 export const ACUITIES: readonly Acuity[] = [1, 2, 3, 4, 5];
@@ -75,10 +77,16 @@ export interface Patient {
   departureTime?: number;
   outcome?: Outcome;
   /** Per step id: when its work started (staff arrived, or the wait began) and when it finished. */
-  steps: Record<string, { start: number; end?: number }>;
+  steps: Record<string, { kind?: string; start: number; end?: number }>;
   misdiagnosed?: boolean;
   /** Minute the misdiagnosed patient will return (may be after the run ends). */
   returnsAt?: number;
+  /** Came by ambulance (walk-in stream: drawn from their own stream; mass casualties: always). */
+  byAmbulance?: boolean;
+  /** Treated in a hallway space (opened with setHallwayBeds). */
+  hallway?: boolean;
+  /** Worsened to ESI 1 while waiting for a doctor. */
+  becameCritical?: boolean;
 }
 
 export interface Shift {
@@ -100,7 +108,20 @@ export type Command =
   | { type: 'setQueueDiscipline'; discipline: QueueDiscipline }
   | { type: 'setFastTrack'; enabled: boolean; minAcuity?: Acuity }
   | { type: 'setBeds'; lane: Lane; count: number | null }
-  | { type: 'setEscalation'; enabled: boolean };
+  | { type: 'setEscalation'; enabled: boolean }
+  /** New patient process (process module): applies to patients arriving from now on. */
+  | { type: 'setProcess'; steps: StepInput[]; routing?: { minAcuity: Acuity; maxAcuity: Acuity; lane: Lane }[] }
+  /** How thorough diagnostic steps are (0-1), for patients arriving from now on. */
+  | { type: 'setThoroughness'; value: number }
+  /** Call in an on-call member of staff: they arrive after a delay and stay a few hours, at a premium. */
+  | { type: 'callIn'; role: Role }
+  /** Ambulance diversion: ambulances take all but the most critical patients elsewhere. */
+  | { type: 'setDiversion'; enabled: boolean }
+  /** Open extra care spaces in the corridor (main ED): slower care, used only when the beds are full. */
+  | { type: 'setHallwayBeds'; count: number }
+  /** Move one member of staff to another role (e.g. a fast-track clinician into the main ED). */
+  | { type: 'moveStaff'; from: Role; to: Role };
+
 
 export interface TimedCommand {
   atMinute: number;

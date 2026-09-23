@@ -25,6 +25,30 @@ export const PARAMS = {
     ],
     /** Multiplier per day of week, index 0 = Monday. */
     dayOfWeekMultipliers: [1.12, 1.03, 1.0, 0.99, 0.98, 0.93, 0.95], // PLACEHOLDER
+    /** Share of walk-in-stream patients who come by ambulance, by true acuity (diversion turns these away). */
+    ambulanceShareByAcuity: { 1: 0.8, 2: 0.5, 3: 0.22, 4: 0.06, 5: 0.02 } as Record<Acuity, number>, // PLACEHOLDER
+  },
+
+  /** Live decisions during a shift. */
+  liveCalls: {
+    /** On-call staff arrive this long after being called. */
+    callInDelayMinutes: 45, // PLACEHOLDER
+    /** And stay this long. */
+    callInHours: 8, // PLACEHOLDER
+    /** Call-in pay relative to the normal hourly wage. */
+    callInWageMultiplier: 1.5, // PLACEHOLDER
+    /** Call-ins allowed per run unless a config says otherwise. */
+    maxCallIns: 2, // PLACEHOLDER
+    /** On diversion, ambulances still bring patients at or below this ESI level (the most critical). */
+    diversionSparesAcuity: 1, // PLACEHOLDER
+    /** Cost per patient turned away (lost revenue, regional strain). */
+    diversionCostPerPatient: 600, // PLACEHOLDER
+    /** Most hallway spaces that can be opened. */
+    maxHallwayBeds: 6, // PLACEHOLDER
+    /** Care in a hallway space is slower (no cubicle, equipment brought over). */
+    hallwayServiceFactor: 1.15, // PLACEHOLDER
+    /** Mass-casualty incidents are announced this long before the first patient arrives. */
+    incidentWarningMinutes: 20, // PLACEHOLDER
   },
 
   acuity: {

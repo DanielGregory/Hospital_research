@@ -52,6 +52,16 @@ export class PatientQueue {
     }
   }
 
+  /** The id `pop()` would return, without removing it. */
+  peek(): number | undefined {
+    for (;;) {
+      const top = this.heap[0];
+      if (!top) return undefined;
+      if (this.live.get(top.id) === top.token) return top.id;
+      this.popRaw();
+    }
+  }
+
   remove(id: number): boolean {
     return this.live.delete(id);
   }

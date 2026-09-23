@@ -17,6 +17,9 @@ export const NOT_YET_MODELED: readonly string[] = [];
 export type AcuityGroup = 'urgent' | 'standard' | 'minor';
 const GROUP_OF: Record<Acuity, AcuityGroup> = { 1: 'urgent', 2: 'urgent', 3: 'standard', 4: 'minor', 5: 'minor' };
 
+export const WAIT_CAUSES = ['triage', 'bed', 'doctor', 'results', 'boarding'] as const;
+export type WaitCause = (typeof WAIT_CAUSES)[number];
+
 export interface Metrics {
   configId: string;
   seed: number;
@@ -62,13 +65,29 @@ export interface Metrics {
     overTriageRate: number | null;
   };
   fastTrack: { treated: number; shareOfTreated: number | null };
-  /** Patients whose condition worsened while waiting to be seen. */
-  deterioration: { events: number; patients: number; per100Arrivals: number };
+  /** Patients whose condition worsened while waiting to be seen; `critical`: worsened to ESI 1. */
+  deterioration: { events: number; patients: number; per100Arrivals: number; critical: number };
+  /** Live decisions and what they cost in patients (diversion) and care (hallway). */
+  live: {
+    diverted: number;
+    diversionHours: number;
+    callIns: number;
+    callInHours: number;
+    hallwayPatients: number;
+    hallwayHours: number;
+  };
+  /**
+   * Where waiting went, in patient-hours inside the window: before triage, for a bed, for a
+   * doctor (first evaluation), for test results, and admitted patients boarding in ED beds.
+   */
+  waits: Record<WaitCause, number>;
   diagnosis: {
     /** Misdiagnosed / (discharged + admitted). */
     misdiagnosisRate: number | null;
     /** Discharged patients who return within 72 h (including returns due after the run ends). */
     bounceBacks72h: number;
+    /** Of those, how many are due after the run ends (the debrief can reveal them). */
+    bounceBacksAfterRun: number;
     bounceBackRate72h: number | null;
   };
   boarding: {
@@ -141,6 +160,12 @@ export function computeMetrics(sim: Simulation): Metrics {
   let detPatients = 0;
   let misdiagnosed = 0;
   let bounce = 0;
+  let bounceLater = 0;
+  let critical = 0;
+  let hallwayPatients = 0;
+  const waits: Record<WaitCause, number> = { triage: 0, bed: 0, doctor: 0, results: 0, boarding: 0 };
+  // Patient-minutes between two times, clipped to the window.
+  const clip = (a: number | undefined, b: number | undefined) => (a === undefined ? 0 : Math.max(0, Math.min(b ?? end, end) - Math.max(a, start)));
   const boardingHours: number[] = [];
   const sources = { walkIn: 0, massCasualty: 0, bounceBack: 0 };
   const lwbsBy: Record<Acuity, [number, number]> = { 1: [0, 0], 2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0] };
@@ -168,6 +193,15 @@ export function computeMetrics(sim: Simulation): Metrics {
     if (p.deteriorations > 0) detPatients++;
     if (p.misdiagnosed) misdiagnosed++;
     if (p.returnsAt !== undefined) bounce++;
+    if (p.returnsAt !== undefined && p.returnsAt > c.durationMinutes) bounceLater++;
+    if (p.becameCritical) critical++;
+    if (p.hallway) hallwayPatients++;
+    const leftAt = p.departureTime;
+    waits.triage += clip(p.arrivalTime, p.triageStartTime ?? (p.assignedAcuity === undefined ? leftAt : p.arrivalTime));
+    if (p.bedRequestTime !== undefined) waits.bed += clip(p.bedRequestTime, p.bedTime ?? leftAt);
+    if (p.doctorQueueTime !== undefined) waits.doctor += clip(p.doctorQueueTime, p.doctorStartTime ?? leftAt);
+    for (const st of Object.values(p.steps)) if (st.kind === 'workup' || st.kind === 'labs' || st.kind === 'imaging') waits.results += clip(st.start, st.end ?? leftAt);
+    if (p.boardingStartTime !== undefined) waits.boarding += clip(p.boardingStartTime, leftAt);
     if (p.boardingStartTime !== undefined) boardingHours.push(((p.departureTime ?? end) - p.boardingStartTime) / 60);
   }
   const treated = discharged + admitted;
@@ -211,7 +245,8 @@ export function computeMetrics(sim: Simulation): Metrics {
 
   const staffMinutes = Object.fromEntries(ROLES.map((r) => [r, sim.tw.onDuty[r].integral(end)])) as Record<Role, number>;
   const bedMinutes = { main: sim.tw.bedsCosted.main.integral(end), fastTrack: sim.tw.bedsCosted.fastTrack.integral(end) };
-  const spent = actualCost(c, staffMinutes, bedMinutes, sim.tw.escalated.integral(end), span);
+  const callInMinutes = Object.fromEntries(ROLES.map((r) => [r, sim.tw.callIn[r].integral(end)])) as Record<Role, number>;
+  const spent = actualCost(c, staffMinutes, bedMinutes, sim.tw.escalated.integral(end), span, { callInMinutes, diverted: sim.divertedMeasured });
 
   const m: Omit<Metrics, 'compositeScore' | 'scoreBreakdown'> = {
     configId: c.id,
@@ -250,10 +285,20 @@ export function computeMetrics(sim: Simulation): Metrics {
       overTriageRate: triaged > 0 ? over / triaged : null,
     },
     fastTrack: { treated: ftTreated, shareOfTreated: treated > 0 ? ftTreated / treated : null },
-    deterioration: { events: detEvents, patients: detPatients, per100Arrivals: inWindow.length > 0 ? (100 * detEvents) / inWindow.length : 0 },
+    deterioration: { events: detEvents, patients: detPatients, per100Arrivals: inWindow.length > 0 ? (100 * detEvents) / inWindow.length : 0, critical },
+    live: {
+      diverted: sim.divertedMeasured,
+      diversionHours: sim.tw.diversion.integral(end) / 60,
+      callIns: sim.callInsCalled,
+      callInHours: ROLES.reduce((s, r) => s + callInMinutes[r], 0) / 60,
+      hallwayPatients,
+      hallwayHours: sim.tw.hallway.integral(end) / 60,
+    },
+    waits: Object.fromEntries(WAIT_CAUSES.map((k) => [k, waits[k] / 60])) as Record<WaitCause, number>,
     diagnosis: {
       misdiagnosisRate: c.modules.diagnosis && treated > 0 ? misdiagnosed / treated : null,
       bounceBacks72h: bounce,
+      bounceBacksAfterRun: bounceLater,
       bounceBackRate72h: c.modules.diagnosis && discharged > 0 ? bounce / discharged : null,
     },
     boarding: {

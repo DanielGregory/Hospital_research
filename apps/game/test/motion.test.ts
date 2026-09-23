@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { layoutFloor, type FloorPlan, type Point } from '../src/render/floorPlan';
 import { layoutGrid } from '../src/render/gridPlan';
 import { Crowd } from '../src/render/motion';
+import { layoutWard } from '../src/render/wardPlan';
 
 const busy = { id: 'motion', durationMinutes: 24 * 60, arrivals: { rateMultiplier: 1.3 } };
 const plan3d = (sim: Simulation) => layoutFloor(sim.snapshot(), 680, 440, true, { corridor: 40, staffBesideBed: true });
@@ -95,5 +96,50 @@ describe('walking animation', () => {
           expect(inRoom(cx, cy)).toBe(false);
         }
       }
+  });
+
+  it('lays the 3D department out with a cubicle for every bed and walks round beds and the island', () => {
+    const sim = new Simulation({ ...busy, beds: { main: 14, fastTrack: 5, traumaBays: 2 }, fastTrack: { enabled: true } }, 9);
+    sim.runUntil(14 * 60);
+    const s = sim.snapshot();
+    const plan = layoutWard(s, true);
+    expect(plan.bays!.filter((b) => b.lane === 'main')).toHaveLength(14);
+    expect(plan.bays!.filter((b) => b.kind === 'trauma').map((b) => b.index)).toEqual([0, 1]);
+    expect(plan.bays!.filter((b) => b.kind === 'recliner')).toHaveLength(5);
+    // Everyone the sim has in a bed is drawn in their bed.
+    const inBeds = s.patients.filter((p) => p.location === 'bed');
+    expect(plan.patients.filter((p) => p.inBed)).toHaveLength(inBeds.length);
+    expect(inBeds.length).toBeGreaterThan(5);
+
+    const island = plan.props!.find((p) => p.type === 'island')!;
+    const blocked = (q: Point, own?: Point) =>
+      plan.beds.some((b) => q.x > b.x + 1 && q.x < b.x + b.w - 1 && q.y > b.y + 1 && q.y < b.y + b.h - 1 && !(own && own.x >= b.x && own.x <= b.x + b.w && own.y >= b.y && own.y <= b.y + b.h)) ||
+      (Math.abs(q.x - island.x) < island.w! / 2 - 1 && Math.abs(q.y - island.y) < island.h! / 2 - 1);
+    const check = (pts: Point[], own?: Point) => {
+      for (let i = 1; i < pts.length; i++)
+        for (let t = 0; t <= 1; t += 0.05) expect(blocked({ x: pts[i - 1]!.x + (pts[i]!.x - pts[i - 1]!.x) * t, y: pts[i - 1]!.y + (pts[i]!.y - pts[i - 1]!.y) * t }, own)).toBe(false);
+    };
+    const { entrance, ambulance } = plan.nav.doors;
+    for (const p of plan.patients.filter((x) => x.inBed)) {
+      check([entrance.inside, ...plan.nav.route(entrance.inside, 'waiting', p, p.area)], p);
+      check([ambulance.inside, ...plan.nav.route(ambulance.inside, 'main', p, p.area)], p);
+    }
+    // Staff walking from the island to a bedside, and between bedsides.
+    const bedside = plan.staff.filter((m) => m.busy && m.area === 'main');
+    const seat = { x: island.x, y: island.y - island.h! / 2 - 13 };
+    expect(bedside.length).toBeGreaterThan(0);
+    for (const m of bedside) check([seat, ...plan.nav.route(seat, 'main', m, 'main')]);
+  });
+
+  it('numbers trauma-room beds first on a custom layout, as the engine does', () => {
+    const base = exampleLayout();
+    const layout = { ...base, rooms: [...base.rooms, { id: 'resus', type: 'trauma' as const, x: 18, y: 8, w: 4, h: 4 }] };
+    const cfg = { id: 'grid-trauma', durationMinutes: 600, modules: { layout: true }, layout };
+    const sim = new Simulation(cfg, 2);
+    sim.runUntil(300);
+    const plan = layoutGrid(sim.snapshot(), resolveConfig(cfg).layout!, 960, 560);
+    const main = plan.beds.filter((b) => b.lane === 'main');
+    expect(main.filter((b) => b.trauma).map((b) => b.index)).toEqual([0, 1]);
+    for (const p of plan.patients.filter((x) => x.inBed && x.area === 'resus')) expect(sim.snapshot().patients.find((q) => q.id === p.id)!.bed).toBeLessThan(2);
   });
 });

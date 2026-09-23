@@ -12,6 +12,7 @@ const ROOM_LABEL: Record<string, string> = {
   acute: 'Acute',
   fastTrack: 'Fast track',
   station: 'Staff station',
+  trauma: 'Trauma',
   imaging: 'Imaging',
   lab: 'Lab',
 };
@@ -28,13 +29,16 @@ export function layoutGrid(s: SimSnapshot, layout: ResolvedLayout, width: number
   const roomRect = new Map(areas.map((a) => [a.id, a]));
 
   // Beds: spread each room's beds across its rectangle, in the engine's bed order.
+  // Bed numbers follow the engine: trauma rooms first, then acute rooms, in room order.
   const beds: BedMark[] = [];
   const bedCentre = new Map<string, { x: number; y: number }>();
+  const next: Record<string, number> = { main: 0, fastTrack: 0 };
   for (const [lane, type] of [
+    ['main', 'trauma'],
     ['main', 'acute'],
     ['fastTrack', 'fastTrack'],
   ] as const) {
-    let index = 0;
+    let index = next[lane]!;
     const used = new Set(s.patients.filter((p) => p.location === 'bed' && p.lane === lane).map((p) => p.bed));
     for (const r of layout.rooms.filter((x) => x.type === type)) {
       const a = roomRect.get(r.id)!;
@@ -45,10 +49,11 @@ export function layoutGrid(s: SimSnapshot, layout: ResolvedLayout, width: number
       for (let k = 0; k < r.capacity; k++, index++) {
         const x = a.x + 4 + (k % cols) * bw;
         const y = a.y + 16 + Math.floor(k / cols) * bh;
-        beds.push({ lane, index, x: x + 1, y: y + 1, w: Math.max(4, bw - 2), h: Math.max(4, bh - 2), occupied: used.has(index) });
+        beds.push({ lane, index, x: x + 1, y: y + 1, w: Math.max(4, bw - 2), h: Math.max(4, bh - 2), occupied: used.has(index), trauma: type === 'trauma' });
         bedCentre.set(`${lane}:${index}`, { x: x + bw / 2, y: y + bh / 2 });
       }
     }
+    next[lane] = index;
   }
 
   // Patients: in their bed, or clustered inside the waiting/triage room.
@@ -70,6 +75,7 @@ export function layoutGrid(s: SimSnapshot, layout: ResolvedLayout, width: number
       boarding: p.boarding,
       special: p.source === 'walkIn' ? null : p.source,
       inBed: p.location === 'bed',
+      waitingFor: p.waitingFor,
     };
     if (p.location === 'bed') {
       const c = bedCentre.get(`${p.lane}:${p.bed}`);

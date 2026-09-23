@@ -8,7 +8,7 @@
  * edge; if the config gives no door, the access cell closest to the entrance is used.
  */
 
-export const ROOM_TYPES = ['waiting', 'triage', 'acute', 'fastTrack', 'station', 'imaging', 'lab'] as const;
+export const ROOM_TYPES = ['waiting', 'triage', 'trauma', 'acute', 'fastTrack', 'station', 'imaging', 'lab'] as const;
 export type RoomType = (typeof ROOM_TYPES)[number];
 
 export interface Cell {
@@ -63,6 +63,9 @@ export function defaultCapacity(type: RoomType, w: number, h: number): number {
     case 'acute':
     case 'fastTrack':
       return Math.max(1, Math.floor((w * h) / CELLS_PER_BED));
+    case 'trauma':
+      // A resuscitation bay needs room for the team around the bed.
+      return Math.max(1, Math.floor((w * h) / (CELLS_PER_BED * 2)));
     case 'triage':
     case 'imaging':
     case 'lab':

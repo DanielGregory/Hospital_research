@@ -154,7 +154,8 @@ export interface SimSnapshot {
   /** Everyone currently in the department, in id order. */
   patients: PatientView[];
   staff: { id: number; role: Role; busy: boolean; retiring: boolean; fatigue: number; patientId?: number; room?: string }[];
-  beds: Record<Lane, { capacity: number | null; occupied: number }>;
+  /** traumaBays: main beds with index below this are trauma bays. */
+  beds: Record<Lane, { capacity: number | null; occupied: number; traumaBays: number }>;
   /** Inpatient beds for admissions (boarding module), else null. */
   inpatient: { capacity: number; occupied: number; boarders: number; escalated: boolean } | null;
   settings: { discipline: QueueDiscipline; fastTrackEnabled: boolean; fastTrackOpen: boolean; fastTrackMinAcuity: Acuity };
@@ -291,7 +292,9 @@ export class Simulation {
 
     if (c.layout) {
       const locOf = (type: string) => c.layout!.rooms.flatMap((r, i) => (r.type === type ? [i + 1] : []));
+      // Trauma-room beds come first in the main lane: bed indexes below traumaBays are the bays.
       for (const [lane, type] of [
+        ['main', 'trauma'],
         ['main', 'acute'],
         ['fastTrack', 'fastTrack'],
       ] as const)
@@ -460,6 +463,7 @@ export class Simulation {
     }
     const bedInfo = (lane: Lane) => ({
       capacity: Number.isFinite(this.bedCapacity[lane]) ? this.bedCapacity[lane] : null,
+      traumaBays: lane === 'main' ? Math.min(this.config.traumaBays, this.bedCapacity[lane]) : 0,
       occupied: this.bedsUsed[lane].filter((x) => x !== null).length,
     });
     return {
@@ -898,8 +902,7 @@ export class Simulation {
       if (occupied >= this.bedCapacity[lane] || this.bedQueues[lane].size === 0) return;
       const id = this.bedQueues[lane].pop()!;
       const p = this.patients[id]!;
-      let idx = used.indexOf(null);
-      if (idx < 0) idx = used.push(null) - 1;
+      const idx = this.pickBed(lane, p);
       used[idx] = id;
       p.bed = idx;
       p.bedTime = this.clock;
@@ -912,6 +915,30 @@ export class Simulation {
         this.advance(p);
       }
     }
+  }
+
+  /**
+   * Which free bed a patient gets. Beds below traumaBays are trauma bays: the sickest patients
+   * (triaged at or below traumaMaxAcuity) take one first; everyone else takes a regular bed and
+   * uses a bay only when no regular bed is free. The choice never changes how many beds are in use.
+   */
+  private pickBed(lane: Lane, p: Patient): number {
+    const used = this.bedsUsed[lane];
+    const cap = this.bedCapacity[lane];
+    const bays = lane === 'main' ? Math.min(this.config.traumaBays, cap) : 0;
+    const sick = (p.assignedAcuity ?? p.trueAcuity) <= this.config.traumaMaxAcuity;
+    const free = (i: number) => i >= used.length || used[i] === null;
+    const firstFree = (from: number, to: number) => {
+      for (let i = from; i < to; i++) if (free(i)) return i;
+      return -1;
+    };
+    // Regular beds run from `bays` up to the capacity (or one past the end when unlimited).
+    const top = Number.isFinite(cap) ? cap : Math.max(used.length, bays) + 1;
+    const order = sick ? [firstFree(0, bays), firstFree(bays, top)] : [firstFree(bays, top), firstFree(0, bays)];
+    let idx = order.find((i) => i >= 0) ?? firstFree(0, Math.max(used.length + 1, top));
+    if (idx < 0) idx = used.length;
+    while (used.length <= idx) used.push(null);
+    return idx;
   }
 
   private releaseBed(p: Patient): void {

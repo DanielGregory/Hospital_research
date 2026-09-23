@@ -139,7 +139,8 @@ export interface SimConfig {
     patienceMeanMinutesByAcuity?: Partial<Record<`${Acuity}`, number | null>>;
   };
   /** Treatment spaces by lane. null = unlimited. */
-  beds?: { main?: number | null; fastTrack?: number | null };
+  /** traumaBays: how many main beds are trauma bays (the sickest patients get them first). */
+  beds?: { main?: number | null; fastTrack?: number | null; traumaBays?: number };
   workup?: { enabled?: boolean; meanMinutesByAcuity?: AcuityMap };
   disposition?: {
     doctorMinutes?: number;
@@ -192,6 +193,9 @@ export interface ResolvedConfig {
   fastTrack: { enabled: boolean; minAcuity: Acuity; serviceFactor: number; doctorsTakeOverflow: boolean };
   lwbs: { enabled: boolean; patienceMeanByAcuity: Record<Acuity, number>; patienceCv: number };
   beds: Record<Lane, number>;
+  /** The first this-many main beds are trauma bays (with the layout module: the beds in trauma rooms). */
+  traumaBays: number;
+  traumaMaxAcuity: number;
   workup: { enabled: boolean; meanMinutesByAcuity: Record<Acuity, number>; cv: number };
   disposition: { doctorMinutes: number; cv: number; admitProbabilityByAcuity: Partial<Record<Acuity, number>> };
   deterioration: { enabled: boolean; scaleMinutesByAcuity: Record<Acuity, number>; shape: number };
@@ -336,6 +340,7 @@ export function validateConfig(raw: unknown): SimConfig {
 
   section(c, 'beds', p, (b) => {
     for (const k of ['main', 'fastTrack']) field(b, 'beds', k, (x) => x === null || (count(x) && (x as number) > 0), 'positive integer or null (unlimited)', p);
+    field(b, 'beds', 'traumaBays', count, 'non-negative integer', p);
   });
   section(c, 'workup', p, (w) => {
     field(w, 'workup', 'enabled', bool, 'true or false', p);
@@ -620,6 +625,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       }
     }
     if (c.commands?.some((tc) => tc.command.type === 'setBeds')) problems.push('commands: setBeds is not available with the layout module (beds come from rooms)');
+    if (c.beds?.traumaBays !== undefined) problems.push('beds.traumaBays: not used with the layout module (draw trauma rooms instead)');
   }
 
   // Every role a step needs must have someone to do it (or the patient waits forever).
@@ -634,7 +640,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
 
   if (problems.length > 0) throw new ConfigError(problems);
 
-  const roomBeds = (type: 'acute' | 'fastTrack') => layout!.rooms.filter((r) => r.type === type).reduce((s, r) => s + r.capacity, 0);
+  const roomBeds = (type: 'acute' | 'fastTrack' | 'trauma') => layout!.rooms.filter((r) => r.type === type).reduce((s, r) => s + r.capacity, 0);
   const bedCount = (v: number | null | undefined, d: number | null) => (v === undefined ? d : v) ?? Infinity;
 
   return {
@@ -671,8 +677,10 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     },
     lwbs: { enabled: c.lwbs?.enabled ?? true, patienceMeanByAcuity, patienceCv: PARAMS.lwbs.patienceCv },
     beds: layout
-      ? { main: roomBeds('acute'), fastTrack: roomBeds('fastTrack') }
+      ? { main: roomBeds('acute') + roomBeds('trauma'), fastTrack: roomBeds('fastTrack') }
       : { main: bedCount(c.beds?.main, PARAMS.beds.main), fastTrack: bedCount(c.beds?.fastTrack, PARAMS.beds.fastTrack) },
+    traumaBays: layout ? roomBeds('trauma') : Math.min(c.beds?.traumaBays ?? PARAMS.beds.traumaBays, bedCount(c.beds?.main, PARAMS.beds.main)),
+    traumaMaxAcuity: PARAMS.beds.traumaMaxAcuity,
     layout,
     walking: { ...PARAMS.layout },
     budgetCapPerDay: modules.budget ? (c.budget?.capPerDay ?? null) : null,

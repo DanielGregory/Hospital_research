@@ -95,6 +95,10 @@ export const PARAMS = {
     /** Treatment spaces. null = unlimited. */
     main: 20, // PLACEHOLDER
     fastTrack: 6, // PLACEHOLDER
+    /** How many of the main beds are trauma (resuscitation) bays. They go to the sickest patients first. */
+    traumaBays: 2, // PLACEHOLDER
+    /** Patients triaged at or below this ESI level take a free trauma bay before a regular bed. */
+    traumaMaxAcuity: 2, // PLACEHOLDER
   },
 
   workup: {

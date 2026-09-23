@@ -16,7 +16,7 @@ describe('beds and workup', () => {
       const inBeds = s.patients.filter((p) => p.location === 'bed' && p.lane === 'main');
       expect(inBeds.length).toBeLessThanOrEqual(3);
       expect(new Set(inBeds.map((p) => p.bed)).size).toBe(inBeds.length);
-      expect(s.beds.main).toEqual({ capacity: 3, occupied: inBeds.length });
+      expect(s.beds.main).toEqual({ capacity: 3, occupied: inBeds.length, traumaBays: 2 });
     }
     expect(sim.run().metrics.doorToBed.median!).toBeGreaterThan(30);
   });

@@ -30,6 +30,56 @@ export interface BedMark extends Rect {
   lane: Lane;
   index: number;
   occupied: boolean;
+  /** A trauma (resuscitation) bay: the sim gives these to the sickest patients first. */
+  trauma?: boolean;
+  /** 3D: which way the head of the bed points (default left), or a fast-track recliner. */
+  head?: 'left' | 'up' | 'down';
+  recliner?: boolean;
+}
+
+/**
+ * Settled pose for the 3D view. `face` is the heading when standing or sitting (0 = towards +y,
+ * the camera side; PI = away) and, when lying, which way the head points (0 = -y, PI = +y, PI/2 = -x).
+ */
+export interface Pose {
+  pose?: 'stand' | 'sit' | 'lie';
+  face?: number;
+}
+
+/** A curtained cubicle (or trauma room) around one bed, for the 3D view. */
+export interface Bay extends Rect {
+  kind: 'bay' | 'trauma' | 'recliner';
+  /** Side that opens onto the aisle. */
+  front: 'up' | 'down';
+  lane: Lane;
+  index: number;
+  label?: string;
+  /** Someone is with the patient: draw the privacy curtain. */
+  attended: boolean;
+}
+
+/** Furniture and outdoor details for the 3D view. `rot` turns the prop's front (default +y) like `Pose.face`. */
+export interface Prop extends Point {
+  type:
+    | 'reception'
+    | 'plant'
+    | 'vending'
+    | 'water'
+    | 'island'
+    | 'desk'
+    | 'chair'
+    | 'partition'
+    | 'elevator'
+    | 'ambulance'
+    | 'parking'
+    | 'tree'
+    | 'sign'
+    | 'road'
+    | 'shelves';
+  w?: number;
+  h?: number;
+  rot?: number;
+  label?: string;
 }
 
 export interface StaffMark {
@@ -41,6 +91,8 @@ export interface StaffMark {
   leaving: boolean;
   /** 0..1+ (burnout module). */
   fatigue: number;
+  pose?: Pose['pose'];
+  face?: number;
   /** Area (or room) the mark stands in. */
   area: string;
   patientId?: number;
@@ -61,6 +113,10 @@ export interface PatientDot {
   area: string;
   /** Lying in a bed (rather than waiting or with the triage nurse). */
   inBed: boolean;
+  pose?: Pose['pose'];
+  face?: number;
+  /** What they are waiting for, if anything (for tooltips). */
+  waitingFor?: string;
 }
 
 /** A way in or out of the building: people appear at `outside` and walk in through `inside`. */
@@ -100,6 +156,10 @@ export interface FloorPlan {
   nav: Nav;
   /** Waiting-room chairs (default view). */
   seats: Point[];
+  /** 3D extras: cubicles, walled rooms inside an area, furniture. */
+  bays?: Bay[];
+  enclosures?: { x: number; y: number; w: number; h: number; kind: string; label: string; openings: { x: number; y: number; width: number }[] }[];
+  props?: Prop[];
 }
 
 const PAD = 12;
@@ -150,7 +210,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     for (let i = 0; i < shown; i++) {
       const x = a.x + PAD + (i % cols) * (bw + 12);
       const y = top + Math.floor(i / cols) * (bh + 12);
-      beds.push({ lane, index: i, x, y, w: bw, h: bh, occupied: used.includes(i) });
+      beds.push({ lane, index: i, x, y, w: bw, h: bh, occupied: used.includes(i), trauma: lane === 'main' && i < info.traumaBays });
       bedPos.set(`${lane}:${i}`, { x: x + bw * 0.58, y: y + bh / 2 });
       if (opts.staffBesideBed) besidePos.set(`${lane}:${i}`, { x: x + bw + 6, y: y + bh / 2 });
     }
@@ -178,6 +238,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     special: p.source === 'walkIn' ? null : p.source,
     area,
     inBed: p.location === 'bed',
+    waitingFor: p.waitingFor,
   });
   const inRoom = s.patients.filter((p) => p.location === 'waiting');
   lineDefs.forEach((line, li) => {

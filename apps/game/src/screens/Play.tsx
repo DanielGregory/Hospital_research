@@ -1,13 +1,14 @@
 import type { Acuity, Command, PlayerControl, QueueDiscipline, SimSnapshot } from '@er/sim';
 import { useEffect, useRef, useState } from 'react';
-import type { SetupValues } from '../controls';
-import { clockLabel } from '../format';
+import { ROLE_LABEL, type SetupValues } from '../controls';
+import { clockLabel, minutes } from '../format';
 import type { GameConfig } from '../sandbox';
 import { acuityColor, drawFloor, inkOn } from '../render/draw';
 import { layoutFloor, type FloorPlan } from '../render/floorPlan';
 import { layoutGrid } from '../render/gridPlan';
-import { Crowd, withActors } from '../render/motion';
+import { Crowd, withActors, type Actor } from '../render/motion';
 import type { Scene3D } from '../render/scene3d';
+import { layoutWard } from '../render/wardPlan';
 import { webglAvailable } from '../render/webgl';
 import { GameRunner, SPEEDS, type Speed } from '../runner';
 import { SimpleControl } from './Setup';
@@ -30,8 +31,39 @@ const LIVE: Partial<Record<PlayerControl, (v: unknown, all: SetupValues) => Comm
 
 type View = '3d' | '2d';
 
-/** Plan size for the 3D view: 20 units per metre, so the default floor is 34 × 22 m. */
-const PLAN_3D = { width: 680, height: 440, corridor: 40, gridCell: 40 };
+/** The 3D view lays custom floor plans out at 2 m per grid cell (plans use 20 units per metre). */
+const GRID_CELL_3D = 40;
+
+const WAITING_FOR: Record<string, string> = {
+  triage: 'waiting for triage',
+  registration: 'waiting to register',
+  bed: 'waiting for a bed',
+  transfer: 'on the way to a bed',
+  doctorEval: 'waiting for a doctor',
+  disposition: 'waiting for a decision',
+};
+
+/** One line about a person, for the hover tooltip. */
+export function describe(a: Actor): string {
+  if (a.kind === 'staff') {
+    const d = a.data;
+    return [`${ROLE_LABEL[d.role]} #${d.id}`, d.busy ? 'with a patient' : 'free', d.leaving ? 'going off shift' : null, d.fatigue > 0.3 ? 'tired' : null].filter(Boolean).join(' · ');
+  }
+  const d = a.data;
+  const level = d.acuity === undefined ? 'not triaged yet' : `ESI ${d.acuity}`;
+  const status = a.leaving
+    ? 'leaving'
+    : d.boarding
+      ? 'admitted, waiting for a ward bed'
+      : d.inBed
+        ? 'in a bed'
+        : d.waitingFor
+          ? (WAITING_FOR[d.waitingFor] ?? `waiting (${d.waitingFor})`)
+          : 'being seen';
+  return [`Patient #${d.id}`, level, status, `here ${minutes(d.waited)}`, d.special === 'massCasualty' ? 'came by ambulance' : d.special === 'bounceBack' ? 'came back' : null]
+    .filter(Boolean)
+    .join(' · ');
+}
 
 function savedView(): View {
   let v: string | null = null;
@@ -52,6 +84,8 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View>(savedView);
   const sceneRef = useRef<Scene3D | null>(null);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [snap, setSnap] = useState<SimSnapshot>(() => runner.sim.snapshot());
   const [speed, setSpeed] = useState<Speed>(1);
   const [values, setValues] = useState<SetupValues>(props.values);
@@ -70,6 +104,7 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
     let raf = 0;
     let last = performance.now();
     let lastUi = 0;
+    let lastTip = 0;
     const crowd = new Crowd();
     let instant = true;
     let size = '';
@@ -92,11 +127,17 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
             size = `${w}x${h}`;
             scene.resize(w, h);
           }
-          const plan: FloorPlan = layout
-            ? layoutGrid(s, layout, layout.width * PLAN_3D.gridCell, layout.height * PLAN_3D.gridCell)
-            : layoutFloor(s, PLAN_3D.width, PLAN_3D.height, showFastTrack, { corridor: PLAN_3D.corridor, staffBesideBed: true });
+          const plan: FloorPlan = layout ? layoutGrid(s, layout, layout.width * GRID_CELL_3D, layout.height * GRID_CELL_3D) : layoutWard(s, showFastTrack);
           const actors = crowd.update(plan, dt, { speed: 50 * pace, instant });
           scene.render(plan, actors, dt, t / 1000);
+          // Tooltip for whoever is under the pointer, a few times a second.
+          if (t - lastTip > 150) {
+            lastTip = t;
+            const p = pointer.current;
+            const hit = p ? scene.pick(p.x, p.y) : null;
+            const a = hit ? crowd.get(hit.key) : undefined;
+            setTip(hit && a ? { x: hit.x, y: hit.y, text: describe(a) } : null);
+          }
         } else {
           const dpr = window.devicePixelRatio || 1;
           if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
@@ -209,7 +250,23 @@ export function Play(props: { config: GameConfig; seed: number; values: SetupVal
       <div className="play-body">
         <div className="floor">
           {/* A canvas holds one kind of context, so each view gets its own element. */}
-          <canvas key={view} ref={canvasRef} className={view === '3d' ? 'three' : ''} aria-label="Emergency department floor" data-testid={`floor-${view}`} />
+          <canvas
+            key={view}
+            ref={canvasRef}
+            className={view === '3d' ? 'three' : ''}
+            aria-label="Emergency department floor"
+            data-testid={`floor-${view}`}
+            onPointerMove={(e) => (pointer.current = { x: e.clientX, y: e.clientY })}
+            onPointerLeave={() => {
+              pointer.current = null;
+              setTip(null);
+            }}
+          />
+          {tip && view === '3d' && (
+            <div className="floor-tip" style={{ left: tip.x + 22, top: tip.y + 10 }} role="status">
+              {tip.text}
+            </div>
+          )}
           <div className="floor-tools">
             <div className="segmented" role="group" aria-label="View">
               {(['3d', '2d'] as const).map((v) => (
@@ -292,6 +349,9 @@ function Legend({ view }: { view: View }) {
       ))}
       <li>
         <span className="ring" /> Admitted, waiting for a ward bed
+      </li>
+      <li>
+        <span className="trauma-key" /> Trauma bay (sickest patients first)
       </li>
     </ul>
   );

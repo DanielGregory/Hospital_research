@@ -22,6 +22,7 @@ type Tool = RoomType | 'entrance' | 'erase';
 const TOOL_LABEL: Record<Tool, string> = {
   waiting: 'Waiting room',
   triage: 'Triage',
+  trauma: 'Trauma room',
   acute: 'Acute beds',
   fastTrack: 'Fast track',
   station: 'Staff station',
@@ -191,7 +192,7 @@ export function LayoutEditor(props: { initial?: LayoutSpec; onPlay: (config: Gam
       <section className="card room-list" style={{ marginTop: 16 }}>
         <h2>Rooms</h2>
         <p className="muted">
-          {beds('acute')} acute beds, {beds('fastTrack')} fast-track beds.
+          {beds('trauma')} trauma bays, {beds('acute')} acute beds, {beds('fastTrack')} fast-track beds.
         </p>
         <ul>
           {spec.rooms.map((r, i) => (

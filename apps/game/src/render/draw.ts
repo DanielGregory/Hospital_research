@@ -104,15 +104,17 @@ export function drawFloor(ctx: CanvasRenderingContext2D, plan: FloorPlan, width:
   const waiting = plan.areas.find((a) => a.id === 'waiting');
   if (waiting) for (const l of plan.waitingLines) ctx.fillText(l.label.toUpperCase(), waiting.x + 12, l.y + 4);
 
-  // Beds: a mattress with a pillow line.
+  // Beds: a mattress with a pillow line; trauma bays outlined in red.
+  const trauma = css('--trauma', '#b3261e');
   for (const b of plan.beds) {
     ctx.fillStyle = bed;
     ctx.beginPath();
     ctx.roundRect(b.x, b.y, b.w, b.h, 5);
     ctx.fill();
-    ctx.strokeStyle = bedLine;
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = b.trauma ? trauma : bedLine;
+    ctx.lineWidth = b.trauma ? 2 : 1;
     ctx.stroke();
+    ctx.lineWidth = 1;
     if (b.w > 16) {
       ctx.beginPath();
       ctx.roundRect(b.x + 3, b.y + 3, Math.max(4, b.w * 0.22), b.h - 6, 3);

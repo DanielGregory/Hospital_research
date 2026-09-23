@@ -31,6 +31,15 @@ describe('parseArgs', () => {
 });
 
 describe('main', () => {
+  it('plays a hands-off career week by week', () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'er-headless-')), 'career.json');
+    expect(main(['career', '--seed', '3', '--weeks', '2', '--out', out], root)).toBe(0);
+    const r = JSON.parse(readFileSync(out, 'utf8'));
+    expect(r.weeks).toHaveLength(2);
+    expect(r.weeks[1].week).toBe(2);
+    expect(() => parseArgs(['career', '--weeks', '0'])).toThrow(UsageError);
+  });
+
   it('writes deterministic JSON', () => {
     const dir = mkdtempSync(join(tmpdir(), 'er-headless-'));
     const args = ['run', '--config', 'configs/examples/basic.json', '--seed', '42'];

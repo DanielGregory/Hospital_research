@@ -29,6 +29,38 @@ export const PARAMS = {
     ambulanceShareByAcuity: { 1: 0.8, 2: 0.5, 3: 0.22, 4: 0.06, 5: 0.02 } as Record<Acuity, number>, // PLACEHOLDER
   },
 
+  /** Career mode: money, reputation, upgrades and the weeks' events. */
+  career: {
+    startMoney: 250_000, // PLACEHOLDER
+    startReputation: 60, // PLACEHOLDER
+    /** Paid per patient treated (discharged or admitted). */
+    paymentPerPatient: 260, // PLACEHOLDER
+    /** Penalties: someone left unseen, a missed diagnosis that comes back, a patient who became critical while waiting. */
+    penaltyPerLwbs: 150, // PLACEHOLDER
+    penaltyPerBounceBack: 600, // PLACEHOLDER
+    penaltyPerCritical: 1_000, // PLACEHOLDER
+    /** Quality bonus by balanced score for the week. */
+    bonusAtScore: [
+      [85, 12_000],
+      [70, 5_000],
+    ] as [number, number][], // PLACEHOLDER
+    /** Reputation moves this far towards the week's balanced score. */
+    reputationWeight: 0.3, // PLACEHOLDER
+    /** Arrivals scale with reputation: at 0 → min, at 100 → max. */
+    reputationArrivals: [0.85, 1.15] as [number, number], // PLACEHOLDER
+    /** Population growth in arrivals per week. */
+    growthPerWeek: 0.005, // PLACEHOLDER
+    /** Capital cost of one more treatment space, and the refund for removing one. */
+    bedPrice: { main: 15_000, fastTrack: 8_000 }, // PLACEHOLDER
+    bedRefundShare: 0.5, // PLACEHOLDER
+    maxBeds: { main: 40, fastTrack: 12 }, // PLACEHOLDER
+    /** Below this balance the board steps in and the career ends. */
+    bankruptAt: -150_000, // PLACEHOLDER
+    /** Weekly chance of each event (flu is likelier in the flu season, weeks 9-14 of every 26). */
+    eventChance: { flu: 0.08, fluSeason: 0.7, heatwave: 0.12, wardsFull: 0.18, incident: 0.15, quiet: 0.1 }, // PLACEHOLDER
+    callInsPerWeek: 2, // PLACEHOLDER
+  },
+
   /** Live decisions during a shift. */
   liveCalls: {
     /** On-call staff arrive this long after being called. */

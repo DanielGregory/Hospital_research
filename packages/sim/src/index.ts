@@ -70,3 +70,5 @@ export {
 } from './layout.js';
 export { plannedDailyCost, checkBudget, checkSetup, actualCost, type CostBreakdown } from './budget.js';
 export { compositeScore, type ScoreBreakdown } from './score.js';
+export * as career from './career.js';
+export type { CareerState, Hospital, UpgradeId, WeekEvent, WeekRecord, MilestoneId, Settlement, LedgerLine } from './career.js';

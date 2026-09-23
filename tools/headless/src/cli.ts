@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { BASELINES, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
-import { applySettings, balanceReport, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand } from '@er/sim';
+import { applySettings, balanceReport, career, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
@@ -27,6 +27,8 @@ export const USAGE = `Usage:
       Simulated annealing over the settings in the space file. Reports the best setup found.
   calibrate --config <base.json> --targets <targets.json> [--seeds 1-3] [--out fitted.json]
       Fit admission, patience and workup scales so the sim matches published aggregates.
+  career [--seed <n>] [--weeks 12] [--out <file>]
+      Play a career without changing anything between weeks: money, reputation and events per week.
   serve
       JSON-lines protocol on stdin/stdout for other languages (see packages/research/src/serve.ts).
 
@@ -41,7 +43,8 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career';
+  weeks?: number;
   targets?: string;
   policy?: string;
   space?: string;
@@ -59,7 +62,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate')
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career')
     throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
@@ -73,8 +76,13 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     else opts[key.slice(2)] = val;
     i++;
   }
-  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets']);
+  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets', 'weeks']);
   for (const k of Object.keys(opts)) if (!known.has(k)) throw new UsageError(`Unknown option --${k}`);
+  if (cmd === 'career') {
+    if (opts.seed !== undefined && !/^\d+$/.test(opts.seed)) throw new UsageError('--seed must be a non-negative integer');
+    if (opts.weeks !== undefined && !/^[1-9]\d*$/.test(opts.weeks)) throw new UsageError('--weeks must be a positive integer');
+    return { command: 'career', config: '', seeds: [Number(opts.seed ?? 1)], overrides: [], out: opts.out, format: 'json', weeks: Number(opts.weeks ?? 12) };
+  }
   if (!opts.config) throw new UsageError('--config is required');
   if (opts.seed && opts.seeds) throw new UsageError('Use --seed or --seeds, not both');
 
@@ -193,6 +201,16 @@ export function toCsv(output: RunOutput): string {
 }
 
 /** JSON-lines server: one request per stdin line, one response per stdout line. */
+/** A career played with the starting hospital unchanged: the baseline a player should beat. */
+export function playCareer(seed: number, weeks: number): WeekRecord[] {
+  let state = career.newCareer('Baseline', seed);
+  for (let w = 0; w < weeks && !state.over; w++) {
+    const metrics = new Simulation(career.weekConfig(state), career.weekSeed(state)).run().metrics;
+    state = career.settleWeek(state, metrics).state;
+  }
+  return state.history;
+}
+
 export async function serve(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout): Promise<void> {
   const session = new Session();
   const rl = createInterface({ input, crlfDelay: Infinity });
@@ -214,6 +232,17 @@ export async function serve(input: NodeJS.ReadableStream = process.stdin, output
 export function main(argv: readonly string[], cwd = process.cwd()): number {
   try {
     const args = parseArgs(argv);
+    if (args.command === 'career') {
+      const records = playCareer(args.seeds[0]!, args.weeks!);
+      for (const r of records)
+        process.stderr.write(
+          `week ${String(r.week).padStart(2)}: score ${r.score.toFixed(1).padStart(5)}, net ${Math.round(r.net).toLocaleString('en-US').padStart(9)}, balance ${Math.round(r.money).toLocaleString('en-US').padStart(10)}, reputation ${r.reputation.toFixed(1)}${r.events.length ? ` (${r.events.map((e) => e.kind).join(', ')})` : ''}\n`,
+        );
+      const text = JSON.stringify({ seed: args.seeds[0], weeks: records }, null, 2) + '\n';
+      if (args.out) writeFileSync(resolve(cwd, args.out), text);
+      else process.stdout.write(text);
+      return 0;
+    }
     const configPath = resolve(cwd, args.config);
     const config = applyOverrides(JSON.parse(readFileSync(configPath, 'utf8')), args.overrides);
     const write = (text: string) => {

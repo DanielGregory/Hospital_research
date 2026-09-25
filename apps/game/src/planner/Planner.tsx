@@ -4,11 +4,11 @@
  * as ranges and confidence intervals. Heavy work runs in a worker; nothing here simulates.
  */
 import type { CheckRow, Comparison, Difference, Kpi, Range, ScenarioResult } from '@er/research';
-import { applySettings, type Role, type Shift, type SimConfig } from '@er/sim';
+import { applySettings, PARAMS, type Role, type Shift, type SimConfig } from '@er/sim';
 import { useEffect, useRef, useState } from 'react';
 import { ScheduleEditor, Stepper } from '../screens/ScheduleEditor';
 import type { GameConfig } from '../sandbox';
-import { loadProject, newProject, saveProject, TEMPLATES, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
+import { loadProject, newProject, saveProject, service, TEMPLATES, unitsOf, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
 import type { WorkerRequest, WorkerResponse } from './worker';
 
 type Tab = 'department' | 'scenarios' | 'results' | 'report';
@@ -235,6 +235,15 @@ function DepartmentTab(props: {
       {(['doctor', 'triageNurse'] as Role[]).map((role) => (
         <ScheduleEditor key={role} role={role} shifts={schedule(role)} config={base as GameConfig} onChange={(s) => set(`staffing.schedule.${role}`, s)} />
       ))}
+      {modules.nursing && (
+        <>
+          <ScheduleEditor role="nurse" shifts={schedule('nurse')} config={base as GameConfig} onChange={(s) => set('staffing.schedule.nurse', s)} />
+          <p className="muted small">
+            Bedside nurses take patients at set ratios (ESI 1 one-to-one, ESI 2 two per nurse, then 4, 5 and 6). A bed with no nurse free stays empty.
+            {!schedule('nurse').length && ` With no shifts set, ${PARAMS.nursing.defaultNurses} nurses are on around the clock.`}
+          </p>
+        </>
+      )}
       {modules.security && <ScheduleEditor role="security" shifts={schedule('security')} config={base as GameConfig} onChange={(s) => set('staffing.schedule.security', s)} />}
 
       <h2>Space and systems</h2>
@@ -244,7 +253,9 @@ function DepartmentTab(props: {
         </div>
         {(
           [
-            ['boarding', 'Admitted patients wait in ED beds until a ward bed is free (boarding)'],
+            ['boarding', 'Admitted patients wait in ED beds until an inpatient bed is free (boarding)'],
+            ['diagnostics', 'Labs and imaging as shared services with their own queues and opening hours'],
+            ['nursing', 'Bedside nurse-to-patient ratios decide which beds can be used'],
             ['diagnosis', 'Missed diagnoses and returns within 72 hours'],
             ['security', 'Agitation and security incidents'],
             ['burnout', 'Staff fatigue over long shifts'],
@@ -255,6 +266,8 @@ function DepartmentTab(props: {
           </label>
         ))}
       </section>
+      {modules.boarding && <UnitsCard base={base} set={set} />}
+      {modules.diagnostics && <DiagnosticsCard base={base} set={set} />}
 
       <div className="actions">
         <button className="primary push" onClick={props.onNext} data-testid="to-scenarios">
@@ -262,6 +275,79 @@ function DepartmentTab(props: {
         </button>
       </div>
     </>
+  );
+}
+
+const UNIT_ROWS = [
+  ['icu', 'ICU beds'],
+  ['stepdown', 'Step-down beds'],
+  ['ward', 'Ward beds'],
+] as const;
+
+/** Inpatient beds for ED admissions: one pool, or separate ICU, step-down and ward units. */
+function UnitsCard({ base, set }: { base: SimConfig; set: (path: string, v: unknown) => void }) {
+  const units = base.boarding?.units;
+  return (
+    <section className="card" data-testid="units-card">
+      <h3>Inpatient beds</h3>
+      <label className="control check">
+        <input type="checkbox" checked={!!units} onChange={(e) => set('boarding.units', e.target.checked ? unitsOf(base) : undefined)} data-testid="separate-units" /> Separate
+        ICU, step-down and ward beds
+      </label>
+      {units ? (
+        <>
+          {UNIT_ROWS.map(([u, label]) => (
+            <div key={u} className="control control-row">
+              {label} available to ED admissions{' '}
+              <Stepper
+                value={units[u]?.beds ?? 0}
+                min={0}
+                max={u === 'ward' ? 400 : 60}
+                onChange={(v) => set('boarding.units', { ...units, [u]: { ...(units[u] ?? {}), beds: v } })}
+                label={label}
+              />
+            </div>
+          ))}
+          <p className="muted small">
+            Each admitted patient needs one unit, mostly by acuity. Units start about 90% full with their own patients, who go home over the week. A patient waiting
+            for an ICU bed holds an ED bed and needs a nurse close to one-to-one.
+          </p>
+        </>
+      ) : (
+        <p className="muted small">One shared pool of inpatient beds. Switch on separate units to see whether it is the ICU, step-down or the wards that hold patients in the ED.</p>
+      )}
+    </section>
+  );
+}
+
+const SERVICE_ROWS = [
+  ['lab', 'Lab analysers (tests at once)'],
+  ['xray', 'X-ray rooms'],
+  ['ct', 'CT scanners'],
+  ['ultrasound', 'Ultrasound rooms'],
+] as const;
+
+/** Lab and imaging capacity. */
+function DiagnosticsCard({ base, set }: { base: SimConfig; set: (path: string, v: unknown) => void }) {
+  const us = base.diagnostics?.services?.ultrasound?.openHours;
+  const us24 = us === null || (us === undefined && PARAMS.diagnostics.services.ultrasound.openHours === null);
+  return (
+    <section className="card" data-testid="diagnostics-card">
+      <h3>Labs and imaging</h3>
+      {SERVICE_ROWS.map(([sv, label]) => (
+        <div key={sv} className="control control-row">
+          {label}{' '}
+          <Stepper value={service(base, sv, 'servers')} min={1} max={sv === 'lab' ? 30 : 6} onChange={(v) => set(`diagnostics.services.${sv}.servers`, v)} label={label} />
+        </div>
+      ))}
+      <label className="control check">
+        <input type="checkbox" checked={us24} onChange={(e) => set('diagnostics.services.ultrasound.openHours', e.target.checked ? null : PARAMS.diagnostics.services.ultrasound.openHours ?? [8, 22])} data-testid="us-24h" />{' '}
+        Ultrasound staffed 24 hours
+      </label>
+      <p className="muted small">
+        Tests are ordered by the patient’s condition. Orders queue for a machine, then wait for a report; the patient keeps their bed meanwhile.
+      </p>
+    </section>
   );
 }
 
@@ -492,6 +578,7 @@ function ResultsTab({ comparison: c, onWatch }: { comparison: Comparison; onWatc
         </ul>
       )}
       <ForestPlot comparison={c} kpi={k} />
+      <Bottlenecks comparison={c} />
       <section className="card">
         <h3>Watch a setup</h3>
         <p className="muted small">Play one week of any setup in 3D to see what the numbers mean on the floor.</p>
@@ -506,6 +593,55 @@ function ResultsTab({ comparison: c, onWatch }: { comparison: Comparison; onWatc
         </div>
       </section>
     </>
+  );
+}
+
+const hoursText = (h: number) => (h >= 10 ? `${Math.round(h).toLocaleString('en-US')} h` : `${h.toFixed(1)} h`);
+
+/** Where the waiting comes from: root causes per setup, largest first. */
+function Bottlenecks({ comparison: c }: { comparison: Comparison }) {
+  const setups = [c.baseline, ...c.scenarios].filter((r) => !r.problems.length && r.bottlenecks?.length);
+  const [pick, setPick] = useState(setups[0]?.scenario.id ?? '');
+  const r = setups.find((x) => x.scenario.id === pick) ?? setups[0];
+  if (!r) return null;
+  const top = r.bottlenecks.slice(0, 5);
+  return (
+    <section className="card bottlenecks" data-testid="bottlenecks">
+      <h3>Where the waiting comes from</h3>
+      <p className="muted small">
+        Patient-hours of queueing per week, by root cause. “No beds” is split into beds held by admitted patients, beds full with ED patients, and free beds with no nurse;
+        waiting for results is split by lab and imaging service.
+      </p>
+      {setups.length > 1 && (
+        <div className="seg" role="group" aria-label="Setup">
+          {setups.map((x) => (
+            <button key={x.scenario.id} className={x === r ? 'on' : ''} aria-pressed={x === r} onClick={() => setPick(x.scenario.id)}>
+              {x.scenario.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <ol className="cause-list">
+        {top.map((b) => (
+          <li key={b.key} data-testid={`cause-${b.key}`}>
+            <div className="cause-head">
+              <strong>{b.label}</strong>
+              <span className="muted">
+                {hoursText(b.hours)} · {Math.round(b.share * 100)}%
+              </span>
+            </div>
+            <div className="cause-bar" aria-hidden="true">
+              <span style={{ width: `${Math.max(2, b.share * 100)}%` }} />
+            </div>
+            <p className="small">{b.what}</p>
+            <p className="small muted">{b.lever}</p>
+          </li>
+        ))}
+      </ol>
+      {r.processingHours > 0.5 && (
+        <p className="muted small">Not counted above: {hoursText(r.processingHours)} a week of tests being run and reported with no queue, which is the time the work takes.</p>
+      )}
+    </section>
   );
 }
 
@@ -672,13 +808,45 @@ function Report({ project, check }: { project: Project; check: CheckRow[] | null
           </tbody>
         </table>
       </section>
+      {c.baseline.bottlenecks?.length > 0 && (
+        <section>
+          <h2>Where the waiting comes from</h2>
+          <p>Root causes of queueing in the baseline, in patient-hours per week (share of all queueing):</p>
+          <ol>
+            {c.baseline.bottlenecks.slice(0, 5).map((b) => (
+              <li key={b.key}>
+                <strong>{b.label}</strong>: {hoursText(b.hours)} ({Math.round(b.share * 100)}%). {b.what} {b.lever}
+              </li>
+            ))}
+          </ol>
+          {c.scenarios
+            .filter((r) => !r.problems.length && r.bottlenecks?.[0] && r.bottlenecks[0].key !== c.baseline.bottlenecks[0]!.key)
+            .map((r) => (
+              <p key={r.scenario.id}>
+                With {r.scenario.name.toLowerCase()}, the largest cause becomes {lower(r.bottlenecks[0]!.label)} ({Math.round(r.bottlenecks[0]!.share * 100)}%).
+              </p>
+            ))}
+        </section>
+      )}
       <section>
         <h2>The baseline</h2>
         <ul>
           <li>Providers: {staffLine('doctor')}</li>
           <li>Triage nurses: {staffLine('triageNurse')}</li>
           {base.modules?.security && <li>Security officers: {staffLine('security')}</li>}
+          {base.modules?.nursing && <li>Bedside nurses: {staffLine('nurse')}</li>}
           <li>Main ED treatment spaces: {base.beds?.main ?? 20}</li>
+          {base.modules?.boarding && base.boarding?.units && (
+            <li>
+              Inpatient beds for ED admissions: {UNIT_ROWS.map(([u, label]) => `${label.toLowerCase()} ${base.boarding!.units![u]?.beds ?? 0}`).join(', ')}
+            </li>
+          )}
+          {base.modules?.diagnostics && (
+            <li>
+              Labs and imaging: {service(base, 'lab', 'servers')} lab slots, {service(base, 'xray', 'servers')} X-ray, {service(base, 'ct', 'servers')} CT,{' '}
+              {service(base, 'ultrasound', 'servers')} ultrasound
+            </li>
+          )}
           <li>
             Systems modelled:{' '}
             {Object.entries(base.modules ?? {})

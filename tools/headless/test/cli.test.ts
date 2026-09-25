@@ -36,7 +36,7 @@ describe('main', () => {
     expect(main(['compare', '--config', 'configs/planner/example-baseline.json', '--scenarios', 'configs/planner/example-scenarios.json', '--seeds', '1-2', '--out', out], root)).toBe(0);
     const lines = readFileSync(out, 'utf8').trim().split('\n');
     expect(lines[0]).toMatch(/^scenario,kpi,median/);
-    expect(lines.length).toBe(1 + 5 * 12);
+    expect(lines.length).toBe(1 + 5 * 16);
     expect(() => parseArgs(['compare', '--config', 'x.json'])).toThrow(/--scenarios/);
   });
 

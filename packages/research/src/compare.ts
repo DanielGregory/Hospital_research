@@ -4,7 +4,7 @@
  * Every number is reported as a range across replications, and every difference with a
  * confidence interval. Pure and deterministic: the same inputs give the same report.
  */
-import { applySettings, checkSetup, ConfigError, getPath, resolveConfig, Simulation, type Metrics, type Settings, type TimedCommand } from '@er/sim';
+import { applySettings, checkSetup, ConfigError, findBottlenecks, getPath, resolveConfig, Simulation, testProcessingHours, type Metrics, type Settings, type TimedCommand } from '@er/sim';
 
 export interface Scenario {
   id: string;
@@ -36,6 +36,10 @@ export const PLANNER_KPIS: readonly Kpi[] = [
   { key: 'critical', label: 'Patients who became critical while waiting', metric: 'deterioration.critical', unit: 'count', better: 'lower' },
   { key: 'doctorUtil', label: 'Provider utilisation', metric: 'utilizationByRole.doctor', unit: 'share', better: 'lower' },
   { key: 'costPerDay', label: 'Cost per day', metric: 'cost.perDay', unit: 'money', better: 'lower' },
+  { key: 'noNurseHours', label: 'Waiting for a bed with no nurse (patient-hours)', metric: 'bedWaits.noNurse', unit: 'hours', better: 'lower' },
+  { key: 'icuBoarding', label: 'ICU boarding per patient', metric: 'boarding.byUnit.icu.meanHours', unit: 'hours', better: 'lower' },
+  { key: 'ctTurnaround', label: 'CT turnaround', metric: 'diagnostics.ct.meanTurnaroundMinutes', unit: 'min', better: 'lower' },
+  { key: 'labTurnaround', label: 'Lab turnaround', metric: 'diagnostics.lab.meanTurnaroundMinutes', unit: 'min', better: 'lower' },
   { key: 'incidents', label: 'Aggression incidents per 1,000 visits', metric: 'security.incidentsPer1000Visits', unit: 'count', better: 'lower' },
   { key: 'violent', label: 'Violent incidents', metric: 'security.violent', unit: 'count', better: 'lower' },
   { key: 'clinicianIncidentHours', label: 'Clinician hours lost to incidents', metric: 'security.clinicianHours', unit: 'hours', better: 'lower' },
@@ -72,6 +76,10 @@ export interface ScenarioResult {
   diff?: Record<string, Difference>;
   /** Raw values per replication, by KPI (for charts and export). */
   values: Record<string, (number | null)[]>;
+  /** Where the waiting came from, averaged over replications (largest first). */
+  bottlenecks: { key: string; label: string; hours: number; share: number; what: string; lever: string }[];
+  /** Patient-hours of test processing with no queue (time the work takes; not ranked). */
+  processingHours: number;
 }
 
 export interface Comparison {
@@ -163,14 +171,31 @@ export function compareScenarios(base: unknown, scenarios: readonly Scenario[], 
     const config = scenarioConfig(base, scenario);
     const problems = setupProblems(config);
     const values: Record<string, (number | null)[]> = Object.fromEntries(kpis.map((k) => [k.key, []]));
+    const causes = new Map<string, { label: string; hours: number; what: string; lever: string; best: number }>();
+    let processing = 0;
     if (!problems.length)
       for (const seed of seeds) {
-        const v = kpiValues(new Simulation(config, seed).run().metrics, kpis);
+        const m = new Simulation(config, seed).run().metrics;
+        const v = kpiValues(m, kpis);
         for (const k of kpis) values[k.key]!.push(v[k.key]!);
+        for (const b of findBottlenecks(m, 0)) {
+          const prev = causes.get(b.key);
+          // Keep the wording from the week where the cause was largest.
+          if (!prev) causes.set(b.key, { label: b.label, hours: b.hours, what: b.what, lever: b.lever, best: b.hours });
+          else causes.set(b.key, { ...prev, hours: prev.hours + b.hours, ...(b.hours > prev.best ? { what: b.what, best: b.hours } : {}) });
+        }
+        processing += testProcessingHours(m);
         o.onProgress?.(++done, total);
       }
     else done += seeds.length;
-    return { scenario, problems, values, kpis: Object.fromEntries(kpis.map((k) => [k.key, range(values[k.key]!)])) };
+    const n = Math.max(1, seeds.length);
+    const all = [...causes.entries()].map(([key, c]) => ({ key, label: c.label, hours: c.hours / n, what: c.what, lever: c.lever }));
+    const sum = all.reduce((x, c) => x + c.hours, 0);
+    const bottlenecks = all
+      .map((c) => ({ ...c, share: sum > 0 ? c.hours / sum : 0 }))
+      .filter((c) => c.share >= 0.02)
+      .sort((a, b) => b.hours - a.hours);
+    return { scenario, problems, values, kpis: Object.fromEntries(kpis.map((k) => [k.key, range(values[k.key]!)])), bottlenecks, processingHours: processing / n };
   });
   const [baseline, ...rest] = results;
   for (const r of rest)

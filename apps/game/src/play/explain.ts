@@ -2,7 +2,7 @@
  * Plain-language reasons for how a shift went, from its metrics, timeline and commands. The
  * debrief shows these so the player sees cause and effect, not just a score.
  */
-import { WAIT_CAUSES, type Metrics, type TimedCommand, type TimelineSample, type WaitCause } from '@er/sim';
+import { findBottlenecks, WAIT_CAUSES, type Bottleneck, type Metrics, type TimedCommand, type TimelineSample, type WaitCause } from '@er/sim';
 import { clockLabel } from '../format';
 
 export const WAIT_LABEL: Record<WaitCause, string> = {
@@ -18,6 +18,8 @@ export interface Explanation {
   lines: string[];
   /** Largest share of waiting, if any waiting happened. */
   bottleneck: { cause: WaitCause; share: number; hours: number } | null;
+  /** The largest root cause behind the waiting (which beds, which service, no nurse...). */
+  rootCause: Bottleneck | null;
   /** Worst half-hour: most people waiting. */
   peak: { minute: number; waiting: number } | null;
 }
@@ -45,6 +47,10 @@ export function explain(m: Metrics, timeline: readonly TimelineSample[], log: re
     };
     lines.push(lead + why[cause]);
   }
+  // Behind "waiting for a bed" or "for results": which beds, which service, or no nurse.
+  const rootCause = findBottlenecks(m)[0] ?? null;
+  if (rootCause && (rootCause.key === 'noNurse' || rootCause.key === 'bedsHeldByBoarders' || rootCause.key.startsWith('beds:') || rootCause.key.startsWith('backlog:')))
+    lines.push(`Root cause: ${rootCause.label.toLowerCase().replace(/\bicu\b/, 'ICU').replace(/\bct\b/, 'CT').replace(/\bx-ray\b/, 'X-ray')}. ${rootCause.what} ${rootCause.lever}`);
   if (peak && peak.waiting >= 5) lines.push(`The worst moment was around ${at(peak.minute)}, with ${peak.waiting} people not yet seen by a doctor.`);
   if (m.lwbsCount > 0) lines.push(`${m.lwbsCount} ${m.lwbsCount === 1 ? 'person' : 'people'} gave up and left without being seen.`);
   if (m.deterioration.critical > 0)
@@ -63,7 +69,7 @@ export function explain(m: Metrics, timeline: readonly TimelineSample[], log: re
   const changes = log.filter((c) => c.command.type === 'setProcess' || c.command.type === 'setSchedule').length;
   if (changes > 0) calls.push(`changed the plan ${changes} ${changes === 1 ? 'time' : 'times'} mid-shift`);
   if (calls.length) lines.push(`You ${joinAnd(calls)}.`);
-  return { lines, bottleneck, peak };
+  return { lines, bottleneck, rootCause, peak };
 }
 
 function joinAnd(xs: string[]): string {

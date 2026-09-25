@@ -5,7 +5,7 @@
  * Presentation-side data only; every number comes from the sim and research packages.
  */
 import type { Comparison, Scenario } from '@er/research';
-import type { Shift, SimConfig } from '@er/sim';
+import { PARAMS, type Shift, type SimConfig } from '@er/sim';
 
 export interface Department {
   name: string;
@@ -14,7 +14,21 @@ export interface Department {
   calibration?: { file: string; visits: number; days: number; fitted: Record<string, unknown>; notes: string[] };
 }
 
-export type TemplateId = 'beds' | 'doctorShift' | 'triageShift' | 'fastTrack' | 'security' | 'surge' | 'massCasualty' | 'wardPressure' | 'escalation';
+export type TemplateId =
+  | 'beds'
+  | 'doctorShift'
+  | 'triageShift'
+  | 'nurseShift'
+  | 'fastTrack'
+  | 'icuBeds'
+  | 'ctScanner'
+  | 'labCapacity'
+  | 'ultrasound24h'
+  | 'security'
+  | 'surge'
+  | 'massCasualty'
+  | 'wardPressure'
+  | 'escalation';
 
 export interface ScenarioSpec {
   id: string;
@@ -44,8 +58,14 @@ export interface Template {
   settings: (p: Record<string, number>, base: SimConfig) => Record<string, unknown>;
 }
 
+/** Units with their current beds (defaults when the baseline has none yet). */
+export const unitsOf = (base: SimConfig) =>
+  base.boarding?.units ?? { icu: { beds: PARAMS.boarding.units.icu.beds }, stepdown: { beds: PARAMS.boarding.units.stepdown.beds }, ward: { beds: PARAMS.boarding.units.ward.beds } };
+
 const hh = (h: number) => `${String(Math.floor(h) % 24).padStart(2, '0')}:00`;
-const schedule = (base: SimConfig, role: 'doctor' | 'triageNurse' | 'security' | 'fastTrackClinician'): Shift[] => base.staffing?.schedule?.[role] ?? [];
+const schedule = (base: SimConfig, role: 'doctor' | 'triageNurse' | 'security' | 'fastTrackClinician' | 'nurse'): Shift[] => base.staffing?.schedule?.[role] ?? [];
+export const service = (base: SimConfig, sv: 'lab' | 'xray' | 'ct' | 'ultrasound', key: 'servers' | 'processMinutes') =>
+  base.diagnostics?.services?.[sv]?.[key] ?? PARAMS.diagnostics.services[sv][key];
 
 export const TEMPLATES: Record<TemplateId, Template> = {
   beds: {
@@ -79,6 +99,54 @@ export const TEMPLATES: Record<TemplateId, Template> = {
     ],
     describe: (p) => `${p.count} more triage nurse${p.count! > 1 ? 's' : ''} ${hh(p.start!)}–${hh(p.start! + p.hours!)}.`,
     settings: (p, b) => ({ 'staffing.schedule.triageNurse': [...schedule(b, 'triageNurse'), { startHour: p.start, hours: p.hours, count: p.count }] }),
+  },
+  nurseShift: {
+    id: 'nurseShift',
+    label: 'Add bedside nurses',
+    defaults: { start: 11, hours: 12, count: 2 },
+    fields: [
+      { key: 'start', label: 'Starts at', min: 0, max: 23, unit: 'h' },
+      { key: 'hours', label: 'Length', min: 4, max: 12, unit: 'h' },
+      { key: 'count', label: 'Nurses', min: 1, max: 6 },
+    ],
+    describe: (p) => `${p.count} more bedside nurse${p.count! > 1 ? 's' : ''} ${hh(p.start!)}–${hh(p.start! + p.hours!)} (staffs beds that are free but unstaffed).`,
+    settings: (p, b) => ({
+      'modules.nursing': true,
+      'modules.staffing': true,
+      'staffing.schedule.nurse': [...(schedule(b, 'nurse').length ? schedule(b, 'nurse') : [{ startHour: 0, hours: 24, count: b.staffing?.nurses ?? 6 }]), { startHour: p.start, hours: p.hours, count: p.count }],
+    }),
+  },
+  icuBeds: {
+    id: 'icuBeds',
+    label: 'More ICU beds',
+    defaults: { add: 2 },
+    fields: [{ key: 'add', label: 'ICU beds to add', min: -6, max: 12 }],
+    describe: (p, b) => `${p.add! >= 0 ? 'Add' : 'Close'} ${Math.abs(p.add!)} ICU beds (${unitsOf(b).icu?.beds ?? PARAMS.boarding.units.icu.beds} → ${(unitsOf(b).icu?.beds ?? PARAMS.boarding.units.icu.beds) + p.add!}) for ED admissions.`,
+    settings: (p, b) => ({ 'modules.boarding': true, 'boarding.units': { ...unitsOf(b), icu: { ...(unitsOf(b).icu ?? { beds: PARAMS.boarding.units.icu.beds }), beds: Math.max(0, (unitsOf(b).icu?.beds ?? PARAMS.boarding.units.icu.beds) + p.add!) } } }),
+  },
+  ctScanner: {
+    id: 'ctScanner',
+    label: 'Another CT scanner',
+    defaults: { add: 1 },
+    fields: [{ key: 'add', label: 'Scanners to add', min: -1, max: 3 }],
+    describe: (p, b) => `${p.add! >= 0 ? 'Add' : 'Lose'} ${Math.abs(p.add!)} CT scanner${Math.abs(p.add!) === 1 ? '' : 's'} (${service(b, 'ct', 'servers')} → ${service(b, 'ct', 'servers') + p.add!}).`,
+    settings: (p, b) => ({ 'modules.diagnostics': true, 'diagnostics.services.ct.servers': Math.max(0, service(b, 'ct', 'servers') + p.add!) }),
+  },
+  labCapacity: {
+    id: 'labCapacity',
+    label: 'Faster lab',
+    defaults: { percent: 25 },
+    fields: [{ key: 'percent', label: 'Faster processing', min: -50, max: 60, unit: '%' }],
+    describe: (p) => `Lab processing ${p.percent! >= 0 ? `${p.percent}% faster` : `${-p.percent!}% slower`} (point-of-care tests, a new analyser, or staffing).`,
+    settings: (p, b) => ({ 'modules.diagnostics': true, 'diagnostics.services.lab.processMinutes': service(b, 'lab', 'processMinutes') * (1 - p.percent! / 100) }),
+  },
+  ultrasound24h: {
+    id: 'ultrasound24h',
+    label: 'Ultrasound around the clock',
+    defaults: {},
+    fields: [],
+    describe: () => 'Ultrasound open 24 hours instead of 08:00–22:00.',
+    settings: () => ({ 'modules.diagnostics': true, 'diagnostics.services.ultrasound.openHours': null }),
   },
   fastTrack: {
     id: 'fastTrack',

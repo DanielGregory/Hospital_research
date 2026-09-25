@@ -85,6 +85,14 @@ describe('debrief explanations', () => {
     expect(ex.lines.some((l) => /hallway/.test(l))).toBe(r.metrics.live.hallwayPatients > 0);
     expect(commandLabel({ type: 'setHallwayBeds', count: 2 })).toBe('Hallway spaces: 2');
   });
+
+  it('says when the beds were free but no nurse could take the patient', () => {
+    const sim = new Simulation({ id: 'n', durationMinutes: 5 * 1440, warmupMinutes: 1440, modules: { nursing: true, boarding: true }, staffing: { nurses: 3 } }, 2);
+    const r = sim.run();
+    const ex = explain(r.metrics, sim.timeline, r.commandLog, { startDayOfWeek: 0, startHour: 0 });
+    expect(ex.rootCause!.key).toBe('noNurse');
+    expect(ex.lines.some((l) => l.startsWith('Root cause: no nurse for a free bed.'))).toBe(true);
+  });
 });
 
 describe('stars and the daily challenge', () => {

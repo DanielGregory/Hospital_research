@@ -31,6 +31,15 @@ describe('parseArgs', () => {
 });
 
 describe('main', () => {
+  it('compares scenarios and writes one CSV row per scenario and KPI', () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'er-headless-')), 'cmp.csv');
+    expect(main(['compare', '--config', 'configs/planner/example-baseline.json', '--scenarios', 'configs/planner/example-scenarios.json', '--seeds', '1-2', '--out', out], root)).toBe(0);
+    const lines = readFileSync(out, 'utf8').trim().split('\n');
+    expect(lines[0]).toMatch(/^scenario,kpi,median/);
+    expect(lines.length).toBe(1 + 5 * 9);
+    expect(() => parseArgs(['compare', '--config', 'x.json'])).toThrow(/--scenarios/);
+  });
+
   it('plays a hands-off career week by week', () => {
     const out = join(mkdtempSync(join(tmpdir(), 'er-headless-')), 'career.json');
     expect(main(['career', '--seed', '3', '--weeks', '2', '--out', out], root)).toBe(0);

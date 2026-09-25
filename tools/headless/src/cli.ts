@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { BASELINES, benchmarkLevel, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
+import { BASELINES, benchmarkLevel, compareScenarios, type Comparison, type Scenario, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
 import { applySettings, balanceReport, career, patientStories, type PatientStory, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
 
 export const USAGE = `Usage:
@@ -31,6 +31,8 @@ export const USAGE = `Usage:
   benchmark --config <level.json> [--space <space.json>] [--iterations 300] [--write]
       Search the level's own controls on its day for the best setup found (the "beat the best
       found" target). Default space: configs/benchmarks/level-NN.space.json. --write stores it in the level.
+  compare --config <baseline.json> --scenarios <scenarios.json> [--seeds 1-20] [--out report.json] [--format json|csv]
+      Run the baseline and each scenario on the same seeds; report ranges and differences with 95% intervals.
   career [--seed <n>] [--weeks 12] [--out <file>]
       Play a career without changing anything between weeks: money, reputation and events per week.
   serve
@@ -47,7 +49,8 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark' | 'compare';
+  scenarios?: string;
   write?: boolean;
   weeks?: number;
   targets?: string;
@@ -67,7 +70,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark')
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark' && cmd !== 'compare')
     throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
@@ -86,7 +89,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     else opts[key.slice(2)] = val;
     i++;
   }
-  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets', 'weeks']);
+  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets', 'weeks', 'scenarios']);
   for (const k of Object.keys(opts)) if (!known.has(k)) throw new UsageError(`Unknown option --${k}`);
   if (cmd === 'career') {
     if (opts.seed !== undefined && !/^\d+$/.test(opts.seed)) throw new UsageError('--seed must be a non-negative integer');
@@ -112,6 +115,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
   if (cmd === 'policy' && !opts.policy) throw new UsageError('--policy is required');
   if (cmd === 'optimize' && !opts.space) throw new UsageError('--space is required');
   if (cmd === 'calibrate' && !opts.targets) throw new UsageError('--targets is required');
+  if (cmd === 'compare' && !opts.scenarios) throw new UsageError('--scenarios is required');
   if (opts.iterations !== undefined && !/^\d+$/.test(opts.iterations)) throw new UsageError('--iterations must be a positive integer');
   return {
     command: cmd,
@@ -125,6 +129,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     iterations: opts.iterations ? Number(opts.iterations) : undefined,
     objective: opts.objective,
     targets: opts.targets,
+    scenarios: opts.scenarios,
     ...(cmd === 'benchmark' ? { write } : {}),
   };
 }
@@ -214,6 +219,20 @@ export function toCsv(output: RunOutput): string {
 }
 
 /** JSON-lines server: one request per stdin line, one response per stdout line. */
+/** One row per scenario and KPI: range across replications and change against the baseline. */
+export function comparisonCsv(c: Comparison): string {
+  const rows = [['scenario', 'kpi', 'median', 'p05', 'p95', 'change_mean', 'change_ci_lo', 'change_ci_hi', 'better_share', 'replications'].join(',')];
+  const f = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(Math.round(v * 10000) / 10000));
+  for (const r of [c.baseline, ...c.scenarios])
+    for (const k of c.kpis) {
+      const x = r.kpis[k.key];
+      const d = r.diff?.[k.key];
+      if (!x) continue;
+      rows.push([JSON.stringify(r.scenario.name), k.key, f(x.median), f(x.lo), f(x.hi), f(d?.mean), f(d?.ciLo), f(d?.ciHi), f(d?.betterShare), String(x.n)].join(','));
+    }
+  return rows.join('\n') + '\n';
+}
+
 /** A career played with the starting hospital unchanged: the baseline a player should beat. */
 export function playCareer(seed: number, weeks: number): WeekRecord[] {
   let state = career.newCareer('Baseline', seed);
@@ -296,6 +315,32 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       });
       process.stderr.write(`Best found ${objective.metric}: ${r.bestFound.value.toFixed(2)} (start ${r.start.value.toFixed(2)}, ${r.evaluations} setups tried)\n`);
       write(JSON.stringify({ objective, seeds, iterations, bestFound: r.bestFound, start: r.start, evaluations: r.evaluations, bestConfig: applySettings(config, r.bestFound.settings) }, null, 2) + '\n');
+      return 0;
+    }
+    if (args.command === 'compare') {
+      const raw = JSON.parse(readFileSync(resolve(cwd, args.scenarios!), 'utf8')) as { scenarios: Scenario[] };
+      const seeds = args.seeds.length ? args.seeds : Array.from({ length: 20 }, (_, i) => i + 1);
+      const c = compareScenarios(config, raw.scenarios, {
+        seeds,
+        onProgress: (d, t) => {
+          if (d % seeds.length === 0) process.stderr.write(`${d}/${t} runs\n`);
+        },
+      });
+      for (const r of [c.baseline, ...c.scenarios]) {
+        if (r.problems.length) {
+          process.stderr.write(`${r.scenario.name}: not run (${r.problems.join('; ')})\n`);
+          continue;
+        }
+        const d = r.kpis.d2dMedian!;
+        const diff = r.diff?.d2dMedian;
+        process.stderr.write(
+          `${r.scenario.name.padEnd(36)} door to provider ${d.median?.toFixed(1)} min (${d.lo?.toFixed(1)}–${d.hi?.toFixed(1)})` +
+            (diff?.mean != null ? `, change ${diff.mean.toFixed(1)} [${diff.ciLo!.toFixed(1)}, ${diff.ciHi!.toFixed(1)}]` : '') +
+            '\n',
+        );
+      }
+      if (args.format === 'csv') write(comparisonCsv(c));
+      else write(JSON.stringify(c, null, 2) + '\n');
       return 0;
     }
     if (args.command === 'benchmark') {

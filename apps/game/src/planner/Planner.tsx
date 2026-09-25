@@ -13,7 +13,7 @@ import type { WorkerRequest, WorkerResponse } from './worker';
 
 type Tab = 'department' | 'scenarios' | 'results' | 'report';
 
-export function Planner(props: { onBack: () => void; onWatch: (config: GameConfig, name: string) => void }) {
+export function Planner(props: { onBack?: () => void; onWatch: (config: GameConfig, name: string) => void }) {
   const [project, setProjectState] = useState<Project>(loadProject);
   const [tab, setTab] = useState<Tab>(project.results ? 'results' : 'department');
   const [busy, setBusy] = useState<{ label: string; done: number; total: number } | null>(null);
@@ -132,7 +132,7 @@ export function Planner(props: { onBack: () => void; onWatch: (config: GameConfi
       {tab === 'report' && project.results && <Report project={project} check={check?.check ?? null} />}
 
       <div className="actions no-print">
-        <button onClick={props.onBack}>Menu</button>
+        {props.onBack && <button onClick={props.onBack}>Menu</button>}
         <button
           className="ghost"
           onClick={() => {

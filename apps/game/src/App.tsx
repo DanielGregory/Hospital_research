@@ -77,7 +77,17 @@ export function App() {
 }
 
 /** A shared daily link (?daily=YYYY-MM-DD) opens that day's challenge. */
+/** `?planner` opens the planner on its own: no game menu (the link to give a hospital). */
+export function plannerOnly(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).has('planner');
+  } catch {
+    return false;
+  }
+}
+
 function startScreen(): Screen {
+  if (plannerOnly()) return { name: 'planner' };
   try {
     const d = new URLSearchParams(window.location.search).get('daily');
     if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
@@ -144,7 +154,7 @@ function Screens() {
             : { name: 'sandbox' };
 
   useEffect(() => window.scrollTo(0, 0), [screen.name]);
-  const home = () => setScreen({ name: 'menu' });
+  const home = () => setScreen(plannerOnly() ? { name: 'planner' } : { name: 'menu' });
   const crumb =
     screen.name === 'menu'
       ? undefined
@@ -187,7 +197,7 @@ function Screens() {
       case 'planner':
         return (
           <Planner
-            onBack={home}
+            onBack={plannerOnly() ? undefined : home}
             onWatch={(config, name) =>
               setScreen({
                 name: 'play',

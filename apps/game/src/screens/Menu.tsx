@@ -23,33 +23,27 @@ export function Menu(props: {
   return (
     <main className="screen menu">
       <section className="hero">
-        <p className="eyebrow">Training programme · emergency medicine</p>
-        <h1>Run the emergency department.</h1>
+        <p className="eyebrow">ER Planner · emergency department simulation</p>
+        <h1>Test changes to your emergency department before you make them.</h1>
         <p className="lede">
-          Staff it, route the patients, design the floor. Then watch the shift play out, one patient at a time, and find out what your choices cost.
+          Calibrate the model to your department’s own visit data, then compare staffing, space, fast track, ICU and ward capacity, labs and imaging, security and
+          surge plans. See where the real bottleneck is, watch it in 3D, and print a report.
         </p>
         <div className="actions">
-          <button className="primary" onClick={() => onPick(next)} data-testid="continue-story">
-            {Object.keys(results).length ? `Continue: ${next.level.title}` : 'Start training'}
+          <button className="primary" onClick={props.onPlanner} data-testid="planner-card">
+            Open the planner
           </button>
-          <button onClick={onSandbox}>Open the sandbox</button>
+          <button onClick={() => onPick(next)} data-testid="continue-story">
+            {Object.keys(results).length ? `Continue training: ${next.level.title}` : 'Try a training scenario'}
+          </button>
         </div>
       </section>
 
-      <button className="daily-card" onClick={props.onDaily} data-testid="daily">
-        <span className="eyebrow">Daily challenge · {daily.date}</span>
-        <strong>{daily.level.level.title}</strong>
-        <span>The same shift for everyone today. Beat your friends’ score.</span>
-        {todays ? (
-          <span className="daily-best">
-            <Stars n={todays.stars} /> best {Math.round(todays.score)}/100
-          </span>
-        ) : (
-          <span className="chip next">Not played yet</span>
-        )}
-      </button>
-
-      <h2>Simulations</h2>
+      <h2>Training scenarios</h2>
+      <p className="muted">
+        Short, guided shifts that teach how emergency departments behave under pressure: triage, surges, fast track, boarding, major incidents, budgets and floor
+        design. Good for new charge nurses, residents and managers.
+      </p>
       <ol className="level-grid">
         {LEVELS.map((l) => {
           const passed = results[l.id] === true;
@@ -76,13 +70,20 @@ export function Menu(props: {
         })}
       </ol>
 
-      <button className="planner-card" onClick={props.onPlanner} data-testid="planner-card">
-        <span className="eyebrow">For hospitals · Planner</span>
-        <strong>Test changes before you make them</strong>
-        <span>Calibrate the model to your own department’s data, compare staffing, space, fast track, security and surge plans, and print a report.</span>
+      <button className="daily-card" onClick={props.onDaily} data-testid="daily">
+        <span className="eyebrow">Daily challenge · {daily.date}</span>
+        <strong>{daily.level.level.title}</strong>
+        <span>The same shift for everyone today.</span>
+        {todays ? (
+          <span className="daily-best">
+            <Stars n={todays.stars} /> best {Math.round(todays.score)}/100
+          </span>
+        ) : (
+          <span className="chip next">Not played yet</span>
+        )}
       </button>
 
-      <h2>Career</h2>
+      <h2>More</h2>
       <div className="sandbox-grid">
         <button className="sandbox-card" onClick={props.onCareer} data-testid="career">
           <strong>{props.career ? props.career.hospital.name : 'Run your own hospital'}</strong>
@@ -94,10 +95,6 @@ export function Menu(props: {
               : 'Week after week: money, reputation, upgrades, flu seasons and major incidents. Keep improving your department.'}
           </span>
         </button>
-      </div>
-
-      <h2>Sandbox</h2>
-      <div className="sandbox-grid">
         <button className="sandbox-card" onClick={onSandbox} data-testid="sandbox">
           <strong>Build your own ED</strong>
           <span>Switch every system on or off, set staffing and beds, design the patient process, and test it.</span>

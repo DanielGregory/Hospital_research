@@ -7,9 +7,9 @@ export function Shell(props: { crumb?: string; onHome: () => void; children: Rea
   return (
     <>
       <header className="topbar">
-        <button className="wordmark" onClick={props.onHome} aria-label="ER Shift, back to menu">
+        <button className="wordmark" onClick={props.onHome} aria-label="ER Planner, back to the start">
           <span className="wordmark-cross" aria-hidden />
-          ER Shift
+          ER Planner
         </button>
         {props.crumb && <span className="crumb">/ {props.crumb}</span>}
         <span className="spacer" />

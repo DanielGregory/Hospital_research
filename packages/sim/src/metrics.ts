@@ -9,7 +9,7 @@ import { actualCost, type CostBreakdown } from './budget.js';
 import type { IncidentRecord, Simulation } from './engine.js';
 import { compositeScore, type ScoreBreakdown } from './score.js';
 import { summarize, type Summary } from './stats.js';
-import { ACUITIES, ROLES, UNIT_IDS, type Acuity, type Patient, type Role, type UnitId } from './types.js';
+import { ACUITIES, ROLES, SERVICE_IDS, UNIT_IDS, type Acuity, type Patient, type Role, type ServiceId, type UnitId } from './types.js';
 
 /** Spec metrics that need modules not built yet. Listed so output never implies they are zero. */
 export const NOT_YET_MODELED: readonly string[] = [];
@@ -77,6 +77,11 @@ export interface Metrics {
     hallwayPatients: number;
     hallwayHours: number;
   };
+  /** Diagnostics module: per service, orders, waits for a machine or analyser, turnaround, how busy it was and the worst backlog. */
+  diagnostics: Record<
+    ServiceId,
+    { servers: number; orders: number; meanQueueMinutes: number | null; meanTurnaroundMinutes: number | null; p90TurnaroundMinutes: number | null; utilization: number | null; peakQueue: number; queuedAtEnd: number }
+  > | null;
   /** Security module: agitation incidents inside the window (null when the module is off). */
   security: {
     incidents: number;
@@ -316,6 +321,7 @@ export function computeMetrics(sim: Simulation): Metrics {
       hallwayPatients,
       hallwayHours: sim.tw.hallway.integral(end) / 60,
     },
+    diagnostics: c.modules.diagnostics ? diagnosticsMetrics(c, inWindow, sim.serviceStats()!, span) : null,
     security: c.modules.security ? securityMetrics(sim.incidentLog.filter((x) => x.time >= start && x.time <= end), inWindow.length) : null,
     waits: Object.fromEntries(WAIT_CAUSES.map((k) => [k, waits[k] / 60])) as Record<WaitCause, number>,
     diagnosis: {
@@ -373,6 +379,27 @@ function unitMetrics(units: NonNullable<ResolvedConfig['boarding']['units']>, pa
     const hours = mine.filter((p) => p.boardingStartTime !== undefined).map((p) => ((p.departureTime ?? end) - p.boardingStartTime!) / 60);
     const sum = hours.reduce((a, b) => a + b, 0);
     out[u] = { beds: spec.beds, admitted: mine.length, boarders: hours.length, hours: sum, meanHours: hours.length ? sum / hours.length : null, maxHours: hours.length ? Math.max(...hours) : null };
+  }
+  return out;
+}
+
+function diagnosticsMetrics(c: ResolvedConfig, patients: readonly Patient[], stats: Record<ServiceId, { busyMinutes: number; peakQueue: number; queued: number }>, span: number): NonNullable<Metrics['diagnostics']> {
+  const out = {} as NonNullable<Metrics['diagnostics']>;
+  for (const sv of SERVICE_IDS) {
+    const orders = patients.flatMap((p) => (p.orders ?? []).filter((o) => o.service === sv));
+    const queue = orders.filter((o) => o.startedAt !== undefined).map((o) => o.startedAt! - o.orderedAt);
+    const turn = orders.filter((o) => o.resultAt !== undefined).map((o) => o.resultAt! - o.orderedAt);
+    const servers = c.diagnostics.services[sv].servers;
+    out[sv] = {
+      servers,
+      orders: orders.length,
+      meanQueueMinutes: queue.length ? queue.reduce((a, b) => a + b, 0) / queue.length : null,
+      meanTurnaroundMinutes: turn.length ? turn.reduce((a, b) => a + b, 0) / turn.length : null,
+      p90TurnaroundMinutes: turn.length ? summarize(turn).p90 : null,
+      utilization: servers > 0 && span > 0 ? stats[sv].busyMinutes / (servers * span) : null,
+      peakQueue: stats[sv].peakQueue,
+      queuedAtEnd: stats[sv].queued,
+    };
   }
   return out;
 }

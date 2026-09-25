@@ -11,7 +11,7 @@
  * fitted admission, patience and workup values in here and cite the sources.
  */
 
-import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm, UnitId } from './types.js';
+import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm, ServiceId, UnitId } from './types.js';
 
 export const PARAMS = {
   arrivals: {
@@ -30,6 +30,46 @@ export const PARAMS = {
   },
 
   /** Career mode: money, reputation, upgrades and the weeks' events. */
+  /**
+   * Diagnostics module: tests queue for real capacity. Each service has servers (analyser slots,
+   * X-ray rooms, CT scanners, ultrasound rooms), time on the server, a report delay that needs no
+   * server (radiologist read, lab verification), and opening hours (outside them, orders wait).
+   * Which tests a patient gets depends on their hidden condition. All PLACEHOLDER.
+   */
+  diagnostics: {
+    services: {
+      lab: { servers: 8, processMinutes: 40, reportMinutes: 10, openHours: null }, // PLACEHOLDER
+      xray: { servers: 2, processMinutes: 12, reportMinutes: 20, openHours: null }, // PLACEHOLDER
+      ct: { servers: 1, processMinutes: 18, reportMinutes: 35, openHours: null }, // PLACEHOLDER
+      ultrasound: { servers: 1, processMinutes: 30, reportMinutes: 15, openHours: [8, 22] }, // PLACEHOLDER
+    } as Record<ServiceId, { servers: number; processMinutes: number; reportMinutes: number; openHours: [number, number] | null }>,
+    /** Spread of process and report times (lognormal cv). */
+    cv: 0.5, // PLACEHOLDER
+    /** Chance of each test by condition (conditions not listed order nothing). */
+    ordersByCondition: {
+      'cardiac-arrest': { lab: 0.9, xray: 0.7, ct: 0.3 },
+      'major-trauma': { lab: 0.8, xray: 0.9, ct: 0.85, ultrasound: 0.6 },
+      'septic-shock': { lab: 1, xray: 0.7, ct: 0.3 },
+      acs: { lab: 1, xray: 0.8 },
+      stroke: { lab: 0.9, ct: 1 },
+      sepsis: { lab: 1, xray: 0.6, ct: 0.25 },
+      overdose: { lab: 0.9, ct: 0.15 },
+      'chest-pain-benign': { lab: 0.9, xray: 0.7 },
+      'abdominal-pain': { lab: 0.85, ct: 0.5, ultrasound: 0.3 },
+      pneumonia: { lab: 0.8, xray: 0.95 },
+      'kidney-stone': { lab: 0.7, ct: 0.6, ultrasound: 0.3 },
+      asthma: { lab: 0.2, xray: 0.3 },
+      appendicitis: { lab: 0.9, ct: 0.6, ultrasound: 0.4 },
+      influenza: { lab: 0.2, xray: 0.2 },
+      sprain: { xray: 0.7 },
+      laceration: { xray: 0.1 },
+      uti: { lab: 0.8 },
+      'minor-fracture': { xray: 1 },
+      rash: { lab: 0.05 },
+      'sore-throat': { lab: 0.1 },
+    } as Record<string, Partial<Record<ServiceId, number>>>, // PLACEHOLDER
+  },
+
   /**
    * Security module: agitation and incidents. A share of patients is at risk (intoxication, behavioural
    * crisis, long frustration); if still waiting when their tolerance runs out, there is an incident.

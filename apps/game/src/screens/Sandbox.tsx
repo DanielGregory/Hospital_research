@@ -25,6 +25,7 @@ const MODULE_TEXT: Record<ModuleName, [string, string]> = {
   budget: ['Budget', 'A daily cap on the cost of your setup.'],
   shocks: ['Shocks', 'A surge of extra patients on day two.'],
   burnout: ['Burnout', 'Tired staff get slower and make more mistakes.'],
+  diagnostics: ['Labs and imaging', 'Tests queue for lab analysers, X-ray rooms, CT scanners and ultrasound; results take longer when they are busy.'],
   security: ['Security', 'Some patients become agitated when waits run long; security officers respond, or clinicians get pulled in.'],
 };
 

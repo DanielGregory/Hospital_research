@@ -14,6 +14,8 @@ import {
   ACUITIES,
   ROLES,
   UNIT_IDS,
+  SERVICE_IDS,
+  type ServiceId,
   type UnitId,
   type Acuity,
   type ConditionSpec,
@@ -25,7 +27,7 @@ import {
   type TimedCommand,
 } from './types.js';
 
-export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout', 'security'] as const;
+export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout', 'security', 'diagnostics'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 /** Build phase each module lands in. Enabling a module before it is built is a config error. */
@@ -39,8 +41,9 @@ export const MODULE_PHASE: Record<ModuleName, number> = {
   process: 5,
   budget: 5,
   security: 7,
+  diagnostics: 7,
 };
-export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget', 'security'];
+export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget', 'security', 'diagnostics'];
 
 export type ServiceDistribution = 'exponential' | 'lognormal';
 
@@ -177,6 +180,8 @@ export interface SimConfig {
     escalation?: boolean;
   };
   shocks?: ShockSpec[];
+  /** Diagnostics module: capacity and timing per service (servers, processMinutes, reportMinutes, openHours [from, to] or null). */
+  diagnostics?: { services?: Partial<Record<ServiceId, Partial<{ servers: number; processMinutes: number; reportMinutes: number; openHours: [number, number] | null }>>> };
   /** Security module: override any PARAMS.security number (e.g. riskShare for a scenario with more intoxicated patients). */
   security?: Partial<Record<keyof typeof PARAMS.security, number>>;
   /** Budget module: cap on the planned cost per day of the starting setup. */
@@ -247,6 +252,8 @@ export interface ResolvedConfig {
     dischargeHourlyWeights: number[];
   };
   burnout: typeof PARAMS.burnout;
+  /** Diagnostics module: services with config overrides. */
+  diagnostics: { services: Record<ServiceId, { servers: number; processMinutes: number; reportMinutes: number; openHours: [number, number] | null }>; cv: number; ordersByCondition: Record<string, Partial<Record<ServiceId, number>>> };
   /** Security module settings (PARAMS.security, with config overrides). */
   security: { -readonly [K in keyof typeof PARAMS.security]: number };
   shocks: ShockSpec[];
@@ -416,6 +423,23 @@ export function validateConfig(raw: unknown): SimConfig {
     field(b, 'boarding', 'escalation', bool, 'true or false', p);
     if (count(b.inpatientBeds) && count(b.initialOccupied) && b.initialOccupied > b.inpatientBeds) p.push('boarding.initialOccupied: more than inpatientBeds');
   });
+
+  if (c.diagnostics !== undefined) {
+    const d = c.diagnostics;
+    if (!isObj(d) || (d.services !== undefined && !isObj(d.services))) p.push('diagnostics: { services: { lab | xray | ct | ultrasound: { servers, processMinutes, reportMinutes, openHours } } }');
+    else
+      for (const [sv, spec] of Object.entries(d.services ?? {})) {
+        if (!(SERVICE_IDS as readonly string[]).includes(sv)) p.push(`diagnostics.services.${sv}: unknown service (one of ${SERVICE_IDS.join(', ')})`);
+        else if (!isObj(spec)) p.push(`diagnostics.services.${sv}: object`);
+        else {
+          if (spec.servers !== undefined && !count(spec.servers)) p.push(`diagnostics.services.${sv}.servers: non-negative integer`);
+          for (const k of ['processMinutes', 'reportMinutes']) if (spec[k] !== undefined && !nonNeg(spec[k])) p.push(`diagnostics.services.${sv}.${k}: non-negative number`);
+          const oh = spec.openHours;
+          if (oh !== undefined && oh !== null && !(Array.isArray(oh) && oh.length === 2 && oh.every((h) => typeof h === 'number' && h >= 0 && h <= 24)))
+            p.push(`diagnostics.services.${sv}.openHours: [from, to] hours, or null for 24 hours`);
+        }
+      }
+  }
 
   if (c.security !== undefined) {
     if (!isObj(c.security)) p.push('security: object of setting -> number');
@@ -820,6 +844,11 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     },
     burnout: PARAMS.burnout,
     security: { ...PARAMS.security, ...(c.security ?? {}) },
+    diagnostics: {
+      services: Object.fromEntries(SERVICE_IDS.map((sv) => [sv, { ...PARAMS.diagnostics.services[sv], ...(c.diagnostics?.services?.[sv] ?? {}) }])) as ResolvedConfig['diagnostics']['services'],
+      cv: PARAMS.diagnostics.cv,
+      ordersByCondition: PARAMS.diagnostics.ordersByCondition,
+    },
     shocks: modules.shocks ? copy(c.shocks ?? []) : [],
     conditions: PARAMS.conditions,
     pipeline,

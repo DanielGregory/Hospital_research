@@ -47,6 +47,10 @@ export interface PatientProfile {
 
 export type Lane = 'main' | 'fastTrack';
 
+/** Diagnostic services with their own capacity (diagnostics module). */
+export const SERVICE_IDS = ['lab', 'xray', 'ct', 'ultrasound'] as const;
+export type ServiceId = (typeof SERVICE_IDS)[number];
+
 /** Inpatient units an ED admission can go to (boarding.units). */
 export const UNIT_IDS = ['icu', 'stepdown', 'ward'] as const;
 export type UnitId = (typeof UNIT_IDS)[number];
@@ -111,6 +115,8 @@ export interface Patient {
   atRisk?: boolean;
   incidents?: number;
   lastIncidentAt?: number;
+  /** Diagnostics module: tests ordered, with when each was ordered, started and resulted. */
+  orders?: { service: ServiceId; orderedAt: number; startedAt?: number; doneAt?: number; resultAt?: number }[];
   /** Admitted: the inpatient unit they need (boarding.units). */
   admitUnit?: UnitId;
 }

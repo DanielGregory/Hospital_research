@@ -38,6 +38,8 @@ import {
   type Shift,
   type TimedCommand,
   UNIT_IDS,
+  SERVICE_IDS,
+  type ServiceId,
   type UnitId,
 } from './types.js';
 
@@ -65,6 +67,9 @@ type SimEvent =
   | { kind: 'inpatientDischarge' }
   | { kind: 'wardDischarge'; unit?: UnitId }
   | { kind: 'agitate'; patientId: number; token: number }
+  | { kind: 'serviceEnd'; order: number }
+  | { kind: 'resultReady'; order: number }
+  | { kind: 'serviceOpen'; service: ServiceId }
   | { kind: 'incidentDone' }
   | { kind: 'callInArrive'; role: Role }
   | { kind: 'callInRelease'; staffId: number }
@@ -80,6 +85,9 @@ const PRIORITY: Record<SimEvent['kind'], number> = {
   inpatientDischarge: 2,
   wardDischarge: 2,
   agitate: 2,
+  serviceEnd: 0,
+  resultReady: 0,
+  serviceOpen: 1,
   incidentDone: 0,
   callInArrive: 1,
   callInRelease: 1,
@@ -149,6 +157,8 @@ interface Runtime {
   triageFatigue: number;
   /** Security module: invalidates a pending agitation check. */
   agitationToken: number;
+  /** Diagnostics module: results still to come for the workup step. */
+  pendingOrders: number;
 }
 
 interface Staff {
@@ -212,6 +222,8 @@ export interface SimSnapshot {
   /** traumaBays: main beds with index below this are trauma bays. */
   beds: Record<Lane, { capacity: number | null; occupied: number; traumaBays: number }>;
   /** Inpatient beds for admissions (boarding module), else null. */
+  /** Diagnostics module: per service, servers, how many are busy, orders waiting, and whether it is open. */
+  diagnostics: Record<ServiceId, { servers: number; busy: number; queue: number; open: boolean }> | null;
   inpatient: {
     capacity: number;
     occupied: number;
@@ -333,6 +345,10 @@ export class Simulation {
   divertedMeasured = 0;
   /** Times a doctor was pulled away from a less urgent patient. */
   preemptions = 0;
+  /** Diagnostics module: per service, the queue of orders and servers in use. */
+  private readonly services: Record<ServiceId, { queue: PatientQueue; busy: number; openScheduled: boolean; busyMinutes: number; peakQueue: number }> | null = null;
+  /** Diagnostics module: every order (index = order id). */
+  readonly orderLog: { patientId: number; step: number; service: ServiceId; index: number }[] = [];
   /** Security module: every incident, in time order. */
   readonly incidentLog: IncidentRecord[] = [];
   private readonly log: TimedCommand[] = [];
@@ -437,6 +453,10 @@ export class Simulation {
       for (let t = every; t <= c.durationMinutes; t += every) this.push(t, { kind: 'handover' });
     }
 
+    if (c.modules.diagnostics)
+      this.services = Object.fromEntries(SERVICE_IDS.map((sv) => [sv, { queue: new PatientQueue(), busy: 0, openScheduled: false, busyMinutes: 0, peakQueue: 0 }])) as NonNullable<
+        typeof this.services
+      >;
     this.inpatientOccupied = c.boarding.initialOccupied;
     this.escalated = c.boarding.escalation;
     if (c.modules.boarding) {
@@ -659,6 +679,14 @@ export class Simulation {
         room: this.config.layout && s.loc > 0 ? this.config.layout.rooms[s.loc - 1]!.id : undefined,
       })),
       beds: { main: bedInfo('main'), fastTrack: bedInfo('fastTrack') },
+      diagnostics: this.services
+        ? (Object.fromEntries(
+            SERVICE_IDS.map((sv) => [
+              sv,
+              { servers: this.config.diagnostics.services[sv].servers, busy: this.services![sv].busy, queue: this.services![sv].queue.size, open: this.serviceOpen(sv, this.clock) },
+            ]),
+          ) as SimSnapshot['diagnostics'])
+        : null,
       inpatient: this.config.modules.boarding
         ? this.units
           ? {
@@ -757,6 +785,16 @@ export class Simulation {
       case 'inpatientDischarge':
         this.onInpatientDischarge();
         break;
+      case 'serviceEnd':
+        this.onServiceEnd(ev.order);
+        break;
+      case 'resultReady':
+        this.onResultReady(ev.order);
+        break;
+      case 'serviceOpen':
+        this.services![ev.service].openScheduled = false;
+        this.runService(ev.service);
+        break;
       case 'agitate':
         this.onAgitate(ev.patientId, ev.token);
         break;
@@ -832,6 +870,7 @@ export class Simulation {
       taskIds: pipe.steps.map(() => undefined),
       bedRequested: false,
       agitationToken: 0,
+      pendingOrders: 0,
       hasBed: false,
       activeTasks: 0,
       wantsToLeave: false,
@@ -938,6 +977,7 @@ export class Simulation {
   private startTurnaround(p: Patient, i: number): void {
     const r = this.rt[p.id]!;
     const s = r.pipe.steps[i]!;
+    if (s.kind === 'workup' && this.services) return this.orderTests(p, i);
     const mean = s.turnaroundMinutesByAcuity[p.trueAcuity];
     const minutes = mean > 0 ? drawDuration(r.rng.stream(`turnaround:${s.id}`), mean, s.turnaroundCv, 'lognormal') : 0;
     if (minutes > 0) {
@@ -1155,6 +1195,97 @@ export class Simulation {
     });
     if (p.lane !== undefined) this.bedQueues[p.lane].remove(p.id);
     if (this.holdsBed(p)) this.releaseBed(p);
+  }
+
+  // --- diagnostics module -------------------------------------------------------
+
+  /** Order the tests this patient's condition calls for; the workup ends when the last result is back. */
+  private orderTests(p: Patient, step: number): void {
+    const c = this.config;
+    const r = this.rt[p.id]!;
+    const chances = c.diagnostics.ordersByCondition[p.conditionId] ?? {};
+    const rng = r.rng.stream('orders');
+    const wanted = SERVICE_IDS.filter((sv) => rng.next() < (chances[sv] ?? 0));
+    if (!wanted.length) return this.completeStep(p, step);
+    r.status[step] = 'turnaround';
+    r.pendingOrders = wanted.length;
+    p.orders = [];
+    for (const sv of wanted) {
+      const id = this.orderLog.length;
+      this.orderLog.push({ patientId: p.id, step, service: sv, index: p.orders.length });
+      p.orders.push({ service: sv, orderedAt: this.clock });
+      const q = this.services![sv];
+      // Sickest first, then first come.
+      q.queue.push(id, p.assignedAcuity ?? 3, this.clock);
+      if (this.clock >= c.warmupMinutes) q.peakQueue = Math.max(q.peakQueue, q.queue.size);
+      this.runService(sv);
+    }
+  }
+
+  private serviceOpen(sv: ServiceId, t: number): boolean {
+    const h = this.config.diagnostics.services[sv].openHours;
+    if (!h) return true;
+    const hour = ((((this.config.startDayOfWeek * 24 + this.config.startHour) * 60 + t) / 60) % 24 + 24) % 24;
+    return h[0] <= h[1] ? hour >= h[0] && hour < h[1] : hour >= h[0] || hour < h[1];
+  }
+
+  /** Start as many queued orders as there are free servers (if the service is open). */
+  private runService(sv: ServiceId): void {
+    const c = this.config;
+    const spec = c.diagnostics.services[sv];
+    const q = this.services![sv];
+    if (!this.serviceOpen(sv, this.clock)) {
+      if (q.queue.size && !q.openScheduled && spec.openHours) {
+        const hourNow = ((((c.startDayOfWeek * 24 + c.startHour) * 60 + this.clock) / 60) % 24 + 24) % 24;
+        const wait = ((spec.openHours[0] - hourNow + 24) % 24) * 60;
+        q.openScheduled = true;
+        this.push(this.clock + Math.max(1e-6, wait), { kind: 'serviceOpen', service: sv });
+      }
+      return;
+    }
+    while (q.busy < spec.servers && q.queue.size) {
+      const id = q.queue.pop()!;
+      const o = this.orderLog[id]!;
+      const p = this.patients[o.patientId]!;
+      if (this.rt[p.id]!.finished) continue;
+      q.busy++;
+      p.orders![o.index]!.startedAt = this.clock;
+      const minutes = drawDuration(this.rt[p.id]!.rng.stream(`service:${sv}`), spec.processMinutes, c.diagnostics.cv, 'lognormal');
+      const end = this.clock + minutes;
+      q.busyMinutes += Math.max(0, Math.min(end, c.durationMinutes) - Math.max(this.clock, c.warmupMinutes));
+      this.push(end, { kind: 'serviceEnd', order: id });
+    }
+  }
+
+  private onServiceEnd(id: number): void {
+    const o = this.orderLog[id]!;
+    const p = this.patients[o.patientId]!;
+    const q = this.services![o.service];
+    q.busy--;
+    p.orders![o.index]!.doneAt = this.clock;
+    const report = this.config.diagnostics.services[o.service].reportMinutes;
+    const minutes = report > 0 ? drawDuration(this.rt[p.id]!.rng.stream(`report:${o.service}`), report, this.config.diagnostics.cv, 'lognormal') : 0;
+    this.push(this.clock + minutes, { kind: 'resultReady', order: id });
+    this.runService(o.service);
+  }
+
+  private onResultReady(id: number): void {
+    const o = this.orderLog[id]!;
+    const p = this.patients[o.patientId]!;
+    const r = this.rt[p.id]!;
+    p.orders![o.index]!.resultAt = this.clock;
+    if (r.finished) return;
+    r.pendingOrders--;
+    if (r.pendingOrders === 0) this.completeStep(p, o.step);
+  }
+
+  /** Busy server-minutes and peak queue per service inside the measurement window (for metrics). */
+  serviceStats(): Record<ServiceId, { busyMinutes: number; peakQueue: number; queued: number }> | null {
+    if (!this.services) return null;
+    return Object.fromEntries(SERVICE_IDS.map((sv) => [sv, { busyMinutes: this.services![sv].busyMinutes, peakQueue: this.services![sv].peakQueue, queued: this.services![sv].queue.size }])) as Record<
+      ServiceId,
+      { busyMinutes: number; peakQueue: number; queued: number }
+    >;
   }
 
   // --- security module ----------------------------------------------------------

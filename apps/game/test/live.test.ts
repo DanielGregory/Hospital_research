@@ -9,6 +9,8 @@ import { dailyChallenge, shareText } from '../src/play/daily';
 import { commandLabel, explain } from '../src/play/explain';
 import { personName } from '../src/play/names';
 import { busiestRoutes, locationName } from '../src/play/WalkMap';
+import { verdict } from '../src/planner/Planner';
+import { exampleDepartment, TEMPLATES, toScenario } from '../src/planner/project';
 import { layoutHints } from '../src/screens/FloorDesigner';
 import { COMPLAINTS, profileLine, storyText } from '../src/play/profiles';
 import { recordBest, starsFor } from '../src/play/stars';
@@ -179,5 +181,24 @@ describe('floor design (level 8)', () => {
     expect(routes.length).toBeGreaterThan(0);
     expect(locationName(sim.config.layout!, routes[0]!.a)).toMatch(/\w/);
     expect(describeValue('layout.rooms', l8.layout!.rooms)).toContain('Staff station at');
+  });
+});
+
+describe('planner', () => {
+  it('turns every scenario template into a valid config against the example department', () => {
+    const dept = exampleDepartment();
+    for (const t of Object.values(TEMPLATES)) {
+      const s = toScenario({ id: t.id, template: t.id, params: { ...t.defaults } }, dept.config);
+      const cfg = applySettings(dept.config, s.settings);
+      expect(() => new Simulation(cfg, 1), t.id).not.toThrow();
+      expect(s.description!.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('labels a change better, worse or unclear from its interval', () => {
+    const k = { key: 'x', label: 'x', metric: 'x', unit: 'min', better: 'lower' } as const;
+    expect(verdict(k, { n: 5, mean: -3, ciLo: -5, ciHi: -1, betterShare: 1 }).label).toBe('better');
+    expect(verdict(k, { n: 5, mean: 2, ciLo: 1, ciHi: 3, betterShare: 0 }).label).toBe('worse');
+    expect(verdict(k, { n: 5, mean: -1, ciLo: -3, ciHi: 1, betterShare: 0.6 }).label).toBe('no clear change');
   });
 });

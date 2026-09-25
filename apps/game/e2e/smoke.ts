@@ -281,6 +281,32 @@ async function main() {
         await page.getByTestId('skip').click();
         if ((await page.getByTestId('result').textContent()) !== 'Goals met') fail('level 8: the best found plan should meet the goals');
 
+        // Planner: fit the model to the sample visits, run what-ifs, read results, watch one, print the report.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('planner-card').click();
+        await page.getByTestId('use-sample').click();
+        await page.getByTestId('fit-model').click();
+        await page.getByTestId('baseline-check').waitFor({ timeout: 90_000 });
+        await shot(page, `planner-check-${scheme}`);
+        await page.getByTestId('module-security').check();
+        await page.getByTestId('to-scenarios').click();
+        await page.getByTestId('add-template').selectOption('security');
+        await page.getByTestId('add-scenario').click();
+        await page.getByTestId('weeks').selectOption('5');
+        await page.getByTestId('run-scenarios').click();
+        await page.getByTestId('results-table').waitFor({ timeout: 90_000 });
+        await page.getByTestId('forest-plot').waitFor();
+        await shot(page, `planner-results-${scheme}`);
+        await page.getByTestId('watch-baseline').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(1500);
+        await unhold(page);
+        await page.getByTestId('skip').click();
+        await page.getByTestId('retry').click();
+        await page.getByTestId('tab-report').click();
+        await page.getByTestId('report').waitFor();
+        await shot(page, `planner-report-${scheme}`);
+
         // Level 7 shows the budget line and blocks an over-budget plan.
         await page.goto(`http://localhost:${PORT}/`);
         await page.getByTestId('level-7').click();

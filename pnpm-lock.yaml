@@ -26,6 +26,9 @@ importers:
 
   apps/game:
     dependencies:
+      '@er/research':
+        specifier: workspace:*
+        version: link:../../packages/research
       '@er/sim':
         specifier: workspace:*
         version: link:../../packages/sim

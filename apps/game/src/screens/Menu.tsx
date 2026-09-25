@@ -15,6 +15,7 @@ export function Menu(props: {
   daily: Daily;
   career: CareerState | null;
   onCareer: () => void;
+  onPlanner: () => void;
 }) {
   const { onPick, onLayout, onSandbox, results, best, daily } = props;
   const todays = best[`daily:${daily.date}`];
@@ -74,6 +75,12 @@ export function Menu(props: {
           );
         })}
       </ol>
+
+      <button className="planner-card" onClick={props.onPlanner} data-testid="planner-card">
+        <span className="eyebrow">For hospitals · Planner</span>
+        <strong>Test changes before you make them</strong>
+        <span>Calibrate the model to your own department’s data, compare staffing, space, fast track, security and surge plans, and print a report.</span>
+      </button>
 
       <h2>Career</h2>
       <div className="sandbox-grid">

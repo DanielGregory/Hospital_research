@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@er/research": "workspace:*",
     "@er/sim": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

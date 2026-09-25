@@ -1,5 +1,6 @@
 import { beatsBenchmark, evaluateGoals, patientStories, Simulation, type CareerState, type LayoutSpec, type Metrics, type Settlement } from '@er/sim';
 import { Career } from './career/Career';
+import { Planner } from './planner/Planner';
 import { CareerWeek } from './career/CareerWeek';
 import { career, careerLive, loadCareer, saveCareer } from './career/store';
 import { dailyChallenge, dateKey, shareText, type Daily } from './play/daily';
@@ -24,7 +25,8 @@ type Origin =
   | { kind: 'level'; level: LevelConfig; values: SetupValues; daily?: Daily }
   | { kind: 'layout'; layout: LayoutSpec }
   | { kind: 'sandbox' }
-  | { kind: 'career'; state: CareerState };
+  | { kind: 'career'; state: CareerState }
+  | { kind: 'planner' };
 
 type Screen =
   | { name: 'menu' }
@@ -35,6 +37,7 @@ type Screen =
   | { name: 'play'; config: GameConfig; seed: number; values: SetupValues; origin: Origin; run: number }
   | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin; run: RunAnalysis; stars?: number }
   | { name: 'career' }
+  | { name: 'planner' }
   | { name: 'careerWeek'; before: { money: number; reputation: number }; settlement: Settlement; metrics: Metrics; run: RunAnalysis };
 
 const RESULTS_KEY = 'er-shift-results';
@@ -134,7 +137,11 @@ function Screens() {
       ? { name: 'setup', level: origin.level, values: origin.values, daily: origin.daily }
       : origin.kind === 'layout'
         ? { name: 'layout', layout: origin.layout }
-        : { name: 'sandbox' };
+        : origin.kind === 'planner'
+          ? { name: 'planner' }
+          : origin.kind === 'career'
+            ? { name: 'career' }
+            : { name: 'sandbox' };
 
   useEffect(() => window.scrollTo(0, 0), [screen.name]);
   const home = () => setScreen({ name: 'menu' });
@@ -149,6 +156,8 @@ function Screens() {
             ? 'Sandbox'
             : screen.name === 'career' || screen.name === 'careerWeek'
               ? 'Career'
+              : screen.name === 'planner'
+                ? 'Planner'
               : screen.origin.kind === 'career'
                 ? 'Career'
                 : (screen.config.level?.title ?? 'Sandbox');
@@ -172,6 +181,23 @@ function Screens() {
             onSandbox={() => setScreen({ name: 'sandbox' })}
             career={careerState}
             onCareer={() => setScreen({ name: 'career' })}
+            onPlanner={() => setScreen({ name: 'planner' })}
+          />
+        );
+      case 'planner':
+        return (
+          <Planner
+            onBack={home}
+            onWatch={(config, name) =>
+              setScreen({
+                name: 'play',
+                config: { ...config, name },
+                seed: 1,
+                values: valuesFor(config, SANDBOX_LIVE),
+                origin: { kind: 'planner' },
+                run: Date.now(),
+              })
+            }
           />
         );
       case 'career':
@@ -262,10 +288,10 @@ function Screens() {
             seed={screen.seed}
             values={screen.values}
             onFinish={(runner) => finish(screen.config, screen.origin, runner, screen.seed)}
-            onQuit={() => setScreen(screen.origin.kind === 'career' ? { name: 'career' } : { name: 'menu' })}
+            onQuit={() => setScreen(screen.origin.kind === 'career' ? { name: 'career' } : screen.origin.kind === 'planner' ? { name: 'planner' } : { name: 'menu' })}
             live={screen.origin.kind === 'career' ? careerLive(screen.origin.state) : undefined}
             unit={screen.origin.kind === 'career' ? 'week' : 'shift'}
-            title={screen.origin.kind === 'career' ? `${screen.origin.state.hospital.name} · week ${screen.origin.state.week}` : undefined}
+            title={screen.origin.kind === 'career' ? `${screen.origin.state.hospital.name} · week ${screen.origin.state.week}` : screen.origin.kind === 'planner' ? `Planner · ${screen.config.name}` : undefined}
             canStop={screen.config.id === 'sandbox-endless'}
           />
         );
@@ -287,7 +313,7 @@ function Screens() {
             }
             onMenu={() => setScreen({ name: 'menu' })}
             onRetry={() => setScreen(back(o))}
-            retryLabel={o.kind === 'layout' ? 'Back to the layout' : o.kind === 'sandbox' ? 'Back to the sandbox' : undefined}
+            retryLabel={o.kind === 'layout' ? 'Back to the layout' : o.kind === 'sandbox' ? 'Back to the sandbox' : o.kind === 'planner' ? 'Back to the planner' : undefined}
             onNext={next ? () => setScreen({ name: 'briefing', level: next }) : undefined}
           />
         );

@@ -33,6 +33,7 @@
   --staff: #2553c9;
   --staff-triage: #7a4fc9;
   --staff-ft: #0f7c8a;
+  --staff-security: #3d4451;
   --boarding: #7b4bd6;
   --untriaged: #9a9890;
   --dot-ring: #ffffff;
@@ -82,6 +83,7 @@
     --staff: #7ea0ff;
     --staff-triage: #b597f5;
     --staff-ft: #45c2cf;
+    --staff-security: #aab4c3;
     --boarding: #b197fc;
     --untriaged: #7c7a74;
     --dot-ring: #151413;
@@ -125,6 +127,7 @@
   --staff: #7ea0ff;
   --staff-triage: #b597f5;
   --staff-ft: #45c2cf;
+  --staff-security: #aab4c3;
   --boarding: #b197fc;
   --untriaged: #7c7a74;
   --dot-ring: #151413;

@@ -36,6 +36,9 @@ export const PLANNER_KPIS: readonly Kpi[] = [
   { key: 'critical', label: 'Patients who became critical while waiting', metric: 'deterioration.critical', unit: 'count', better: 'lower' },
   { key: 'doctorUtil', label: 'Provider utilisation', metric: 'utilizationByRole.doctor', unit: 'share', better: 'lower' },
   { key: 'costPerDay', label: 'Cost per day', metric: 'cost.perDay', unit: 'money', better: 'lower' },
+  { key: 'incidents', label: 'Aggression incidents per 1,000 visits', metric: 'security.incidentsPer1000Visits', unit: 'count', better: 'lower' },
+  { key: 'violent', label: 'Violent incidents', metric: 'security.violent', unit: 'count', better: 'lower' },
+  { key: 'clinicianIncidentHours', label: 'Clinician hours lost to incidents', metric: 'security.clinicianHours', unit: 'hours', better: 'lower' },
 ];
 
 export interface Range {

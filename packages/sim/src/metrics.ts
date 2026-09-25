@@ -5,7 +5,7 @@
  */
 
 import { actualCost, type CostBreakdown } from './budget.js';
-import type { Simulation } from './engine.js';
+import type { IncidentRecord, Simulation } from './engine.js';
 import { compositeScore, type ScoreBreakdown } from './score.js';
 import { summarize, type Summary } from './stats.js';
 import { ACUITIES, ROLES, type Acuity, type Patient, type Role } from './types.js';
@@ -76,6 +76,24 @@ export interface Metrics {
     hallwayPatients: number;
     hallwayHours: number;
   };
+  /** Security module: agitation incidents inside the window (null when the module is off). */
+  security: {
+    incidents: number;
+    violent: number;
+    staffInjuries: number;
+    /** Per 1,000 visits in the window. */
+    incidentsPer1000Visits: number;
+    /** Who responded. */
+    bySecurity: number;
+    byClinician: number;
+    unanswered: number;
+    /** Average minutes until someone arrived. */
+    meanResponseMinutes: number | null;
+    /** Clinician time taken by incidents (hours): patient care that did not happen. */
+    clinicianHours: number;
+    /** Incidents by patients boarding in the ED. */
+    boarding: number;
+  } | null;
   /**
    * Where waiting went, in patient-hours inside the window: before triage, for a bed, for a
    * doctor (first evaluation), for test results, and admitted patients boarding in ED beds.
@@ -295,6 +313,7 @@ export function computeMetrics(sim: Simulation): Metrics {
       hallwayPatients,
       hallwayHours: sim.tw.hallway.integral(end) / 60,
     },
+    security: c.modules.security ? securityMetrics(sim.incidentLog.filter((x) => x.time >= start && x.time <= end), inWindow.length) : null,
     waits: Object.fromEntries(WAIT_CAUSES.map((k) => [k, waits[k] / 60])) as Record<WaitCause, number>,
     diagnosis: {
       misdiagnosisRate: c.modules.diagnosis && treated > 0 ? misdiagnosed / treated : null,
@@ -323,4 +342,20 @@ export function computeMetrics(sim: Simulation): Metrics {
   };
   const score = compositeScore(m, c.scoreTerms);
   return { ...m, compositeScore: score.score, scoreBreakdown: score.terms };
+}
+
+function securityMetrics(log: readonly IncidentRecord[], visits: number): NonNullable<Metrics['security']> {
+  const answered = log.filter((x) => x.responseMinutes !== null);
+  return {
+    incidents: log.length,
+    violent: log.filter((x) => x.violent).length,
+    staffInjuries: log.filter((x) => x.injury).length,
+    incidentsPer1000Visits: visits > 0 ? (1000 * log.length) / visits : 0,
+    bySecurity: log.filter((x) => x.responder === 'security').length,
+    byClinician: log.filter((x) => x.responder === 'clinician').length,
+    unanswered: log.filter((x) => x.responder === 'none').length,
+    meanResponseMinutes: answered.length ? answered.reduce((s, x) => s + x.responseMinutes!, 0) / answered.length : null,
+    clinicianHours: log.filter((x) => x.responder === 'clinician').reduce((s, x) => s + x.handleMinutes, 0) / 60,
+    boarding: log.filter((x) => x.boarding).length,
+  };
 }

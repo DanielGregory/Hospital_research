@@ -23,7 +23,7 @@ import {
   type TimedCommand,
 } from './types.js';
 
-export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout'] as const;
+export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout', 'security'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 /** Build phase each module lands in. Enabling a module before it is built is a config error. */
@@ -36,8 +36,9 @@ export const MODULE_PHASE: Record<ModuleName, number> = {
   layout: 4,
   process: 5,
   budget: 5,
+  security: 7,
 };
-export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget'];
+export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget', 'security'];
 
 export type ServiceDistribution = 'exponential' | 'lognormal';
 
@@ -101,6 +102,8 @@ export interface SimConfig {
     fastTrackClinicians?: number;
     nurses?: number;
     techs?: number;
+    /** Security officers (security module). */
+    securityOfficers?: number;
     /** Used only when the `staffing` module is on; roles left out keep their fixed count. */
     schedule?: Partial<Record<Role, Shift[]>>;
   };
@@ -165,6 +168,8 @@ export interface SimConfig {
     escalation?: boolean;
   };
   shocks?: ShockSpec[];
+  /** Security module: override any PARAMS.security number (e.g. riskShare for a scenario with more intoxicated patients). */
+  security?: Partial<Record<keyof typeof PARAMS.security, number>>;
   /** Budget module: cap on the planned cost per day of the starting setup. */
   budget?: { capPerDay?: number | null };
   /** Composite score terms (default: PARAMS.score.terms). */
@@ -230,6 +235,8 @@ export interface ResolvedConfig {
     dischargeHourlyWeights: number[];
   };
   burnout: typeof PARAMS.burnout;
+  /** Security module settings (PARAMS.security, with config overrides). */
+  security: { -readonly [K in keyof typeof PARAMS.security]: number };
   shocks: ShockSpec[];
   conditions: readonly ConditionSpec[];
   budgetCapPerDay: number | null;
@@ -310,7 +317,7 @@ export function validateConfig(raw: unknown): SimConfig {
   });
 
   section(c, 'staffing', p, (s) => {
-    for (const k of ['doctors', 'triageNurses', 'fastTrackClinicians', 'nurses', 'techs']) field(s, 'staffing', k, count, 'non-negative integer', p);
+    for (const k of ['doctors', 'triageNurses', 'fastTrackClinicians', 'nurses', 'techs', 'securityOfficers']) field(s, 'staffing', k, count, 'non-negative integer', p);
     section(s, 'schedule', p, (sch) => {
       for (const [role, shifts] of Object.entries(sch)) {
         if (!isRole(role)) p.push(`staffing.schedule.${role}: unknown role (known: ${ROLES.join(', ')})`);
@@ -383,6 +390,14 @@ export function validateConfig(raw: unknown): SimConfig {
     field(b, 'boarding', 'escalation', bool, 'true or false', p);
     if (count(b.inpatientBeds) && count(b.initialOccupied) && b.initialOccupied > b.inpatientBeds) p.push('boarding.initialOccupied: more than inpatientBeds');
   });
+
+  if (c.security !== undefined) {
+    if (!isObj(c.security)) p.push('security: object of setting -> number');
+    else
+      for (const [k, v] of Object.entries(c.security))
+        if (!(k in PARAMS.security)) p.push(`security.${k}: unknown setting (one of ${Object.keys(PARAMS.security).join(', ')})`);
+        else if (!nonNeg(v)) p.push(`security.${k}: non-negative number`);
+  }
 
   if (c.shocks !== undefined) {
     if (!Array.isArray(c.shocks)) p.push('shocks: must be an array');
@@ -691,8 +706,8 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
 
   // Every role a step needs must have someone to do it (or the patient waits forever).
   const staffFor = (role: Role) => {
-    const fixed = { doctor: c.staffing?.doctors, triageNurse: c.staffing?.triageNurses, fastTrackClinician: c.staffing?.fastTrackClinicians, nurse: c.staffing?.nurses, tech: c.staffing?.techs }[role];
-    const count = fixed ?? { doctor: PARAMS.staffing.doctors, triageNurse: PARAMS.staffing.triageNurses, fastTrackClinician: PARAMS.staffing.fastTrackClinicians, nurse: PARAMS.staffing.nurses, tech: PARAMS.staffing.techs }[role];
+    const fixed = { doctor: c.staffing?.doctors, triageNurse: c.staffing?.triageNurses, fastTrackClinician: c.staffing?.fastTrackClinicians, nurse: c.staffing?.nurses, tech: c.staffing?.techs, security: c.staffing?.securityOfficers }[role];
+    const count = fixed ?? { doctor: PARAMS.staffing.doctors, triageNurse: PARAMS.staffing.triageNurses, fastTrackClinician: PARAMS.staffing.fastTrackClinicians, nurse: PARAMS.staffing.nurses, tech: PARAMS.staffing.techs, security: PARAMS.staffing.securityOfficers }[role];
     return count > 0 || (modules.staffing && (c.staffing?.schedule?.[role]?.length ?? 0) > 0);
   };
   if (modules.process)
@@ -721,6 +736,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       fastTrackClinician: c.staffing?.fastTrackClinicians ?? PARAMS.staffing.fastTrackClinicians,
       nurse: c.staffing?.nurses ?? PARAMS.staffing.nurses,
       tech: c.staffing?.techs ?? PARAMS.staffing.techs,
+      security: c.staffing?.securityOfficers ?? PARAMS.staffing.securityOfficers,
     },
     schedule: copy(c.staffing?.schedule ?? {}),
     serviceDistribution,
@@ -766,6 +782,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       dischargeHourlyWeights: [...PARAMS.boarding.dischargeHourlyWeights],
     },
     burnout: PARAMS.burnout,
+    security: { ...PARAMS.security, ...(c.security ?? {}) },
     shocks: modules.shocks ? copy(c.shocks ?? []) : [],
     conditions: PARAMS.conditions,
     pipeline,

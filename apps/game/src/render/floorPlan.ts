@@ -105,6 +105,8 @@ export interface StaffMark {
   /** Area (or room) the mark stands in. */
   area: string;
   patientId?: number;
+  /** Security module: dealing with this patient's incident. */
+  respondingTo?: number;
 }
 
 export interface PatientDot {
@@ -117,6 +119,8 @@ export interface PatientDot {
   waited: number;
   /** Age, sex and presenting complaint (for tooltips; never the diagnosis). */
   profile?: PatientProfile;
+  /** Security module: in the middle of (or just after) an incident. */
+  agitated?: boolean;
   boarding: boolean;
   /** Arrived by ambulance in a mass-casualty event, or came back after discharge. */
   special: 'massCasualty' | 'bounceBack' | null;
@@ -250,6 +254,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
     acuity: p.assignedAcuity,
     waited: s.now - p.arrivalTime,
       profile: p.profile,
+      agitated: p.agitated,
     boarding: p.boarding,
     special: p.source === 'walkIn' ? null : p.source,
     byAmbulance: p.byAmbulance,
@@ -288,7 +293,7 @@ export function layoutFloor(s: SimSnapshot, width: number, height: number, showF
 
   // Staff: at their patient's bed when busy there, otherwise in a strip at the top of their area.
   const staff: StaffMark[] = [];
-  const roleArea: Record<Role, AreaId> = { triageNurse: 'triage', doctor: 'main', fastTrackClinician: 'fastTrack', nurse: 'main', tech: 'main' };
+  const roleArea: Record<Role, AreaId> = { triageNurse: 'triage', doctor: 'main', fastTrackClinician: 'fastTrack', nurse: 'main', tech: 'main', security: 'waiting' };
   const stripCount = new Map<AreaId, number>();
   for (const m of s.staff) {
     const mark = { id: m.id, role: m.role, busy: m.busy, leaving: m.retiring, fatigue: m.fatigue, patientId: m.patientId };

@@ -30,6 +30,7 @@ const ROLE_STYLE: Record<Role, { cssVar: string; letter: string }> = {
   fastTrackClinician: { cssVar: '--staff-ft', letter: 'F' },
   nurse: { cssVar: '--staff-triage', letter: 'N' },
   tech: { cssVar: '--staff-ft', letter: 'X' },
+  security: { cssVar: '--staff-security', letter: 'S' },
 };
 
 export function roleColor(role: Role): string {

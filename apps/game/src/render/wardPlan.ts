@@ -213,6 +213,7 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
     acuity: p.assignedAcuity,
     waited: s.now - p.arrivalTime,
     profile: p.profile,
+    agitated: p.agitated,
     boarding: p.boarding,
     special: p.source === 'walkIn' ? null : p.source,
     byAmbulance: p.byAmbulance,
@@ -275,8 +276,17 @@ export function layoutWard(s: SimSnapshot, showFastTrack: boolean): FloorPlan {
   const staff: StaffMark[] = [];
   let atStation = 0;
   let atFt = 0;
+  let atPost = 0;
   for (const m of s.staff) {
-    const mark = { id: m.id, role: m.role, busy: m.busy, leaving: m.retiring, fatigue: m.fatigue, patientId: m.patientId };
+    const mark = { id: m.id, role: m.role, busy: m.busy, leaving: m.retiring, fatigue: m.fatigue, patientId: m.patientId, respondingTo: m.respondingTo };
+    if (m.role === 'security') {
+      // Officers are posted by the waiting room and go to whoever is causing trouble.
+      const target = m.respondingTo !== undefined ? patients.find((p) => p.id === m.respondingTo) : undefined;
+      if (target) staff.push({ ...mark, x: target.x + 16, y: target.y + 10, area: target.area, pose: 'stand', face: -Math.PI / 2 });
+      else staff.push({ ...mark, x: waiting.x + waiting.w - 22 - (atPost % 3) * 22, y: waiting.y + waiting.h - 18, area: 'waiting', pose: 'stand', face: Math.PI });
+      atPost++;
+      continue;
+    }
     const at = staffPos.get(m.id);
     const booth = nurseBooth.get(m.id);
     if (booth !== undefined && !at) {

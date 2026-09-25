@@ -62,6 +62,8 @@ type SimEvent =
   | { kind: 'handover' }
   | { kind: 'inpatientDischarge' }
   | { kind: 'wardDischarge' }
+  | { kind: 'agitate'; patientId: number; token: number }
+  | { kind: 'incidentDone' }
   | { kind: 'callInArrive'; role: Role }
   | { kind: 'callInRelease'; staffId: number }
   | { kind: 'command'; command: Command };
@@ -75,6 +77,8 @@ const PRIORITY: Record<SimEvent['kind'], number> = {
   handover: 1,
   inpatientDischarge: 2,
   wardDischarge: 2,
+  agitate: 2,
+  incidentDone: 0,
   callInArrive: 1,
   callInRelease: 1,
   deteriorate: 2,
@@ -85,6 +89,21 @@ const PRIORITY: Record<SimEvent['kind'], number> = {
 };
 
 type StepStatus = 'blocked' | 'queued' | 'active' | 'turnaround' | 'done' | 'skipped';
+
+export interface IncidentRecord {
+  time: number;
+  patientId: number;
+  violent: boolean;
+  /** A member of staff was hurt. */
+  injury: boolean;
+  /** Who dealt with it: a security officer, a clinician pulled off patient care, or nobody free at all. */
+  responder: 'security' | 'clinician' | 'none';
+  /** Minutes until someone arrived (null when nobody came). */
+  responseMinutes: number | null;
+  handleMinutes: number;
+  /** The patient was admitted and boarding in the ED. */
+  boarding: boolean;
+}
 
 interface Task {
   id: number;
@@ -126,6 +145,8 @@ interface Runtime {
   evalFatigue: number;
   /** Fatigue of the triage nurse (triage errors). */
   triageFatigue: number;
+  /** Security module: invalidates a pending agitation check. */
+  agitationToken: number;
 }
 
 interface Staff {
@@ -145,6 +166,9 @@ interface Staff {
   loc: number;
   /** Called in from on-call: outside the schedule and fixed counts until released. */
   callIn?: boolean;
+  /** Security module: busy with an incident until this time (no patient work meanwhile), and whose. */
+  incidentUntil?: number;
+  incidentPatient?: number;
 }
 
 /** Where a patient is, for renderers. */
@@ -170,6 +194,8 @@ export interface PatientView {
   byAmbulance: boolean;
   /** Age, sex and what they say brings them in (never the hidden diagnosis). */
   profile: PatientProfile;
+  /** Security module: an incident in the last 45 minutes. */
+  agitated: boolean;
   /** In a hallway space (main ED, past the regular beds). */
   hallway: boolean;
 }
@@ -180,7 +206,7 @@ export interface SimSnapshot {
   finished: boolean;
   /** Everyone currently in the department, in id order. */
   patients: PatientView[];
-  staff: { id: number; role: Role; busy: boolean; retiring: boolean; fatigue: number; patientId?: number; room?: string }[];
+  staff: { id: number; role: Role; busy: boolean; retiring: boolean; fatigue: number; patientId?: number; room?: string; /** Security module: dealing with this patient's incident. */ respondingTo?: number }[];
   /** traumaBays: main beds with index below this are trauma bays. */
   beds: Record<Lane, { capacity: number | null; occupied: number; traumaBays: number }>;
   /** Inpatient beds for admissions (boarding module), else null. */
@@ -282,7 +308,7 @@ export class Simulation {
   /** Walks inside the measurement window (layout module), keyed "who:from:to". */
   private readonly trips = new Map<string, number>();
   /** Minutes spent walking, by role (inside the measurement window). */
-  readonly walkingMinutes: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 };
+  readonly walkingMinutes: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0, security: 0 };
 
   private inpatientOccupied: number;
   /** Ward model by length of stay: beds freed early by escalation, whose scheduled discharge is then skipped. */
@@ -296,6 +322,8 @@ export class Simulation {
   divertedMeasured = 0;
   /** Times a doctor was pulled away from a less urgent patient. */
   preemptions = 0;
+  /** Security module: every incident, in time order. */
+  readonly incidentLog: IncidentRecord[] = [];
   private readonly log: TimedCommand[] = [];
 
   // Live settings (commands change these).
@@ -305,7 +333,7 @@ export class Simulation {
   private fastTrackWasOpen = false;
   private readonly schedule: Partial<Record<Role, Shift[]>>;
   private readonly fixedTarget: Record<Role, number>;
-  private readonly scheduleVersion: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 };
+  private readonly scheduleVersion: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0, security: 0 };
 
   /** Time-weighted accumulators over [warmup, duration]. */
   readonly tw: {
@@ -583,6 +611,7 @@ export class Simulation {
         source: p.source,
         byAmbulance: p.byAmbulance === true,
         profile: p.profile,
+        agitated: p.lastIncidentAt !== undefined && this.clock - p.lastIncidentAt < 45,
         hallway: r.hasBed && p.lane !== undefined && this.isHallway(p.lane, p.bed!),
       });
     }
@@ -603,6 +632,7 @@ export class Simulation {
         retiring: s.retiring,
         fatigue: this.fatigue(s),
         patientId: s.taskId === null ? undefined : this.tasks.get(s.taskId)!.patientId,
+        respondingTo: (s.incidentUntil ?? -1) > this.now ? s.incidentPatient : undefined,
         room: this.config.layout && s.loc > 0 ? this.config.layout.rooms[s.loc - 1]!.id : undefined,
       })),
       beds: { main: bedInfo('main'), fastTrack: bedInfo('fastTrack') },
@@ -696,6 +726,11 @@ export class Simulation {
       case 'inpatientDischarge':
         this.onInpatientDischarge();
         break;
+      case 'agitate':
+        this.onAgitate(ev.patientId, ev.token);
+        break;
+      case 'incidentDone':
+        break; // the dispatch after every event puts the responder back to work
       case 'wardDischarge':
         // A bed an early (escalation) discharge already freed: nothing left to free.
         if (this.wardFreedEarly > 0) this.wardFreedEarly--;
@@ -760,6 +795,7 @@ export class Simulation {
       status: pipe.steps.map(() => 'blocked'),
       taskIds: pipe.steps.map(() => undefined),
       bedRequested: false,
+      agitationToken: 0,
       hasBed: false,
       activeTasks: 0,
       wantsToLeave: false,
@@ -786,6 +822,15 @@ export class Simulation {
     }
     if (c.lwbs.enabled && Number.isFinite(patienceMinutes)) this.push(this.clock + patienceMinutes, { kind: 'abandon', patientId: p.id });
     if (c.deterioration.enabled) this.scheduleDeterioration(p);
+    if (c.modules.security) {
+      // Who is at risk comes from a stream of its own, so nobody else's draws change.
+      const share = c.security.riskShare + (condition.id === 'overdose' ? c.security.overdoseExtra : 0);
+      if (this.root.stream(`security:${spec.stream}`).next() < share) {
+        p.atRisk = true;
+        p.incidents = 0;
+        this.scheduleAgitation(p);
+      }
+    }
     this.advance(p);
   }
 
@@ -956,6 +1001,8 @@ export class Simulation {
     }
     // Boarding: stays in the ED bed until an inpatient bed frees up.
     p.boardingStartTime = this.clock;
+    // Long boarding frustrates too.
+    if (p.atRisk && (p.incidents ?? 0) < c.security.maxIncidentsPerPatient) this.scheduleAgitation(p);
     r.finished = true;
     this.boarders.push(p.id);
   }
@@ -1013,6 +1060,79 @@ export class Simulation {
     });
     if (p.lane !== undefined) this.bedQueues[p.lane].remove(p.id);
     if (this.holdsBed(p)) this.releaseBed(p);
+  }
+
+  // --- security module ----------------------------------------------------------
+
+  /** When an at-risk patient's patience for waiting runs out (shorter when the department is crowded). */
+  private scheduleAgitation(p: Patient): void {
+    const sc = this.config.security;
+    const r = this.rt[p.id]!;
+    const rng = r.rng.stream(`agitation:${p.incidents ?? 0}:${p.boardingStartTime === undefined ? 'wait' : 'board'}`);
+    const tolerance = drawDuration(rng, sc.toleranceMeanMinutes, sc.toleranceCv, 'lognormal') / (1 + (sc.crowdingEffect * this.notSeen) / 10);
+    this.push(this.clock + tolerance, { kind: 'agitate', patientId: p.id, token: ++r.agitationToken });
+  }
+
+  private onAgitate(id: number, token: number): void {
+    const p = this.patients[id]!;
+    const r = this.rt[id]!;
+    if (token !== r.agitationToken || p.departureTime !== undefined) return;
+    const boarding = p.boardingStartTime !== undefined;
+    // Once a clinician has seen them (and they are not stuck boarding), they are being looked after.
+    if (!boarding && r.seen) return;
+    this.incident(p);
+  }
+
+  private incident(p: Patient): void {
+    const c = this.config;
+    const sc = c.security;
+    const r = this.rt[p.id]!;
+    p.incidents = (p.incidents ?? 0) + 1;
+    p.lastIncidentAt = this.clock;
+    const rng = r.rng.stream(`incident:${p.incidents}`);
+    const [uViolent, uInjury, uLeave, uTime] = [rng.next(), rng.next(), rng.next(), rng];
+    const where = this.holdsBed(p) && p.lane !== undefined && p.bed !== undefined ? this.bedLoc[p.lane][p.bed]! : this.waitLoc(p);
+    const free = (s: Staff) => !s.retiring && s.taskId === null && (s.incidentUntil ?? -1) <= this.clock;
+    const officer = this.staff.find((s) => s.role === 'security' && !s.retiring && (s.incidentUntil ?? -1) <= this.clock);
+    const walk = (s: Staff) => (c.layout ? c.layout.dist[s.loc]![where]! * c.walking.minutesPerCell : 0);
+    const violent = uViolent < Math.min(1, sc.violentShare * (officer ? 1 : sc.noSecurityViolentFactor));
+    const injury = violent && uInjury < (officer ? sc.injuryWithSecurity : sc.injuryWithoutSecurity);
+    const handle = drawDuration(uTime, violent ? sc.violentMinutes : sc.verbalMinutes, 0.6, 'lognormal');
+    let responder: IncidentRecord['responder'] = 'none';
+    let response: number | null = null;
+    if (officer) {
+      response = sc.responseMinutes + walk(officer);
+      officer.incidentUntil = this.clock + response + handle;
+      officer.incidentPatient = p.id;
+      this.push(officer.incidentUntil, { kind: 'incidentDone' });
+      responder = 'security';
+    } else {
+      // No officer free: a clinician steps in (the triage nurse first), leaving their patients waiting.
+      const roles: Role[] = ['triageNurse', 'doctor'];
+      let s = roles.map((role) => this.staff.find((x) => x.role === role && free(x))).find((x) => x !== undefined);
+      if (s) {
+        s.incidentUntil = this.clock + handle;
+        s.incidentPatient = p.id;
+        this.push(s.incidentUntil, { kind: 'incidentDone' });
+      } else {
+        s = roles.map((role) => this.staff.find((x) => x.role === role && !x.retiring && x.taskId !== null && x.taskEnd !== undefined)).find((x) => x !== undefined);
+        if (s) {
+          // Their current task is put off by the time it takes.
+          s.taskEnd = s.taskEnd! + handle;
+          this.push(s.taskEnd, { kind: 'taskEnd', staffId: s.id, token: ++s.taskToken });
+        }
+      }
+      if (s) {
+        responder = 'clinician';
+        response = walk(s);
+      }
+    }
+    this.incidentLog.push({ time: this.clock, patientId: p.id, violent, injury, responder, responseMinutes: response, handleMinutes: handle, boarding: p.boardingStartTime !== undefined });
+    // Afterwards: some leave before being seen; others settle for a while and may flare up again.
+    if (!r.seen && !r.finished && uLeave < sc.leaveAfterIncident) {
+      if (r.activeTasks > 0) r.wantsToLeave = true;
+      else this.leaveWithoutBeingSeen(p);
+    } else if (p.incidents < sc.maxIncidentsPerPatient) this.scheduleAgitation(p);
   }
 
   private leaveWithoutBeingSeen(p: Patient): void {
@@ -1261,7 +1381,7 @@ export class Simulation {
     this.preempt();
     const ftClosed = !this.fastTrackOpen();
     for (const s of this.staff) {
-      if (s.taskId !== null || s.retiring) continue;
+      if (s.taskId !== null || s.retiring || (s.incidentUntil ?? -1) > this.clock) continue;
       let tid = this.pools[s.role].pop();
       if (tid === undefined && s.role === 'doctor' && (this.config.fastTrack.doctorsTakeOverflow || ftClosed)) {
         // A free main-ED doctor picks up fast-track work rather than sit idle.
@@ -1381,7 +1501,9 @@ export class Simulation {
     // Staff start at their base: triage room for triage nurses, the staff station for everyone else.
     const loc = !this.config.layout
       ? 0
-      : role === 'triageNurse' && this.triageLocs.length
+      : role === 'security'
+        ? this.waitingLoc
+        : role === 'triageNurse' && this.triageLocs.length
         ? this.triageLocs[id % this.triageLocs.length]!
         : role === 'fastTrackClinician' && this.bedLoc.fastTrack.length
           ? this.bedLoc.fastTrack[0]!

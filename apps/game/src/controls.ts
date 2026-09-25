@@ -77,6 +77,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   fastTrackClinician: 'Fast-track clinicians',
   nurse: 'Nurses',
   tech: 'Technicians',
+  security: 'Security officers',
 };
 
 export function scheduleRole(ctl: PlayerControl): Role | undefined {

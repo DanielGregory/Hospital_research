@@ -73,6 +73,7 @@ export function layoutGrid(s: SimSnapshot, layout: ResolvedLayout, width: number
       acuity: p.assignedAcuity,
       waited: s.now - p.arrivalTime,
       profile: p.profile,
+      agitated: p.agitated,
       boarding: p.boarding,
       special: p.source === 'walkIn' ? null : p.source,
     byAmbulance: p.byAmbulance,

@@ -25,6 +25,7 @@ const MODULE_TEXT: Record<ModuleName, [string, string]> = {
   budget: ['Budget', 'A daily cap on the cost of your setup.'],
   shocks: ['Shocks', 'A surge of extra patients on day two.'],
   burnout: ['Burnout', 'Tired staff get slower and make more mistakes.'],
+  security: ['Security', 'Some patients become agitated when waits run long; security officers respond, or clinicians get pulled in.'],
 };
 
 export interface SandboxState {
@@ -36,6 +37,7 @@ export interface SandboxState {
   fastTrackClinicians: number;
   nurses: number;
   techs: number;
+  securityOfficers: number;
   bedsMain: number;
   bedsFastTrack: number;
   discipline: QueueDiscipline;
@@ -80,6 +82,7 @@ export function defaultSandbox(): SandboxState {
     fastTrackClinicians: 0,
     nurses: 0,
     techs: 0,
+    securityOfficers: 1,
     bedsMain: 20,
     bedsFastTrack: 6,
     discipline: 'acuity',
@@ -115,6 +118,7 @@ export function sandboxConfig(s: SandboxState): GameConfig {
       fastTrackClinicians: s.fastTrackClinicians,
       nurses: s.nurses,
       techs: s.techs,
+      securityOfficers: s.securityOfficers,
       ...(m.staffing
         ? {
             schedule: {
@@ -225,6 +229,7 @@ export function Sandbox(props: {
           {stepper('Fast-track clinicians', 'fastTrackClinicians', 0, 4)}
           {s.modules.process && stepper('Nurses', 'nurses', 0, 10)}
           {s.modules.process && stepper('Technicians', 'techs', 0, 6)}
+          {s.modules.security && stepper('Security officers', 'securityOfficers', 0, 6)}
           {!s.modules.layout && stepper('Main beds', 'bedsMain', 1, 60)}
           {!s.modules.layout && stepper('Fast-track beds', 'bedsFastTrack', 1, 20)}
           <span className="knob">

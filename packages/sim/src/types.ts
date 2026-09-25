@@ -4,8 +4,8 @@ import type { StepInput } from './config.js';
 export type Acuity = 1 | 2 | 3 | 4 | 5;
 export const ACUITIES: readonly Acuity[] = [1, 2, 3, 4, 5];
 
-export type Role = 'triageNurse' | 'doctor' | 'fastTrackClinician' | 'nurse' | 'tech';
-export const ROLES: readonly Role[] = ['triageNurse', 'doctor', 'fastTrackClinician', 'nurse', 'tech'];
+export type Role = 'triageNurse' | 'doctor' | 'fastTrackClinician' | 'nurse' | 'tech' | 'security';
+export const ROLES: readonly Role[] = ['triageNurse', 'doctor', 'fastTrackClinician', 'nurse', 'tech', 'security'];
 
 /**
  * One part of a composite score: 1 at or better than `target`, 0 at or worse than `worst`,
@@ -103,6 +103,10 @@ export interface Patient {
   hallway?: boolean;
   /** Worsened to ESI 1 while waiting for a doctor. */
   becameCritical?: boolean;
+  /** Security module: at risk of agitation (intoxication, behavioural crisis, frustration), and incidents they caused. */
+  atRisk?: boolean;
+  incidents?: number;
+  lastIncidentAt?: number;
 }
 
 export interface Shift {

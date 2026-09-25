@@ -1,6 +1,6 @@
 import { Simulation } from './engine.js';
 
-export { Simulation, TIMELINE_STEP, type SimSnapshot, type RunResult, type PatientView, type PatientLocation, type FatigueRecord, type TimelineSample } from './engine.js';
+export { Simulation, TIMELINE_STEP, type IncidentRecord, type SimSnapshot, type RunResult, type PatientView, type PatientLocation, type FatigueRecord, type TimelineSample } from './engine.js';
 export {
   resolveConfig,
   validateConfig,

@@ -50,7 +50,7 @@ export function actualCost(
   bedMinutes: Record<Lane, number>,
   escalatedMinutes: number,
   windowMinutes: number,
-  live: { callInMinutes: Record<Role, number>; diverted: number } = { callInMinutes: { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 }, diverted: 0 },
+  live: { callInMinutes: Record<Role, number>; diverted: number } = { callInMinutes: { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0, security: 0 }, diverted: 0 },
 ): CostBreakdown {
   const b = c.budgetRates;
   const staff = ROLES.reduce((s, r) => s + (staffMinutes[r] / 60) * b.hourlyWage[r], 0);

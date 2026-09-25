@@ -170,7 +170,7 @@ class Figure {
   style(a: Actor, gown: boolean) {
     const key =
       a.kind === 'patient'
-        ? `p|${a.data.acuity ?? '-'}|${a.data.boarding}|${a.data.special}|${a.data.waited > 120}|${gown}`
+        ? `p|${a.data.acuity ?? '-'}|${a.data.boarding}|${a.data.special}|${a.data.waited > 120}|${gown}|${a.data.agitated === true}`
         : `s|${a.data.role}|${a.data.busy}`;
     if (key === this.styleKey) return;
     this.styleKey = key;
@@ -192,8 +192,11 @@ class Figure {
       shirt = gown ? this.scene.theme.gown : CLOTHES[(id * 13) % CLOTHES.length]!;
       trousers = gown ? this.scene.theme.gown : TROUSERS[(id * 5) % TROUSERS.length]!;
       this.blanket.material = m(this.scene.theme.blanket);
-      this.badge.material = this.scene.badge(a.data.acuity === undefined ? '' : String(a.data.acuity), acuityColor(a.data.acuity), 'circle');
-      if (a.data.boarding) ring = css('--boarding', '#7b4bd6');
+      this.badge.material = a.data.agitated
+        ? this.scene.badge('!', css('--fail', '#b3261e'), 'square')
+        : this.scene.badge(a.data.acuity === undefined ? '' : String(a.data.acuity), acuityColor(a.data.acuity), 'circle');
+      if (a.data.agitated) ring = css('--fail', '#b3261e');
+      else if (a.data.boarding) ring = css('--boarding', '#7b4bd6');
       else if (a.data.special === 'massCasualty') ring = css('--fail', '#b3261e');
       else if (a.data.waited > 120) ring = css('--ink', '#1d1c19');
     } else {

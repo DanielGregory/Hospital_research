@@ -30,6 +30,37 @@ export const PARAMS = {
   },
 
   /** Career mode: money, reputation, upgrades and the weeks' events. */
+  /**
+   * Security module: agitation and incidents. A share of patients is at risk (intoxication, behavioural
+   * crisis, long frustration); if still waiting when their tolerance runs out, there is an incident.
+   * Crowding shortens tolerance. A free security officer responds; without one a clinician is pulled
+   * off patient care, and incidents turn violent more often. All PLACEHOLDER.
+   */
+  security: {
+    /** Share of patients at risk of an incident, plus an extra share for overdose presentations. */
+    riskShare: 0.05, // PLACEHOLDER
+    overdoseExtra: 0.35, // PLACEHOLDER
+    /** Minutes an at-risk patient tolerates waiting (lognormal mean, cv), before crowding. */
+    toleranceMeanMinutes: 75, // PLACEHOLDER
+    toleranceCv: 0.8, // PLACEHOLDER
+    /** Tolerance is divided by 1 + this × (people waiting ÷ 10). */
+    crowdingEffect: 0.5, // PLACEHOLDER
+    /** Share of incidents that turn violent with a security response; multiplied when nobody from security comes. */
+    violentShare: 0.12, // PLACEHOLDER
+    noSecurityViolentFactor: 2.2, // PLACEHOLDER
+    /** Chance a violent incident injures staff: with and without security there. */
+    injuryWithSecurity: 0.08, // PLACEHOLDER
+    injuryWithoutSecurity: 0.3, // PLACEHOLDER
+    /** Minutes for an officer to arrive (plus walking with the layout module). */
+    responseMinutes: 3, // PLACEHOLDER
+    /** Minutes to de-escalate (lognormal means; cv 0.6): verbal and violent incidents. */
+    verbalMinutes: 15, // PLACEHOLDER
+    violentMinutes: 40, // PLACEHOLDER
+    /** After an incident: chance the patient leaves before being seen; at most this many incidents per patient. */
+    leaveAfterIncident: 0.25, // PLACEHOLDER
+    maxIncidentsPerPatient: 2, // PLACEHOLDER
+  },
+
   career: {
     startMoney: 250_000, // PLACEHOLDER
     startReputation: 60, // PLACEHOLDER
@@ -236,7 +267,7 @@ export const PARAMS = {
 
   budget: {
     /** Cost per staffed hour, by role (currency units; think dollars). */
-    hourlyWage: { doctor: 150, triageNurse: 55, fastTrackClinician: 90, nurse: 50, tech: 40 } as Record<Role, number>, // PLACEHOLDER
+    hourlyWage: { doctor: 150, triageNurse: 55, fastTrackClinician: 90, nurse: 50, tech: 40, security: 38 } as Record<Role, number>, // PLACEHOLDER
     /** Running cost of one treatment space per day (equipment, cleaning, overhead). */
     bedPerDay: { main: 180, fastTrack: 90 } as Record<Lane, number>, // PLACEHOLDER
     /** Hospital full-capacity protocol, per hour in force (ward overtime, transport). */
@@ -268,6 +299,8 @@ export const PARAMS = {
     /** Bedside nurses and techs: only used by custom process steps (Phase 5). */
     nurses: 0,
     techs: 0,
+    /** Security officers (security module). */
+    securityOfficers: 0,
   },
 
   run: {

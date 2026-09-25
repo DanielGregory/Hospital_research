@@ -77,6 +77,13 @@ export interface Metrics {
     hallwayPatients: number;
     hallwayHours: number;
   };
+  /**
+   * Why patients waited for a main ED bed (patient-hours in the window): every bed full, the part of
+   * that when boarders held the beds, and a free bed with no nurse to take them (nursing module).
+   */
+  bedWaits: { bedsFull: number; heldByBoarders: number; noNurse: number };
+  /** Nursing module: bedside nurse hours and average nurses on duty (null when off). */
+  nursing: { nurseHours: number; meanNursesOnDuty: number } | null;
   /** Diagnostics module: per service, orders, waits for a machine or analyser, turnaround, how busy it was and the worst backlog. */
   diagnostics: Record<
     ServiceId,
@@ -321,6 +328,12 @@ export function computeMetrics(sim: Simulation): Metrics {
       hallwayPatients,
       hallwayHours: sim.tw.hallway.integral(end) / 60,
     },
+    bedWaits: {
+      bedsFull: sim.tw.bedWaitFull.integral(end) / 60,
+      heldByBoarders: sim.tw.bedWaitBoarders.integral(end) / 60,
+      noNurse: sim.tw.bedWaitNursing.integral(end) / 60,
+    },
+    nursing: c.modules.nursing ? { nurseHours: sim.tw.onDuty.nurse.integral(end) / 60, meanNursesOnDuty: span > 0 ? sim.tw.onDuty.nurse.integral(end) / span : 0 } : null,
     diagnostics: c.modules.diagnostics ? diagnosticsMetrics(c, inWindow, sim.serviceStats()!, span) : null,
     security: c.modules.security ? securityMetrics(sim.incidentLog.filter((x) => x.time >= start && x.time <= end), inWindow.length) : null,
     waits: Object.fromEntries(WAIT_CAUSES.map((k) => [k, waits[k] / 60])) as Record<WaitCause, number>,

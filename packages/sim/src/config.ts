@@ -27,7 +27,7 @@ import {
   type TimedCommand,
 } from './types.js';
 
-export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout', 'security', 'diagnostics'] as const;
+export const MODULES = ['layout', 'staffing', 'process', 'diagnosis', 'boarding', 'budget', 'shocks', 'burnout', 'security', 'diagnostics', 'nursing'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 /** Build phase each module lands in. Enabling a module before it is built is a config error. */
@@ -42,8 +42,9 @@ export const MODULE_PHASE: Record<ModuleName, number> = {
   budget: 5,
   security: 7,
   diagnostics: 7,
+  nursing: 7,
 };
-export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget', 'security', 'diagnostics'];
+export const IMPLEMENTED_MODULES: readonly ModuleName[] = ['staffing', 'shocks', 'boarding', 'diagnosis', 'burnout', 'layout', 'process', 'budget', 'security', 'diagnostics', 'nursing'];
 
 export type ServiceDistribution = 'exponential' | 'lognormal';
 
@@ -180,6 +181,8 @@ export interface SimConfig {
     escalation?: boolean;
   };
   shocks?: ShockSpec[];
+  /** Nursing module: patients per bedside nurse by acuity, and for ICU boarders. */
+  nursing?: { patientsPerNurseByAcuity?: Partial<Record<`${Acuity}`, number>>; icuBoarderPatientsPerNurse?: number };
   /** Diagnostics module: capacity and timing per service (servers, processMinutes, reportMinutes, openHours [from, to] or null). */
   diagnostics?: { services?: Partial<Record<ServiceId, Partial<{ servers: number; processMinutes: number; reportMinutes: number; openHours: [number, number] | null }>>> };
   /** Security module: override any PARAMS.security number (e.g. riskShare for a scenario with more intoxicated patients). */
@@ -252,6 +255,8 @@ export interface ResolvedConfig {
     dischargeHourlyWeights: number[];
   };
   burnout: typeof PARAMS.burnout;
+  /** Nursing module: patients per bedside nurse. */
+  nursing: { patientsPerNurseByAcuity: Record<Acuity, number>; icuBoarderPatientsPerNurse: number };
   /** Diagnostics module: services with config overrides. */
   diagnostics: { services: Record<ServiceId, { servers: number; processMinutes: number; reportMinutes: number; openHours: [number, number] | null }>; cv: number; ordersByCondition: Record<string, Partial<Record<ServiceId, number>>> };
   /** Security module settings (PARAMS.security, with config overrides). */
@@ -423,6 +428,16 @@ export function validateConfig(raw: unknown): SimConfig {
     field(b, 'boarding', 'escalation', bool, 'true or false', p);
     if (count(b.inpatientBeds) && count(b.initialOccupied) && b.initialOccupied > b.inpatientBeds) p.push('boarding.initialOccupied: more than inpatientBeds');
   });
+
+  if (c.nursing !== undefined) {
+    const n = c.nursing;
+    if (!isObj(n)) p.push('nursing: { patientsPerNurseByAcuity?, icuBoarderPatientsPerNurse? }');
+    else {
+      if (n.patientsPerNurseByAcuity !== undefined) p.push(...checkAcuityMap(n.patientsPerNurseByAcuity, 'nursing.patientsPerNurseByAcuity', (x) => typeof x === 'number' && x > 0, 'positive'));
+      if (n.icuBoarderPatientsPerNurse !== undefined && !(typeof n.icuBoarderPatientsPerNurse === 'number' && n.icuBoarderPatientsPerNurse > 0))
+        p.push('nursing.icuBoarderPatientsPerNurse: positive number');
+    }
+  }
 
   if (c.diagnostics !== undefined) {
     const d = c.diagnostics;
@@ -757,7 +772,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
   // Every role a step needs must have someone to do it (or the patient waits forever).
   const staffFor = (role: Role) => {
     const fixed = { doctor: c.staffing?.doctors, triageNurse: c.staffing?.triageNurses, fastTrackClinician: c.staffing?.fastTrackClinicians, nurse: c.staffing?.nurses, tech: c.staffing?.techs, security: c.staffing?.securityOfficers }[role];
-    const count = fixed ?? { doctor: PARAMS.staffing.doctors, triageNurse: PARAMS.staffing.triageNurses, fastTrackClinician: PARAMS.staffing.fastTrackClinicians, nurse: PARAMS.staffing.nurses, tech: PARAMS.staffing.techs, security: PARAMS.staffing.securityOfficers }[role];
+    const count = fixed ?? { doctor: PARAMS.staffing.doctors, triageNurse: PARAMS.staffing.triageNurses, fastTrackClinician: PARAMS.staffing.fastTrackClinicians, nurse: modules.nursing ? PARAMS.nursing.defaultNurses : PARAMS.staffing.nurses, tech: PARAMS.staffing.techs, security: PARAMS.staffing.securityOfficers }[role];
     return count > 0 || (modules.staffing && (c.staffing?.schedule?.[role]?.length ?? 0) > 0);
   };
   if (modules.process)
@@ -784,7 +799,8 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       doctor: c.staffing?.doctors ?? PARAMS.staffing.doctors,
       triageNurse: c.staffing?.triageNurses ?? PARAMS.staffing.triageNurses,
       fastTrackClinician: c.staffing?.fastTrackClinicians ?? PARAMS.staffing.fastTrackClinicians,
-      nurse: c.staffing?.nurses ?? PARAMS.staffing.nurses,
+      // Nursing on without nurses given: a typical team, so beds are not all unstaffed.
+      nurse: c.staffing?.nurses ?? (modules.nursing && !c.staffing?.schedule?.nurse ? PARAMS.nursing.defaultNurses : PARAMS.staffing.nurses),
       tech: c.staffing?.techs ?? PARAMS.staffing.techs,
       security: c.staffing?.securityOfficers ?? PARAMS.staffing.securityOfficers,
     },
@@ -844,6 +860,12 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     },
     burnout: PARAMS.burnout,
     security: { ...PARAMS.security, ...(c.security ?? {}) },
+    nursing: {
+      patientsPerNurseByAcuity: Object.fromEntries(
+        ACUITIES.map((a) => [a, c.nursing?.patientsPerNurseByAcuity?.[`${a}`] ?? PARAMS.nursing.patientsPerNurseByAcuity[a]]),
+      ) as Record<Acuity, number>,
+      icuBoarderPatientsPerNurse: c.nursing?.icuBoarderPatientsPerNurse ?? PARAMS.nursing.icuBoarderPatientsPerNurse,
+    },
     diagnostics: {
       services: Object.fromEntries(SERVICE_IDS.map((sv) => [sv, { ...PARAMS.diagnostics.services[sv], ...(c.diagnostics?.services?.[sv] ?? {}) }])) as ResolvedConfig['diagnostics']['services'],
       cv: PARAMS.diagnostics.cv,

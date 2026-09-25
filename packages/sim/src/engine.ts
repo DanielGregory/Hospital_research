@@ -332,6 +332,8 @@ export class Simulation {
   readonly walkingMinutes: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0, security: 0 };
 
   private inpatientOccupied: number;
+  /** Nursing module: a free main ED bed could not be used for lack of a nurse (as of the last bed check). */
+  private nursingBlocked = false;
   /** Ward model by length of stay: beds freed early by escalation, whose scheduled discharge is then skipped. */
   private wardFreedEarly = 0;
   /** Separate inpatient units (boarding.units), or null for one ward pool. */
@@ -376,6 +378,12 @@ export class Simulation {
     diversion: TimeWeighted;
     hallway: TimeWeighted;
     hallwayOpen: TimeWeighted;
+    /** Patients waiting for a main ED bed while a bed was free but no nurse could take them (nursing module). */
+    bedWaitNursing: TimeWeighted;
+    /** Patients waiting for a main ED bed while all beds were full, weighted by the share held by boarders. */
+    bedWaitBoarders: TimeWeighted;
+    /** Patients waiting for a main ED bed while all beds were full (any reason). */
+    bedWaitFull: TimeWeighted;
     /** Called-in staff on duty, by role (premium pay). */
     callIn: Record<Role, TimeWeighted>;
   };
@@ -424,6 +432,9 @@ export class Simulation {
       diversion: new TimeWeighted(w0, w1),
       hallway: new TimeWeighted(w0, w1),
       hallwayOpen: new TimeWeighted(w0, w1),
+      bedWaitNursing: new TimeWeighted(w0, w1),
+      bedWaitBoarders: new TimeWeighted(w0, w1),
+      bedWaitFull: new TimeWeighted(w0, w1),
       callIn: perRole(),
     };
 
@@ -1444,10 +1455,18 @@ export class Simulation {
 
   private fillBeds(lane: Lane): void {
     const used = this.bedsUsed[lane];
+    const nursing = lane === 'main' && this.config.modules.nursing;
+    if (nursing) this.nursingBlocked = false;
     for (;;) {
       const occupied = used.filter((x) => x !== null).length;
       if (occupied >= this.bedCapacity[lane] + this.hallwayFor(lane) || this.bedQueues[lane].size === 0) return;
-      const idx = this.pickBed(lane, this.patients[this.bedQueues[lane].peek()!]!);
+      const next = this.patients[this.bedQueues[lane].peek()!]!;
+      // Staffed beds: the nurses on duty must be able to take one more patient like this.
+      if (nursing && this.nurseLoad() + this.nurseWeight(next) > this.activeCount('nurse') + 1e-9) {
+        this.nursingBlocked = true;
+        return;
+      }
+      const idx = this.pickBed(lane, next);
       if (idx < 0) return;
       const id = this.bedQueues[lane].pop()!;
       const p = this.patients[id]!;
@@ -1528,6 +1547,20 @@ export class Simulation {
     this.fillBeds(lane);
   }
 
+  /** Share of a bedside nurse a patient in a main ED bed needs (nursing module). */
+  private nurseWeight(p: Patient): number {
+    const n = this.config.nursing;
+    if (p.admitUnit === 'icu' && p.boardingStartTime !== undefined) return 1 / n.icuBoarderPatientsPerNurse;
+    return 1 / n.patientsPerNurseByAcuity[p.assignedAcuity ?? p.trueAcuity];
+  }
+
+  /** Nurses' worth of patients in main ED beds now. */
+  private nurseLoad(): number {
+    let load = 0;
+    for (const id of this.bedsUsed.main) if (id !== null && id !== undefined) load += this.nurseWeight(this.patients[id]!);
+    return load;
+  }
+
   /** Holds a bed (in it, or on the way to it). */
   private holdsBed(p: Patient): boolean {
     return p.lane !== undefined && p.bed !== undefined && this.bedsUsed[p.lane][p.bed] === p.id;
@@ -1558,6 +1591,8 @@ export class Simulation {
       this.fastTrackWasOpen = open;
       this.rerouteBedQueues();
     }
+    // Staffed beds: a nurse coming on shift (or a patient needing less nursing) can open a bed.
+    if (this.config.modules.nursing) this.fillBeds('main');
     this.dispatch();
     this.updateCounters();
   }
@@ -1901,6 +1936,16 @@ export class Simulation {
     this.tw.diversion.set(t, this.diversion ? 1 : 0);
     this.tw.hallway.set(t, this.bedsUsed.main.filter((id, i) => id !== null && this.isHallway('main', i)).length);
     this.tw.hallwayOpen.set(t, this.hallwayFor('main'));
+    {
+      // Why patients are waiting for a main ED bed: all beds full (and how much of that is boarders), or a free bed with no nurse.
+      const waiting = this.bedQueues.main.size;
+      const used = this.bedsUsed.main.filter((x) => x !== null);
+      const full = used.length >= this.bedCapacity.main + this.hallwayFor('main');
+      const boarders = used.filter((id) => this.patients[id!]!.boardingStartTime !== undefined).length;
+      this.tw.bedWaitFull.set(t, full ? waiting : 0);
+      this.tw.bedWaitBoarders.set(t, full && used.length ? (waiting * boarders) / used.length : 0);
+      this.tw.bedWaitNursing.set(t, !full && this.nursingBlocked ? waiting : 0);
+    }
     for (const role of ROLES) this.tw.callIn[role].set(t, this.staff.filter((s) => s.role === role && s.callIn).length);
     for (const role of ROLES) {
       let busy = 0;

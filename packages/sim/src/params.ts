@@ -31,6 +31,18 @@ export const PARAMS = {
 
   /** Career mode: money, reputation, upgrades and the weeks' events. */
   /**
+   * Nursing module (staffed beds): each patient in a main ED bed needs part of a bedside nurse, by
+   * acuity (patients per nurse), and patients boarding for an ICU bed need ICU-level nursing. A free
+   * bed is used only if the nurses on duty can take the patient. All PLACEHOLDER.
+   */
+  nursing: {
+    patientsPerNurseByAcuity: { 1: 1, 2: 2, 3: 4, 4: 5, 5: 6 } as Record<Acuity, number>, // PLACEHOLDER
+    icuBoarderPatientsPerNurse: 2, // PLACEHOLDER
+    /** Bedside nurses on duty when a config turns nursing on without saying how many. */
+    defaultNurses: 6, // PLACEHOLDER
+  },
+
+  /**
    * Diagnostics module: tests queue for real capacity. Each service has servers (analyser slots,
    * X-ray rooms, CT scanners, ultrasound rooms), time on the server, a report delay that needs no
    * server (radiologist read, lab verification), and opening hours (outside them, orders wait).

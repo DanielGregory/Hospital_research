@@ -37,6 +37,8 @@ import {
   type Role,
   type Shift,
   type TimedCommand,
+  UNIT_IDS,
+  type UnitId,
 } from './types.js';
 
 interface ArrivalSpec {
@@ -61,7 +63,7 @@ type SimEvent =
   | { kind: 'shift'; role: Role; version: number }
   | { kind: 'handover' }
   | { kind: 'inpatientDischarge' }
-  | { kind: 'wardDischarge' }
+  | { kind: 'wardDischarge'; unit?: UnitId }
   | { kind: 'agitate'; patientId: number; token: number }
   | { kind: 'incidentDone' }
   | { kind: 'callInArrive'; role: Role }
@@ -210,7 +212,14 @@ export interface SimSnapshot {
   /** traumaBays: main beds with index below this are trauma bays. */
   beds: Record<Lane, { capacity: number | null; occupied: number; traumaBays: number }>;
   /** Inpatient beds for admissions (boarding module), else null. */
-  inpatient: { capacity: number; occupied: number; boarders: number; escalated: boolean } | null;
+  inpatient: {
+    capacity: number;
+    occupied: number;
+    boarders: number;
+    escalated: boolean;
+    /** Separate units (boarding.units): beds, occupied and ED boarders waiting for each. */
+    units?: Partial<Record<UnitId, { beds: number; occupied: number; boarders: number }>>;
+  } | null;
   settings: { discipline: QueueDiscipline; fastTrackEnabled: boolean; fastTrackOpen: boolean; fastTrackMinAcuity: Acuity };
   totals: { arrived: number; discharged: number; admitted: number; lwbs: number; bounceBacks: number; deteriorations: number; diverted: number };
   /** Live decisions available and in force. */
@@ -313,6 +322,8 @@ export class Simulation {
   private inpatientOccupied: number;
   /** Ward model by length of stay: beds freed early by escalation, whose scheduled discharge is then skipped. */
   private wardFreedEarly = 0;
+  /** Separate inpatient units (boarding.units), or null for one ward pool. */
+  private readonly units: Partial<Record<UnitId, { beds: number; stayHours: number; occupied: number; freedEarly: number; boarders: number[] }>> | null = null;
   private readonly boarders: number[] = [];
   private readonly inpatientArrivals: ArrivalProcess | undefined;
   private escalated: boolean;
@@ -431,7 +442,7 @@ export class Simulation {
     if (c.modules.boarding) {
       const w = c.boarding.dischargeHourlyWeights;
       const mean = w.reduce((a, b) => a + b, 0) / 24;
-      const byStay = c.boarding.inpatientStayHours !== null;
+      const byStay = c.boarding.inpatientStayHours !== null || c.boarding.units !== null;
       // Fixed-rate wards discharge all the time (faster when escalated). Wards by length of stay discharge
       // each patient when their stay ends; the Poisson process then only adds escalation's early discharges.
       const perHour = (byStay ? c.boarding.escalationExtraDischargesPerDay : c.boarding.dischargesPerDay) / 24;
@@ -443,7 +454,19 @@ export class Simulation {
         byStay ? () => (this.escalated ? 1 : 0) : () => (this.escalated ? boost : 1),
         boost,
       );
-      if (byStay)
+      if (c.boarding.units) {
+        this.units = {};
+        for (const u of UNIT_IDS) {
+          const spec = c.boarding.units[u];
+          if (!spec) continue;
+          this.units[u] = { beds: spec.beds, stayHours: spec.stayHours, occupied: spec.initialOccupied, freedEarly: 0, boarders: [] };
+          // Patients already on the unit: each has part of a stay left.
+          for (let k = 0; k < spec.initialOccupied; k++) {
+            const rng = this.root.stream(`ward:${u}:initial:${k}`);
+            this.push(rng.next() * this.unitStay(u, rng), { kind: 'wardDischarge', unit: u });
+          }
+        }
+      } else if (byStay)
         // Patients already on the ward: each has part of a stay left.
         for (let k = 0; k < c.boarding.initialOccupied; k++) {
           const rng = this.root.stream(`ward:initial:${k}`);
@@ -637,7 +660,15 @@ export class Simulation {
       })),
       beds: { main: bedInfo('main'), fastTrack: bedInfo('fastTrack') },
       inpatient: this.config.modules.boarding
-        ? { capacity: this.config.boarding.inpatientBeds, occupied: this.inpatientOccupied, boarders: this.boarders.length, escalated: this.escalated }
+        ? this.units
+          ? {
+              capacity: UNIT_IDS.reduce((s, u) => s + (this.units![u]?.beds ?? 0), 0),
+              occupied: UNIT_IDS.reduce((s, u) => s + (this.units![u]?.occupied ?? 0), 0),
+              boarders: this.boarders.length,
+              escalated: this.escalated,
+              units: Object.fromEntries(UNIT_IDS.filter((u) => this.units![u]).map((u) => [u, { beds: this.units![u]!.beds, occupied: this.units![u]!.occupied, boarders: this.units![u]!.boarders.length }])),
+            }
+          : { capacity: this.config.boarding.inpatientBeds, occupied: this.inpatientOccupied, boarders: this.boarders.length, escalated: this.escalated }
         : null,
       settings: {
         discipline: this.discipline,
@@ -732,8 +763,13 @@ export class Simulation {
       case 'incidentDone':
         break; // the dispatch after every event puts the responder back to work
       case 'wardDischarge':
-        // A bed an early (escalation) discharge already freed: nothing left to free.
-        if (this.wardFreedEarly > 0) this.wardFreedEarly--;
+        if (ev.unit) {
+          const u = this.units![ev.unit]!;
+          if (u.freedEarly > 0) u.freedEarly--;
+          else this.freeUnitBed(ev.unit);
+        } else if (this.wardFreedEarly > 0)
+          // A bed an early (escalation) discharge already freed: nothing left to free.
+          this.wardFreedEarly--;
         else this.freeWardBed();
         break;
       case 'command':
@@ -994,7 +1030,18 @@ export class Simulation {
       this.depart(p, 'admitted');
       return;
     }
-    if (this.inpatientOccupied < c.boarding.inpatientBeds) {
+    if (this.units) {
+      // Separate units: the patient needs a bed on a particular one.
+      const unit = this.pickUnit(p);
+      p.admitUnit = unit;
+      const u = this.units[unit]!;
+      if (u.occupied < u.beds) {
+        this.takeUnitBed(p, unit);
+        this.depart(p, 'admitted');
+        return;
+      }
+      u.boarders.push(p.id);
+    } else if (this.inpatientOccupied < c.boarding.inpatientBeds) {
       this.takeWardBed(p);
       this.depart(p, 'admitted');
       return;
@@ -1008,7 +1055,15 @@ export class Simulation {
   }
 
   private onInpatientDischarge(): void {
-    if (this.config.boarding.inpatientStayHours !== null) {
+    if (this.units) {
+      // Escalation frees a ward bed early (the general ward, else the last unit listed).
+      const unit = this.units.ward ? 'ward' : (UNIT_IDS.filter((u) => this.units![u]).at(-1) as UnitId);
+      const u = this.units[unit]!;
+      if (u.occupied > 0) {
+        u.freedEarly++;
+        this.freeUnitBed(unit);
+      }
+    } else if (this.config.boarding.inpatientStayHours !== null) {
       // Escalation discharges someone early; their scheduled discharge will then be skipped.
       if (this.inpatientOccupied > 0) {
         this.wardFreedEarly++;
@@ -1033,6 +1088,46 @@ export class Simulation {
   private takeWardBed(p: Patient): void {
     this.inpatientOccupied++;
     if (this.config.boarding.inpatientStayHours !== null) this.push(this.clock + this.wardStay(this.rt[p.id]!.rng.stream('ward')), { kind: 'wardDischarge' });
+  }
+
+  /** Which unit an admitted patient needs: by true acuity, among the units that exist (else the ward, else the first). */
+  private pickUnit(p: Patient): UnitId {
+    const units = UNIT_IDS.filter((u) => this.units![u]);
+    const shares = this.config.boarding.unitShareByAcuity[p.trueAcuity];
+    const weights = units.map((u) => shares[u] ?? 0);
+    const total = weights.reduce((a, b) => a + b, 0);
+    if (total <= 0) return units.includes('ward') ? 'ward' : units[0]!;
+    let x = this.rt[p.id]!.rng.stream('unit').next() * total;
+    for (let i = 0; i < units.length; i++) {
+      x -= weights[i]!;
+      if (x < 0) return units[i]!;
+    }
+    return units.at(-1)!;
+  }
+
+  private takeUnitBed(p: Patient, unit: UnitId): void {
+    const u = this.units![unit]!;
+    u.occupied++;
+    this.push(this.clock + this.unitStay(unit, this.rt[p.id]!.rng.stream('ward')), { kind: 'wardDischarge', unit });
+  }
+
+  /** A unit bed frees up: that unit's longest-boarding patient goes up. */
+  private freeUnitBed(unit: UnitId): void {
+    const u = this.units![unit]!;
+    if (u.occupied > 0) u.occupied--;
+    while (u.boarders.length > 0 && u.occupied < u.beds) {
+      const id = u.boarders.shift()!;
+      this.boarders.splice(this.boarders.indexOf(id), 1);
+      const p = this.patients[id]!;
+      this.takeUnitBed(p, unit);
+      this.depart(p, 'admitted');
+    }
+  }
+
+  private unitStay(unit: UnitId, rng: Rng): number {
+    const mean = this.units![unit]!.stayHours * 60;
+    const s2 = Math.log(1 + this.config.boarding.inpatientStayCv ** 2);
+    return Math.exp(Math.log(mean) - s2 / 2 + Math.sqrt(s2) * rng.normal());
   }
 
   /** A ward stay in minutes (lognormal). */

@@ -13,6 +13,8 @@ import { checkPipeline, defaultPipeline, makeStep, STEP_KINDS, type RoutingRule,
 import {
   ACUITIES,
   ROLES,
+  UNIT_IDS,
+  type UnitId,
   type Acuity,
   type ConditionSpec,
   type Lane,
@@ -164,6 +166,13 @@ export interface SimConfig {
      * discharge at `dischargesPerDay` whatever their occupancy.
      */
     inpatientStayHours?: number;
+    /**
+     * Separate inpatient units (ICU, step-down, ward), each with its own beds for ED admissions and
+     * typical stay. When given, each admitted patient needs a bed on a specific unit (by acuity,
+     * `unitShareByAcuity`), and the single-pool settings above are not used.
+     */
+    units?: Partial<Record<UnitId, { beds: number; stayHours?: number; initialOccupied?: number }>>;
+    unitShareByAcuity?: Partial<Record<`${Acuity}`, Partial<Record<UnitId, number>>>>;
     /** Hospital full-capacity protocol in force from the start (speeds up inpatient discharges). */
     escalation?: boolean;
   };
@@ -230,6 +239,9 @@ export interface ResolvedConfig {
     /** Ward model by length of stay (hours, mean), or null for a fixed discharge rate. */
     inpatientStayHours: number | null;
     inpatientStayCv: number;
+    /** Separate inpatient units, or null for one ward pool. */
+    units: Partial<Record<UnitId, { beds: number; stayHours: number; initialOccupied: number }>> | null;
+    unitShareByAcuity: Record<Acuity, Record<UnitId, number>>;
     escalation: boolean;
     escalationExtraDischargesPerDay: number;
     dischargeHourlyWeights: number[];
@@ -387,6 +399,20 @@ export function validateConfig(raw: unknown): SimConfig {
     field(b, 'boarding', 'initialOccupied', count, 'non-negative integer', p);
     field(b, 'boarding', 'dischargesPerDay', nonNeg, 'non-negative number', p);
     field(b, 'boarding', 'inpatientStayHours', (x) => typeof x === 'number' && x > 0, 'positive number of hours', p);
+    if (b.units !== undefined) {
+      if (!isObj(b.units) || !Object.keys(b.units).length) p.push(`boarding.units: object of ${UNIT_IDS.join(' | ')} -> { beds, stayHours?, initialOccupied? }`);
+      else
+        for (const [u, spec] of Object.entries(b.units)) {
+          if (!(UNIT_IDS as readonly string[]).includes(u)) p.push(`boarding.units.${u}: unknown unit (one of ${UNIT_IDS.join(', ')})`);
+          else if (!isObj(spec) || !count(spec.beds)) p.push(`boarding.units.${u}.beds: non-negative integer`);
+          else {
+            if (spec.stayHours !== undefined && !(typeof spec.stayHours === 'number' && spec.stayHours > 0)) p.push(`boarding.units.${u}.stayHours: positive number of hours`);
+            if (spec.initialOccupied !== undefined && !(count(spec.initialOccupied) && spec.initialOccupied <= (spec.beds as number)))
+              p.push(`boarding.units.${u}.initialOccupied: integer from 0 to beds`);
+          }
+        }
+    }
+    if (b.unitShareByAcuity !== undefined && !isObj(b.unitShareByAcuity)) p.push('boarding.unitShareByAcuity: object of acuity -> { icu, stepdown, ward } shares');
     field(b, 'boarding', 'escalation', bool, 'true or false', p);
     if (count(b.inpatientBeds) && count(b.initialOccupied) && b.initialOccupied > b.inpatientBeds) p.push('boarding.initialOccupied: more than inpatientBeds');
   });
@@ -777,6 +803,17 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       dischargesPerDay: c.boarding?.dischargesPerDay ?? PARAMS.boarding.dischargesPerDay,
       inpatientStayHours: c.boarding?.inpatientStayHours ?? null,
       inpatientStayCv: PARAMS.boarding.inpatientStayCv,
+      units: c.boarding?.units
+        ? (Object.fromEntries(
+            Object.entries(c.boarding.units).map(([u, spec]) => {
+              const d = PARAMS.boarding.units[u as UnitId];
+              return [u, { beds: spec!.beds, stayHours: spec!.stayHours ?? d.stayHours, initialOccupied: spec!.initialOccupied ?? Math.round(spec!.beds * d.initialOccupiedShare) }];
+            }),
+          ) as Partial<Record<UnitId, { beds: number; stayHours: number; initialOccupied: number }>>)
+        : null,
+      unitShareByAcuity: Object.fromEntries(
+        ACUITIES.map((a) => [a, { ...PARAMS.boarding.unitShareByAcuity[a], ...(c.boarding?.unitShareByAcuity?.[`${a}`] ?? {}) }]),
+      ) as Record<Acuity, Record<UnitId, number>>,
       escalation: c.boarding?.escalation ?? false,
       escalationExtraDischargesPerDay: PARAMS.boarding.escalationExtraDischargesPerDay,
       dischargeHourlyWeights: [...PARAMS.boarding.dischargeHourlyWeights],

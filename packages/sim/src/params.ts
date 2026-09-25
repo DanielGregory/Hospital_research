@@ -11,7 +11,7 @@
  * fitted admission, patience and workup values in here and cite the sources.
  */
 
-import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm } from './types.js';
+import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm, UnitId } from './types.js';
 
 export const PARAMS = {
   arrivals: {
@@ -236,6 +236,23 @@ export const PARAMS = {
     inpatientStayCv: 0.8, // PLACEHOLDER
     /** Typical adult inpatient stay, hours: used when calibration switches to the ward model by length of stay. */
     typicalStayHours: 110, // PLACEHOLDER
+    /**
+     * Inpatient units (boarding.units): beds for ED admissions, typical stay, and occupancy at the start.
+     * Used only when a config lists units; otherwise there is one ward pool.
+     */
+    units: {
+      icu: { beds: 12, stayHours: 80, initialOccupiedShare: 0.9 }, // PLACEHOLDER
+      stepdown: { beds: 16, stayHours: 72, initialOccupiedShare: 0.9 }, // PLACEHOLDER
+      ward: { beds: 110, stayHours: 110, initialOccupiedShare: 0.92 }, // PLACEHOLDER
+    } as Record<UnitId, { beds: number; stayHours: number; initialOccupiedShare: number }>,
+    /** Which unit an admitted patient needs, by true acuity at the decision (shares; missing units fall to the ward). */
+    unitShareByAcuity: {
+      1: { icu: 0.6, stepdown: 0.25, ward: 0.15 }, // PLACEHOLDER
+      2: { icu: 0.15, stepdown: 0.3, ward: 0.55 }, // PLACEHOLDER
+      3: { icu: 0.03, stepdown: 0.12, ward: 0.85 }, // PLACEHOLDER
+      4: { icu: 0, stepdown: 0.02, ward: 0.98 }, // PLACEHOLDER
+      5: { icu: 0, stepdown: 0, ward: 1 }, // PLACEHOLDER
+    } as Record<Acuity, Record<UnitId, number>>,
     /** Relative discharge rate by hour of day (discharges cluster late morning to afternoon). */
     /** Hospital full-capacity protocol: extra inpatient discharges per day while escalated. */
     escalationExtraDischargesPerDay: 8, // PLACEHOLDER

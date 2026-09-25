@@ -47,6 +47,10 @@ export interface PatientProfile {
 
 export type Lane = 'main' | 'fastTrack';
 
+/** Inpatient units an ED admission can go to (boarding.units). */
+export const UNIT_IDS = ['icu', 'stepdown', 'ward'] as const;
+export type UnitId = (typeof UNIT_IDS)[number];
+
 export type Outcome = 'discharged' | 'admitted' | 'lwbs';
 export type ArrivalSource = 'walkIn' | 'massCasualty' | 'bounceBack';
 
@@ -107,6 +111,8 @@ export interface Patient {
   atRisk?: boolean;
   incidents?: number;
   lastIncidentAt?: number;
+  /** Admitted: the inpatient unit they need (boarding.units). */
+  admitUnit?: UnitId;
 }
 
 export interface Shift {

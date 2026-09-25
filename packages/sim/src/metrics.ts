@@ -4,11 +4,12 @@
  * same window up to the current clock.
  */
 
+import type { ResolvedConfig } from './config.js';
 import { actualCost, type CostBreakdown } from './budget.js';
 import type { IncidentRecord, Simulation } from './engine.js';
 import { compositeScore, type ScoreBreakdown } from './score.js';
 import { summarize, type Summary } from './stats.js';
-import { ACUITIES, ROLES, type Acuity, type Patient, type Role } from './types.js';
+import { ACUITIES, ROLES, UNIT_IDS, type Acuity, type Patient, type Role, type UnitId } from './types.js';
 
 /** Spec metrics that need modules not built yet. Listed so output never implies they are zero. */
 export const NOT_YET_MODELED: readonly string[] = [];
@@ -116,6 +117,8 @@ export interface Metrics {
     medianHours: number | null;
     maxHours: number | null;
     timeAverageBoarders: number;
+    /** Separate inpatient units (boarding.units): admissions, boarders and boarding time by unit. */
+    byUnit: Partial<Record<UnitId, { beds: number; admitted: number; boarders: number; hours: number; meanHours: number | null; maxHours: number | null }>> | null;
   };
   bedOccupancy: { main: number | null; fastTrack: number | null };
   /** Times a doctor was pulled from a less urgent patient to an ESI 1 (pre-emption). */
@@ -328,6 +331,7 @@ export function computeMetrics(sim: Simulation): Metrics {
       medianHours: boardingHours.length ? summarize(boardingHours).median : null,
       maxHours: boardingHours.length ? Math.max(...boardingHours) : null,
       timeAverageBoarders: span > 0 ? sim.tw.boarding.integral(end) / span : 0,
+      byUnit: c.modules.boarding && c.boarding.units ? unitMetrics(c.boarding.units, inWindow, end) : null,
     },
     bedOccupancy: { main: bedOcc('main'), fastTrack: bedOcc('fastTrack') },
     preemptions: sim.preemptions,
@@ -358,4 +362,17 @@ function securityMetrics(log: readonly IncidentRecord[], visits: number): NonNul
     clinicianHours: log.filter((x) => x.responder === 'clinician').reduce((s, x) => s + x.handleMinutes, 0) / 60,
     boarding: log.filter((x) => x.boarding).length,
   };
+}
+
+function unitMetrics(units: NonNullable<ResolvedConfig['boarding']['units']>, patients: readonly Patient[], end: number): NonNullable<Metrics['boarding']['byUnit']> {
+  const out: NonNullable<Metrics['boarding']['byUnit']> = {};
+  for (const u of UNIT_IDS) {
+    const spec = units[u];
+    if (!spec) continue;
+    const mine = patients.filter((p) => p.admitUnit === u);
+    const hours = mine.filter((p) => p.boardingStartTime !== undefined).map((p) => ((p.departureTime ?? end) - p.boardingStartTime!) / 60);
+    const sum = hours.reduce((a, b) => a + b, 0);
+    out[u] = { beds: spec.beds, admitted: mine.length, boarders: hours.length, hours: sum, meanHours: hours.length ? sum / hours.length : null, maxHours: hours.length ? Math.max(...hours) : null };
+  }
+  return out;
 }

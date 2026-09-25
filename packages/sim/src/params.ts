@@ -201,6 +201,10 @@ export const PARAMS = {
     initialOccupied: 34, // PLACEHOLDER
     /** Inpatient discharges per day that free a bed. */
     dischargesPerDay: 26, // PLACEHOLDER
+    /** Ward model by length of stay (boarding.inpatientStayHours): spread of inpatient stays. */
+    inpatientStayCv: 0.8, // PLACEHOLDER
+    /** Typical adult inpatient stay, hours: used when calibration switches to the ward model by length of stay. */
+    typicalStayHours: 110, // PLACEHOLDER
     /** Relative discharge rate by hour of day (discharges cluster late morning to afternoon). */
     /** Hospital full-capacity protocol: extra inpatient discharges per day while escalated. */
     escalationExtraDischargesPerDay: 8, // PLACEHOLDER

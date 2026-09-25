@@ -95,6 +95,7 @@ export interface Metrics {
     /** Total hours admitted patients spent boarding in ED beds (ongoing boarding counted up to the end). */
     hours: number;
     meanHours: number | null;
+    medianHours: number | null;
     maxHours: number | null;
     timeAverageBoarders: number;
   };
@@ -305,6 +306,7 @@ export function computeMetrics(sim: Simulation): Metrics {
       boarders: boardingHours.length,
       hours: boardSum,
       meanHours: boardingHours.length ? boardSum / boardingHours.length : null,
+      medianHours: boardingHours.length ? summarize(boardingHours).median : null,
       maxHours: boardingHours.length ? Math.max(...boardingHours) : null,
       timeAverageBoarders: span > 0 ? sim.tw.boarding.integral(end) / span : 0,
     },

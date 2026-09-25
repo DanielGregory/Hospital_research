@@ -61,6 +61,7 @@ type SimEvent =
   | { kind: 'shift'; role: Role; version: number }
   | { kind: 'handover' }
   | { kind: 'inpatientDischarge' }
+  | { kind: 'wardDischarge' }
   | { kind: 'callInArrive'; role: Role }
   | { kind: 'callInRelease'; staffId: number }
   | { kind: 'command'; command: Command };
@@ -73,6 +74,7 @@ const PRIORITY: Record<SimEvent['kind'], number> = {
   shift: 1,
   handover: 1,
   inpatientDischarge: 2,
+  wardDischarge: 2,
   callInArrive: 1,
   callInRelease: 1,
   deteriorate: 2,
@@ -283,6 +285,8 @@ export class Simulation {
   readonly walkingMinutes: Record<Role, number> = { triageNurse: 0, doctor: 0, fastTrackClinician: 0, nurse: 0, tech: 0 };
 
   private inpatientOccupied: number;
+  /** Ward model by length of stay: beds freed early by escalation, whose scheduled discharge is then skipped. */
+  private wardFreedEarly = 0;
   private readonly boarders: number[] = [];
   private readonly inpatientArrivals: ArrivalProcess | undefined;
   private escalated: boolean;
@@ -399,15 +403,24 @@ export class Simulation {
     if (c.modules.boarding) {
       const w = c.boarding.dischargeHourlyWeights;
       const mean = w.reduce((a, b) => a + b, 0) / 24;
-      const perHour = c.boarding.dischargesPerDay / 24;
+      const byStay = c.boarding.inpatientStayHours !== null;
+      // Fixed-rate wards discharge all the time (faster when escalated). Wards by length of stay discharge
+      // each patient when their stay ends; the Poisson process then only adds escalation's early discharges.
+      const perHour = (byStay ? c.boarding.escalationExtraDischargesPerDay : c.boarding.dischargesPerDay) / 24;
       // Escalation scales the discharge rate; thinning needs its maximum up front.
-      const boost = c.boarding.dischargesPerDay > 0 ? (c.boarding.dischargesPerDay + c.boarding.escalationExtraDischargesPerDay) / c.boarding.dischargesPerDay : 1;
+      const boost = byStay ? 1 : c.boarding.dischargesPerDay > 0 ? (c.boarding.dischargesPerDay + c.boarding.escalationExtraDischargesPerDay) / c.boarding.dischargesPerDay : 1;
       this.inpatientArrivals = new ArrivalProcess(
         { hourlyRates: w.map((x) => (x / mean) * perHour), dayOfWeekMultipliers: [1, 1, 1, 1, 1, 1, 1], startDayOfWeek: c.startDayOfWeek, startHour: c.startHour },
         this.root.stream('inpatientDischarges'),
-        () => (this.escalated ? boost : 1),
+        byStay ? () => (this.escalated ? 1 : 0) : () => (this.escalated ? boost : 1),
         boost,
       );
+      if (byStay)
+        // Patients already on the ward: each has part of a stay left.
+        for (let k = 0; k < c.boarding.initialOccupied; k++) {
+          const rng = this.root.stream(`ward:initial:${k}`);
+          this.push(rng.next() * this.wardStay(rng), { kind: 'wardDischarge' });
+        }
       const t = this.inpatientArrivals.next(0, c.durationMinutes);
       if (t !== undefined) this.push(t, { kind: 'inpatientDischarge' });
     }
@@ -683,6 +696,11 @@ export class Simulation {
       case 'inpatientDischarge':
         this.onInpatientDischarge();
         break;
+      case 'wardDischarge':
+        // A bed an early (escalation) discharge already freed: nothing left to free.
+        if (this.wardFreedEarly > 0) this.wardFreedEarly--;
+        else this.freeWardBed();
+        break;
       case 'command':
         this.apply(ev.command);
         return; // apply() already refreshed state
@@ -932,7 +950,7 @@ export class Simulation {
       return;
     }
     if (this.inpatientOccupied < c.boarding.inpatientBeds) {
-      this.inpatientOccupied++;
+      this.takeWardBed(p);
       this.depart(p, 'admitted');
       return;
     }
@@ -943,14 +961,39 @@ export class Simulation {
   }
 
   private onInpatientDischarge(): void {
+    if (this.config.boarding.inpatientStayHours !== null) {
+      // Escalation discharges someone early; their scheduled discharge will then be skipped.
+      if (this.inpatientOccupied > 0) {
+        this.wardFreedEarly++;
+        this.freeWardBed();
+      }
+    } else this.freeWardBed();
+    const t = this.inpatientArrivals!.next(this.clock, this.config.durationMinutes);
+    if (t !== undefined) this.push(t, { kind: 'inpatientDischarge' });
+  }
+
+  /** A ward bed frees up: the longest-boarding patient goes up. */
+  private freeWardBed(): void {
     if (this.inpatientOccupied > 0) this.inpatientOccupied--;
     while (this.boarders.length > 0 && this.inpatientOccupied < this.config.boarding.inpatientBeds) {
       const p = this.patients[this.boarders.shift()!]!;
-      this.inpatientOccupied++;
+      this.takeWardBed(p);
       this.depart(p, 'admitted');
     }
-    const t = this.inpatientArrivals!.next(this.clock, this.config.durationMinutes);
-    if (t !== undefined) this.push(t, { kind: 'inpatientDischarge' });
+  }
+
+  /** An admitted patient takes a ward bed (and, by length of stay, will leave it later). */
+  private takeWardBed(p: Patient): void {
+    this.inpatientOccupied++;
+    if (this.config.boarding.inpatientStayHours !== null) this.push(this.clock + this.wardStay(this.rt[p.id]!.rng.stream('ward')), { kind: 'wardDischarge' });
+  }
+
+  /** A ward stay in minutes (lognormal). */
+  private wardStay(rng: Rng): number {
+    const b = this.config.boarding;
+    const mean = b.inpatientStayHours! * 60;
+    const s2 = Math.log(1 + b.inpatientStayCv ** 2);
+    return Math.exp(Math.log(mean) - s2 / 2 + Math.sqrt(s2) * rng.normal());
   }
 
   private depart(p: Patient, outcome: Outcome): void {

@@ -155,6 +155,12 @@ export interface SimConfig {
     inpatientBeds?: number;
     initialOccupied?: number;
     dischargesPerDay?: number;
+    /**
+     * Ward model by length of stay: each admitted patient stays this many hours on average
+     * (lognormal) and then frees their bed, so discharges follow occupancy. Without it, wards
+     * discharge at `dischargesPerDay` whatever their occupancy.
+     */
+    inpatientStayHours?: number;
     /** Hospital full-capacity protocol in force from the start (speeds up inpatient discharges). */
     escalation?: boolean;
   };
@@ -216,6 +222,9 @@ export interface ResolvedConfig {
     inpatientBeds: number;
     initialOccupied: number;
     dischargesPerDay: number;
+    /** Ward model by length of stay (hours, mean), or null for a fixed discharge rate. */
+    inpatientStayHours: number | null;
+    inpatientStayCv: number;
     escalation: boolean;
     escalationExtraDischargesPerDay: number;
     dischargeHourlyWeights: number[];
@@ -370,6 +379,7 @@ export function validateConfig(raw: unknown): SimConfig {
     field(b, 'boarding', 'inpatientBeds', count, 'non-negative integer', p);
     field(b, 'boarding', 'initialOccupied', count, 'non-negative integer', p);
     field(b, 'boarding', 'dischargesPerDay', nonNeg, 'non-negative number', p);
+    field(b, 'boarding', 'inpatientStayHours', (x) => typeof x === 'number' && x > 0, 'positive number of hours', p);
     field(b, 'boarding', 'escalation', bool, 'true or false', p);
     if (count(b.inpatientBeds) && count(b.initialOccupied) && b.initialOccupied > b.inpatientBeds) p.push('boarding.initialOccupied: more than inpatientBeds');
   });
@@ -749,6 +759,8 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
       inpatientBeds,
       initialOccupied,
       dischargesPerDay: c.boarding?.dischargesPerDay ?? PARAMS.boarding.dischargesPerDay,
+      inpatientStayHours: c.boarding?.inpatientStayHours ?? null,
+      inpatientStayCv: PARAMS.boarding.inpatientStayCv,
       escalation: c.boarding?.escalation ?? false,
       escalationExtraDischargesPerDay: PARAMS.boarding.escalationExtraDischargesPerDay,
       dischargeHourlyWeights: [...PARAMS.boarding.dischargeHourlyWeights],

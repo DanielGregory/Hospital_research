@@ -13,8 +13,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { BASELINES, benchmarkLevel, compareScenarios, type Comparison, type Scenario, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
-import { applySettings, balanceReport, career, patientStories, type PatientStory, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
+import { BASELINES, baselineCheck, benchmarkLevel, calibrate, compareScenarios, type Comparison, type Scenario, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
+import { applySettings, balanceReport, career, parseVisits, summarizeVisits, patientStories, type PatientStory, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
 
 export const USAGE = `Usage:
   run --config <file.json> [--seed <n> | --seeds <a-b>] [--set <path=value> ...] [--out <file>] [--format json|csv]
@@ -33,6 +33,8 @@ export const USAGE = `Usage:
       found" target). Default space: configs/benchmarks/level-NN.space.json. --write stores it in the level.
   compare --config <baseline.json> --scenarios <scenarios.json> [--seeds 1-20] [--out report.json] [--format json|csv]
       Run the baseline and each scenario on the same seeds; report ranges and differences with 95% intervals.
+  fit-visits --config <department.json> --visits <visits.csv> [--seeds 1-5] [--out calibrated.json]
+      Fit the department's inputs to its own visit records and print the baseline check (model vs data).
   career [--seed <n>] [--weeks 12] [--out <file>]
       Play a career without changing anything between weeks: money, reputation and events per week.
   serve
@@ -49,7 +51,8 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark' | 'compare';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark' | 'compare' | 'fit-visits';
+  visits?: string;
   scenarios?: string;
   write?: boolean;
   weeks?: number;
@@ -70,7 +73,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark' && cmd !== 'compare')
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark' && cmd !== 'compare' && cmd !== 'fit-visits')
     throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
@@ -89,7 +92,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     else opts[key.slice(2)] = val;
     i++;
   }
-  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets', 'weeks', 'scenarios']);
+  const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets', 'weeks', 'scenarios', 'visits']);
   for (const k of Object.keys(opts)) if (!known.has(k)) throw new UsageError(`Unknown option --${k}`);
   if (cmd === 'career') {
     if (opts.seed !== undefined && !/^\d+$/.test(opts.seed)) throw new UsageError('--seed must be a non-negative integer');
@@ -115,6 +118,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
   if (cmd === 'policy' && !opts.policy) throw new UsageError('--policy is required');
   if (cmd === 'optimize' && !opts.space) throw new UsageError('--space is required');
   if (cmd === 'calibrate' && !opts.targets) throw new UsageError('--targets is required');
+  if (cmd === 'fit-visits' && !opts.visits) throw new UsageError('--visits is required');
   if (cmd === 'compare' && !opts.scenarios) throw new UsageError('--scenarios is required');
   if (opts.iterations !== undefined && !/^\d+$/.test(opts.iterations)) throw new UsageError('--iterations must be a positive integer');
   return {
@@ -130,6 +134,7 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     objective: opts.objective,
     targets: opts.targets,
     scenarios: opts.scenarios,
+    visits: opts.visits,
     ...(cmd === 'benchmark' ? { write } : {}),
   };
 }
@@ -219,6 +224,8 @@ export function toCsv(output: RunOutput): string {
 }
 
 /** JSON-lines server: one request per stdin line, one response per stdout line. */
+const fmt = (v: number | null | undefined) => (v === null || v === undefined ? '—' : Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(1));
+
 /** One row per scenario and KPI: range across replications and change against the baseline. */
 export function comparisonCsv(c: Comparison): string {
   const rows = [['scenario', 'kpi', 'median', 'p05', 'p95', 'change_mean', 'change_ci_lo', 'change_ci_hi', 'better_share', 'replications'].join(',')];
@@ -315,6 +322,21 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       });
       process.stderr.write(`Best found ${objective.metric}: ${r.bestFound.value.toFixed(2)} (start ${r.start.value.toFixed(2)}, ${r.evaluations} setups tried)\n`);
       write(JSON.stringify({ objective, seeds, iterations, bestFound: r.bestFound, start: r.start, evaluations: r.evaluations, bestConfig: applySettings(config, r.bestFound.settings) }, null, 2) + '\n');
+      return 0;
+    }
+    if (args.command === 'fit-visits') {
+      const parsed = parseVisits(readFileSync(resolve(cwd, args.visits!), 'utf8'));
+      for (const p of parsed.problems) process.stderr.write(`${p}\n`);
+      if (!parsed.visits.length) return 1;
+      const data = summarizeVisits(parsed.visits);
+      const seeds = args.seeds.length ? args.seeds : [1, 2, 3, 4, 5];
+      const cal = calibrate(config, parsed.visits, data, { seeds: seeds.slice(0, 3) });
+      const check = baselineCheck(cal.config, data, seeds);
+      process.stderr.write(`${data.visits} visits over ${data.days} days (${data.arrivalsPerDay.toFixed(1)} a day)\n`);
+      for (const n of cal.notes) process.stderr.write(`note: ${n}\n`);
+      for (const r of check)
+        process.stderr.write(`${r.status.padEnd(8)} ${r.label.padEnd(42)} data ${fmt(r.data)}  model ${fmt(r.model.median)} (${fmt(r.model.lo)}–${fmt(r.model.hi)})\n`);
+      write(JSON.stringify({ visitsFile: args.visits, columns: parsed.columns, data, fitted: cal.fitted, notes: cal.notes, check, config: cal.config }, null, 2) + '\n');
       return 0;
     }
     if (args.command === 'compare') {

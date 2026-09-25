@@ -78,3 +78,4 @@ export * as career from './career.js';
 export type { CareerState, Hospital, UpgradeId, WeekEvent, WeekRecord, MilestoneId, Settlement, LedgerLine } from './career.js';
 export { patientStories, STORY_KINDS, type PatientStory, type StoryKind } from './stories.js';
 export { drawProfile } from './engine.js';
+export { parseCsv, parseTime, parseVisits, summarizeVisits, fitVisits, visitsCsv, visitsFromPatients, VISIT_COLUMNS, type Visit, type VisitParse, type VisitSummary, type VisitDisposition } from './visits.js';

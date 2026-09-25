@@ -33,7 +33,13 @@ Shifting all dates by a fixed number of days is fine; please keep the weekday an
 3. **Floor plan:** a PDF or image of the ED layout (to model walking distances).
 4. **Wards / boarding:** for admitted patients, *bed requested* and *bed assigned* times if available,
    and the average inpatient length of stay. This makes the boarding model far more accurate.
-5. **Workplace violence (optional, aggregate):** security incidents per month and security staffing.
+   If possible, split by unit: **ICU, step-down and general ward** bed counts, and the admitting unit
+   for each admitted ED patient (so we can see which unit holds patients in the ED).
+5. **Bedside nursing:** ED nurses on duty by hour, and the nurse-to-patient ratios you work to by acuity.
+6. **Labs and imaging:** per order, the *ordered*, *performed/collected* and *resulted/reported* times for
+   lab, X-ray, CT and ultrasound (de-identified visit id + test type is enough), plus scanner/room counts
+   and opening hours (e.g. ultrasound out of hours). This shows whether results wait in a queue or just take time.
+7. **Workplace violence (optional, aggregate):** security incidents per month and security staffing.
 
 ## Privacy
 

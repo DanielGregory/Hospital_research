@@ -1,6 +1,7 @@
-import { beatsBenchmark, evaluateGoals, patientStories, Simulation, type CareerState, type LayoutSpec, type Metrics, type Settlement } from '@er/sim';
+import { LIVE_CALLS, beatsBenchmark, evaluateGoals, patientStories, Simulation, type CareerState, type PlayerControl, type LayoutSpec, type Metrics, type Settlement } from '@er/sim';
 import { Career } from './career/Career';
 import { Planner } from './planner/Planner';
+import { Builder } from './builder/Builder';
 import { CareerWeek } from './career/CareerWeek';
 import { career, careerLive, loadCareer, saveCareer } from './career/store';
 import { dailyChallenge, dateKey, shareText, type Daily } from './play/daily';
@@ -20,13 +21,17 @@ import { defaultSandbox, Sandbox, type SandboxState } from './screens/Sandbox';
 import { Setup } from './screens/Setup';
 import { Shell } from './screens/Shell';
 
+/** Live controls for setups staffed by shifts (your hospital, planner setups): no fixed staff counts to show. */
+const SHIFT_LIVE = { controls: ['queue.discipline', 'fastTrack.enabled'] as PlayerControl[], calls: LIVE_CALLS };
+
 /** Where a run came from, so "try again" returns there. */
 type Origin =
   | { kind: 'level'; level: LevelConfig; values: SetupValues; daily?: Daily }
   | { kind: 'layout'; layout: LayoutSpec }
   | { kind: 'sandbox' }
   | { kind: 'career'; state: CareerState }
-  | { kind: 'planner' };
+  | { kind: 'planner' }
+  | { kind: 'builder' };
 
 type Screen =
   | { name: 'menu' }
@@ -38,6 +43,7 @@ type Screen =
   | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin; run: RunAnalysis; stars?: number }
   | { name: 'career' }
   | { name: 'planner' }
+  | { name: 'builder' }
   | { name: 'careerWeek'; before: { money: number; reputation: number }; settlement: Settlement; metrics: Metrics; run: RunAnalysis };
 
 const RESULTS_KEY = 'er-shift-results';
@@ -149,6 +155,8 @@ function Screens() {
         ? { name: 'layout', layout: origin.layout }
         : origin.kind === 'planner'
           ? { name: 'planner' }
+          : origin.kind === 'builder'
+            ? { name: 'builder' }
           : origin.kind === 'career'
             ? { name: 'career' }
             : { name: 'sandbox' };
@@ -166,11 +174,15 @@ function Screens() {
             ? 'Sandbox'
             : screen.name === 'career' || screen.name === 'careerWeek'
               ? 'Career'
+              : screen.name === 'builder'
+                ? 'Build your hospital'
               : screen.name === 'planner'
                 ? 'Planner'
               : screen.origin.kind === 'career'
                 ? 'Career'
-                : (screen.config.level?.title ?? 'Sandbox');
+                : screen.origin.kind === 'builder'
+                  ? screen.config.name
+                  : (screen.config.level?.title ?? 'Sandbox');
   return (
     <Shell crumb={crumb} onHome={home}>
       {body()}
@@ -192,6 +204,15 @@ function Screens() {
             career={careerState}
             onCareer={() => setScreen({ name: 'career' })}
             onPlanner={() => setScreen({ name: 'planner' })}
+            onBuilder={() => setScreen({ name: 'builder' })}
+          />
+        );
+      case 'builder':
+        return (
+          <Builder
+            onBack={() => setScreen({ name: 'menu' })}
+            onPlanner={() => setScreen({ name: 'planner' })}
+            onWatch={(config) => setScreen({ name: 'play', config, seed: 1, values: valuesFor(config, SHIFT_LIVE.controls), origin: { kind: 'builder' }, run: Date.now() })}
           />
         );
       case 'planner':
@@ -203,7 +224,7 @@ function Screens() {
                 name: 'play',
                 config: { ...config, name },
                 seed: 1,
-                values: valuesFor(config, SANDBOX_LIVE),
+                values: valuesFor(config, SHIFT_LIVE.controls),
                 origin: { kind: 'planner' },
                 run: Date.now(),
               })
@@ -298,10 +319,10 @@ function Screens() {
             seed={screen.seed}
             values={screen.values}
             onFinish={(runner) => finish(screen.config, screen.origin, runner, screen.seed)}
-            onQuit={() => setScreen(screen.origin.kind === 'career' ? { name: 'career' } : screen.origin.kind === 'planner' ? { name: 'planner' } : { name: 'menu' })}
-            live={screen.origin.kind === 'career' ? careerLive(screen.origin.state) : undefined}
+            onQuit={() => setScreen(screen.origin.kind === 'career' || screen.origin.kind === 'planner' || screen.origin.kind === 'builder' ? back(screen.origin) : { name: 'menu' })}
+            live={screen.origin.kind === 'career' ? careerLive(screen.origin.state) : screen.origin.kind === 'builder' || screen.origin.kind === 'planner' ? SHIFT_LIVE : undefined}
             unit={screen.origin.kind === 'career' ? 'week' : 'shift'}
-            title={screen.origin.kind === 'career' ? `${screen.origin.state.hospital.name} · week ${screen.origin.state.week}` : screen.origin.kind === 'planner' ? `Planner · ${screen.config.name}` : undefined}
+            title={screen.origin.kind === 'career' ? `${screen.origin.state.hospital.name} · week ${screen.origin.state.week}` : screen.origin.kind === 'planner' ? `Planner · ${screen.config.name}` : screen.origin.kind === 'builder' ? screen.config.name : undefined}
             canStop={screen.config.id === 'sandbox-endless'}
           />
         );
@@ -323,7 +344,7 @@ function Screens() {
             }
             onMenu={() => setScreen({ name: 'menu' })}
             onRetry={() => setScreen(back(o))}
-            retryLabel={o.kind === 'layout' ? 'Back to the layout' : o.kind === 'sandbox' ? 'Back to the sandbox' : o.kind === 'planner' ? 'Back to the planner' : undefined}
+            retryLabel={o.kind === 'layout' ? 'Back to the layout' : o.kind === 'sandbox' ? 'Back to the sandbox' : o.kind === 'planner' ? 'Back to the planner' : o.kind === 'builder' ? 'Back to your hospital' : undefined}
             onNext={next ? () => setScreen({ name: 'briefing', level: next }) : undefined}
           />
         );

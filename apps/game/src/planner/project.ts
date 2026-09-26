@@ -56,7 +56,11 @@ export interface Template {
   defaults: Record<string, number>;
   fields: { key: string; label: string; min: number; max: number; step?: number; unit?: string }[];
   settings: (p: Record<string, number>, base: SimConfig) => Record<string, unknown>;
+  /** Why this what-if cannot apply to this baseline, if it cannot. */
+  unavailable?: (base: SimConfig) => string | null;
 }
+
+const drawnBeds = (b: SimConfig) => (b.modules?.layout ? 'Beds come from the drawn floor plan: add beds in Build your hospital.' : null);
 
 /** Units with their current beds (defaults when the baseline has none yet). */
 export const unitsOf = (base: SimConfig) =>
@@ -75,6 +79,7 @@ export const TEMPLATES: Record<TemplateId, Template> = {
     fields: [{ key: 'add', label: 'Spaces to add', min: -10, max: 20 }],
     describe: (p, b) => `${p.add! >= 0 ? 'Add' : 'Remove'} ${Math.abs(p.add!)} main ED spaces (${b.beds?.main ?? 20} → ${(b.beds?.main ?? 20) + p.add!}).`,
     settings: (p, b) => ({ 'beds.main': Math.max(1, (b.beds?.main ?? 20) + p.add!) }),
+    unavailable: drawnBeds,
   },
   doctorShift: {
     id: 'doctorShift',

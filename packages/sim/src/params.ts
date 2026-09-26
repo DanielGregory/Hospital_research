@@ -372,6 +372,14 @@ export const PARAMS = {
     securityOfficers: 0,
   },
 
+  /** Rules of thumb for a new department's starting setup (the builder's "typical staffing"). */
+  planning: {
+    providerHoursPerVisit: 0.8, // PLACEHOLDER: provider-hours per daily visit
+    /** How provider-hours are spread: day 08–20, a mid shift 12–24, night 20–08. */
+    providerSplit: { day: 0.45, mid: 0.3, night: 0.25 }, // PLACEHOLDER
+    visitsPerTriageNurseDay: 70, // PLACEHOLDER: above this, a second triage nurse 10–22
+    bedsPerNurse: 3, // PLACEHOLDER: bedside nurses on at any time = main beds ÷ this
+  },
   run: {
     durationMinutes: 24 * 60,
     warmupMinutes: 0,

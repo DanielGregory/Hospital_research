@@ -10,6 +10,7 @@ import { ScheduleEditor, Stepper } from '../screens/ScheduleEditor';
 import type { GameConfig } from '../sandbox';
 import { loadProject, newProject, saveProject, service, TEMPLATES, unitsOf, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
 import type { WorkerRequest, WorkerResponse } from './worker';
+import { planBeds } from '../builder/hospital';
 
 type Tab = 'department' | 'scenarios' | 'results' | 'report';
 
@@ -248,9 +249,13 @@ function DepartmentTab(props: {
 
       <h2>Space and systems</h2>
       <section className="card">
-        <div className="control control-row">
-          Main ED treatment spaces <Stepper value={base.beds?.main ?? 20} min={1} max={80} onChange={(v) => set('beds.main', v)} label="Main ED spaces" />
-        </div>
+        {modules.layout ? (
+          <p>Treatment spaces come from the drawn floor plan ({base.layout ? planBeds(base.layout) : 0} beds). Change them in Build your hospital.</p>
+        ) : (
+          <div className="control control-row">
+            Main ED treatment spaces <Stepper value={base.beds?.main ?? 20} min={1} max={80} onChange={(v) => set('beds.main', v)} label="Main ED spaces" />
+          </div>
+        )}
         {(
           [
             ['boarding', 'Admitted patients wait in ED beds until an inpatient bed is free (boarding)'],
@@ -285,7 +290,7 @@ const UNIT_ROWS = [
 ] as const;
 
 /** Inpatient beds for ED admissions: one pool, or separate ICU, step-down and ward units. */
-function UnitsCard({ base, set }: { base: SimConfig; set: (path: string, v: unknown) => void }) {
+export function UnitsCard({ base, set }: { base: SimConfig; set: (path: string, v: unknown) => void }) {
   const units = base.boarding?.units;
   return (
     <section className="card" data-testid="units-card">
@@ -328,7 +333,7 @@ const SERVICE_ROWS = [
 ] as const;
 
 /** Lab and imaging capacity. */
-function DiagnosticsCard({ base, set }: { base: SimConfig; set: (path: string, v: unknown) => void }) {
+export function DiagnosticsCard({ base, set }: { base: SimConfig; set: (path: string, v: unknown) => void }) {
   const us = base.diagnostics?.services?.ultrasound?.openHours;
   const us24 = us === null || (us === undefined && PARAMS.diagnostics.services.ultrasound.openHours === null);
   return (
@@ -420,7 +425,7 @@ function ScenariosTab(props: { project: Project; onProject: (p: Project) => void
   const { project } = props;
   const base = project.department.config;
   const update = (scenarios: ScenarioSpec[]) => props.onProject({ ...project, scenarios, results: undefined });
-  const [add, setAdd] = useState<TemplateId>('beds');
+  const [add, setAdd] = useState<TemplateId>(() => (Object.values(TEMPLATES).find((t) => !t.unavailable?.(project.department.config)) ?? TEMPLATES.doctorShift).id);
   return (
     <>
       <p className="lede">Each what-if is one change to the baseline. All of them run on the same simulated weeks, so differences come from the change, not luck.</p>
@@ -463,11 +468,13 @@ function ScenariosTab(props: { project: Project; onProject: (p: Project) => void
         <label className="control-row">
           Add a what-if{' '}
           <select value={add} onChange={(e) => setAdd(e.target.value as TemplateId)} data-testid="add-template">
-            {Object.values(TEMPLATES).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
+            {Object.values(TEMPLATES)
+              .filter((t) => !t.unavailable?.(project.department.config))
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
           </select>
         </label>
         <button
@@ -599,7 +606,7 @@ function ResultsTab({ comparison: c, onWatch }: { comparison: Comparison; onWatc
 const hoursText = (h: number) => (h >= 10 ? `${Math.round(h).toLocaleString('en-US')} h` : `${h.toFixed(1)} h`);
 
 /** Where the waiting comes from: root causes per setup, largest first. */
-function Bottlenecks({ comparison: c }: { comparison: Comparison }) {
+export function Bottlenecks({ comparison: c }: { comparison: Comparison }) {
   const setups = [c.baseline, ...c.scenarios].filter((r) => !r.problems.length && r.bottlenecks?.length);
   const [pick, setPick] = useState(setups[0]?.scenario.id ?? '');
   const r = setups.find((x) => x.scenario.id === pick) ?? setups[0];
@@ -835,7 +842,7 @@ function Report({ project, check }: { project: Project; check: CheckRow[] | null
           <li>Triage nurses: {staffLine('triageNurse')}</li>
           {base.modules?.security && <li>Security officers: {staffLine('security')}</li>}
           {base.modules?.nursing && <li>Bedside nurses: {staffLine('nurse')}</li>}
-          <li>Main ED treatment spaces: {base.beds?.main ?? 20}</li>
+          <li>Main ED treatment spaces: {base.modules?.layout && base.layout ? `${planBeds(base.layout)} (drawn floor plan)` : (base.beds?.main ?? 20)}</li>
           {base.modules?.boarding && base.boarding?.units && (
             <li>
               Inpatient beds for ED admissions: {UNIT_ROWS.map(([u, label]) => `${label.toLowerCase()} ${base.boarding!.units![u]?.beds ?? 0}`).join(', ')}

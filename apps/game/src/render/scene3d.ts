@@ -309,8 +309,12 @@ export class Scene3D {
   private structureKey = '';
   private themeKey = '';
   private centre = new THREE.Vector3();
+  /** The middle of the building itself (no allowance for the entrance canopy). */
+  private plainCentre = new THREE.Vector3();
   private span = 20;
   private framed = false;
+  private ghost: THREE.Mesh | null = null;
+  private readonly floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -418,6 +422,55 @@ export class Scene3D {
     return best ? { key: best.key, x: clientX - r.left, y: clientY - r.top } : null;
   }
 
+  // ---------------------------------------------------------------- editing (the 3D builder)
+
+  /**
+   * Editing: the left button (one finger on touch) draws instead of turning the view; the right
+   * button (two fingers) turns and pans, the wheel (pinch) zooms.
+   */
+  setEditing(on: boolean) {
+    const c = this.controls as unknown as { mouseButtons: Record<string, number | null>; touches: Record<string, number | null> };
+    c.mouseButtons.LEFT = on ? null : THREE.MOUSE.ROTATE;
+    c.mouseButtons.RIGHT = on ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+    c.touches.ONE = on ? null : THREE.TOUCH.ROTATE;
+  }
+
+  /** The point on the floor under the pointer, in plan units, or null when pointing at the sky. */
+  floorPoint(clientX: number, clientY: number): { x: number; y: number } | null {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.ray.intersectPlane(this.floorPlane, new THREE.Vector3());
+    return hit ? { x: hit.x / S, y: hit.z / S } : null;
+  }
+
+  /** A see-through block over the rectangle being drawn (plan units), or nothing. */
+  setGhost(rect: { x: number; y: number; w: number; h: number } | null, color: string) {
+    if (!rect) {
+      if (this.ghost) this.ghost.visible = false;
+      return;
+    }
+    if (!this.ghost) {
+      this.ghost = new THREE.Mesh(this.box(1, 1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, depthWrite: false }));
+      this.ghost.renderOrder = 10;
+      this.scene.add(this.ghost);
+    }
+    (this.ghost.material as THREE.MeshBasicMaterial).color.set(color);
+    this.ghost.visible = true;
+    this.ghost.scale.set(rect.w * S, WALL_H * 0.6, rect.h * S);
+    this.ghost.position.set((rect.x + rect.w / 2) * S, (WALL_H * 0.6) / 2, (rect.y + rect.h / 2) * S);
+  }
+
+  /** Look straight down on the floor (easiest for drawing), or back to the usual angle. */
+  topView(on: boolean) {
+    if (!on) return this.resetView();
+    const d = this.span * (this.camera.aspect < 1 ? 1.9 : 1.15);
+    const c = this.plainCentre;
+    this.camera.position.set(c.x, d * 1.25, c.z + 0.01);
+    this.controls.target.copy(c);
+    this.controls.update();
+  }
+
   render(plan: FloorPlan, actors: readonly Actor[], dt: number, t: number) {
     const themeKey = ['--canvas-bg', '--esi-1', '--surface', '--staff', '--room-trauma'].map((v) => css(v, '')).join();
     if (themeKey !== this.themeKey) {
@@ -482,6 +535,7 @@ export class Scene3D {
 
   dispose() {
     this.controls.dispose();
+    if (this.ghost) (this.ghost.material as THREE.Material).dispose();
     this.clearCaches();
     this.disposeWorld();
     this.renderer.dispose();
@@ -702,6 +756,7 @@ export class Scene3D {
     const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     // A little below the middle, so the entrance canopy is in frame.
     this.centre.set(((x0 + x1) / 2) * S, 0, ((y0 + y1) / 2 + (plan.props ? 25 : 0)) * S);
+    this.plainCentre.set(((x0 + x1) / 2) * S, 0, ((y0 + y1) / 2) * S);
     this.span = Math.max(x1 - x0, y1 - y0) * S;
     const sh = this.sun.shadow.camera;
     sh.left = sh.bottom = -this.span * 0.9;

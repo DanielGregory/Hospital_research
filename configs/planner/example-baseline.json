@@ -1,0 +1,25 @@
+{
+  "id": "planner-example",
+  "name": "Example department: a typical week",
+  "durationMinutes": 10080,
+  "warmupMinutes": 1440,
+  "startDayOfWeek": 0,
+  "startHour": 0,
+  "modules": { "staffing": true, "boarding": true, "diagnosis": true },
+  "staffing": {
+    "triageNurses": 0,
+    "doctors": 0,
+    "schedule": {
+      "doctor": [
+        { "startHour": 8, "hours": 12, "count": 3 },
+        { "startHour": 12, "hours": 12, "count": 1 },
+        { "startHour": 20, "hours": 12, "count": 2 }
+      ],
+      "triageNurse": [
+        { "startHour": 0, "hours": 24, "count": 1 },
+        { "startHour": 10, "hours": 12, "count": 1 }
+      ]
+    }
+  },
+  "beds": { "main": 18 }
+}

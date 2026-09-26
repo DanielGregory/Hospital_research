@@ -1,0 +1,15 @@
+{
+  "status": "UNVERIFIED. Values were written from memory because this environment could not reach the source sites (cdc.gov and ncbi.nlm.nih.gov are blocked by its network policy). Check each number against its source before using the fit.",
+  "sources": {
+    "acuityMix": "CDC NCHS, National Hospital Ambulatory Medical Care Survey (NHAMCS) ED summary tables, 'immediacy with which patient should be seen' (renormalised over triaged visits). https://www.cdc.gov/nchs/data/nhamcs/web_tables/2022-nhamcs-ed-web-tables.pdf",
+    "admissionRate": "NHAMCS ED summary tables, disposition 'admitted to this hospital' (incl. critical care / observation units as reported).",
+    "lwbsRate": "CMS Hospital Compare measure OP-22 (left before being seen), national rate; NHAMCS 'left before being seen'.",
+    "losMedianDischargedMinutes": "CMS Hospital Compare measure OP-18b (median time from ED arrival to departure, discharged patients), national median."
+  },
+  "targets": {
+    "acuityMix": { "1": 0.015, "2": 0.14, "3": 0.52, "4": 0.26, "5": 0.065 },
+    "admissionRate": 0.13,
+    "lwbsRate": 0.03,
+    "losMedianDischargedMinutes": 160
+  }
+}

@@ -1,13 +1,24 @@
 {
   "id": "basic",
-  "name": "Basic week: default arrivals, two doctors, then three",
+  "name": "Basic week: default pipeline, two doctors, then three from day 4",
   "durationMinutes": 10080,
   "warmupMinutes": 1440,
   "startDayOfWeek": 0,
   "startHour": 0,
-  "staffing": { "doctors": 2 },
-  "service": { "distribution": "lognormal" },
+  "staffing": {
+    "doctors": 2
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
   "commands": [
-    { "atMinute": 4320, "command": { "type": "setDoctors", "count": 3 } }
+    {
+      "atMinute": 4320,
+      "command": {
+        "type": "setStaff",
+        "role": "doctor",
+        "count": 3
+      }
+    }
   ]
 }

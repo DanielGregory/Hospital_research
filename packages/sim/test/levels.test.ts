@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'vitest';
+import level1 from '../../../configs/levels/level-01-quiet-night.json';
+import level2 from '../../../configs/levels/level-02-monday-morning.json';
+import level3 from '../../../configs/levels/level-03-fast-track.json';
+import level4 from '../../../configs/levels/level-04-flu-season.json';
+import level5 from '../../../configs/levels/level-05-boarding-crisis.json';
+import level6 from '../../../configs/levels/level-06-mass-casualty.json';
+import level7 from '../../../configs/levels/level-07-budget-mode.json';
+import level8 from '../../../configs/levels/level-08-new-build.json';
+import { resolveConfig, validateConfig } from '../src/config.js';
+import { Simulation } from '../src/engine.js';
+import { checkLimits, evaluateGoals, getMetric, staffingSummary } from '../src/levels.js';
+import { applySettings } from '../src/settings.js';
+import { checkSetup } from '../src/budget.js';
+
+const LEVELS: readonly any[] = [level1, level2, level3, level4, level5, level6, level7, level8];
+
+describe('goal evaluation', () => {
+  const metrics = new Simulation({ id: 'x', durationMinutes: 600 }, 1).run().metrics;
+
+  it('reads dot paths', () => {
+    expect(getMetric(metrics, 'doorToDoctor.median')).toBe(metrics.doorToDoctor.median);
+    expect(getMetric(metrics, 'lwbsRate')).toBe(metrics.lwbsRate);
+    expect(getMetric(metrics, 'nope.nothing')).toBeUndefined();
+    expect(getMetric(metrics, 'doorToDoctor')).toBeUndefined(); // not a number
+  });
+
+  it('applies max/min, flags unknown metrics, and handles missing data', () => {
+    const r = evaluateGoals(metrics, [
+      { metric: 'lwbsRate', max: 1, label: 'a' },
+      { metric: 'arrivals', min: 1e9, label: 'b' },
+      { metric: 'typo', max: 1, label: 'c' },
+    ]);
+    expect(r.results.map((x) => x.passed)).toEqual([true, false, false]);
+    expect(r.results[2]!.error).toMatch(/unknown metric/);
+    expect(r.passed).toBe(false);
+    const empty = new Simulation({ id: 'x', durationMinutes: 600, arrivals: { acuityMix: { '5': 1 } } }, 1).run().metrics;
+    const g = { metric: 'doorToDoctorByGroup.urgent.median', max: 10, label: 'u' };
+    expect(evaluateGoals(empty, [g]).passed).toBe(false);
+    expect(evaluateGoals(empty, [{ ...g, passIfNoData: true }]).passed).toBe(true);
+  });
+
+  it('rejects malformed level blocks', () => {
+    expect(() => validateConfig({ id: 'x', level: { number: 1, title: 't', briefing: [], debrief: { pass: [], fail: [] }, goals: [{ metric: 'a', label: 'b' }], playerControls: ['teleport'] } })).toThrow(
+      /needs max or min[\s\S]*unknown control/,
+    );
+  });
+});
+
+describe('limits', () => {
+  it('sums staff-hours and peak on-duty from schedules', () => {
+    const c = resolveConfig({
+      id: 'x',
+      modules: { staffing: true },
+      staffing: { schedule: { doctor: [{ startHour: 8, hours: 12, count: 3 }, { startHour: 20, hours: 12, count: 1 }, { startHour: 10, hours: 8, count: 1, days: [0] }] } },
+      level: { number: 1, title: 't', briefing: [], debrief: { pass: [], fail: [] }, goals: [], playerControls: [], limits: { staffHoursPerDay: { doctor: 48 }, maxOnDuty: { doctor: 3 } } },
+    });
+    const s = staffingSummary(c).doctor;
+    expect(s.hoursPerDay).toBeCloseTo(48 + 8 / 7);
+    expect(s.maxOnDuty).toBe(4);
+    expect(checkLimits(c)).toHaveLength(2);
+  });
+});
+
+describe.each(LEVELS.map((l) => [l.id as string, l] as const))('%s', (id, level) => {
+  const goals = level.level.goals;
+  const ref = applySettings(level, level.level.reference);
+  const seed = level.level.seed;
+
+  it('is valid, within its limits, and every goal metric exists', () => {
+    const c = resolveConfig(level);
+    expect(checkSetup(c)).toEqual([]);
+    expect(checkSetup(resolveConfig(ref))).toEqual([]);
+    if (level.level.trap) expect(checkSetup(resolveConfig(applySettings(level, level.level.trap)))).toEqual([]);
+    const m = new Simulation(level, seed).run().metrics;
+    for (const g of goals) expect(getMetric(m, g.metric), g.metric).not.toBeUndefined();
+  });
+
+  it('the shipped setup fails and the reference solution passes on the level seed', () => {
+    expect(evaluateGoals(new Simulation(level, seed).run().metrics, goals).passed).toBe(false);
+    expect(evaluateGoals(new Simulation(ref, seed).run().metrics, goals).passed).toBe(true);
+  });
+
+  it.runIf(level.level.trap)('the trap fails on the level seed and loses clearly to the reference', () => {
+    const trap = applySettings(level, level.level.trap);
+    expect(evaluateGoals(new Simulation(trap, seed).run().metrics, goals).passed).toBe(false);
+    const seeds = Array.from({ length: 12 }, (_, i) => 100 + i);
+    const rate = (cfg: unknown) => seeds.filter((s) => evaluateGoals(new Simulation(cfg, s).run().metrics, goals).passed).length / seeds.length;
+    expect(rate(ref) - rate(trap)).toBeGreaterThanOrEqual(0.25);
+  });
+
+  it('the reference beats the shipped setup across other days too', () => {
+    const seeds = Array.from({ length: 12 }, (_, i) => 100 + i);
+    const rate = (cfg: unknown) => seeds.filter((s) => evaluateGoals(new Simulation(cfg, s).run().metrics, goals).passed).length / seeds.length;
+    expect(rate(ref) - rate(level)).toBeGreaterThanOrEqual(level.level.minCrossSeedGap ?? 0.25);
+  });
+});
+
+describe('best-found benchmarks', () => {
+  it.each(LEVELS.map((l) => [l.level.number, l] as const))('level %i: the stored best found still scores what it says on the level seed', (_n, l) => {
+    const b = l.level.benchmark;
+    expect(b, 'run: pnpm headless benchmark --config <level> --write').toBeDefined();
+    const cfg = applySettings(l, b.settings);
+    expect(checkSetup(resolveConfig(cfg))).toEqual([]);
+    const m = new Simulation(cfg, l.level.seed).run().metrics;
+    // Stale after an engine or params change: re-run `pnpm headless benchmark --config <level> --write`.
+    expect(Math.round(m.compositeScore * 100) / 100).toBe(b.score);
+    expect(evaluateGoals(m, l.level.goals).passed).toBe(b.goalsMet);
+    expect(b.goalsMet).toBe(true);
+  });
+
+  it('three stars never ask for more than the best found plan', () => {
+    for (const l of LEVELS) expect(l.level.stars.three, `level ${l.level.number}`).toBeLessThanOrEqual(l.level.benchmark.score);
+  });
+});
+
+describe('floor plan limits (level 8)', () => {
+  const rooms = (level8 as any).level.reference['layout.rooms'] as { type: string; id: string }[];
+  const problems = (r: unknown[]) => checkSetup(resolveConfig(applySettings(level8, { 'layout.rooms': r })));
+  it('the reference plan fits; missing rooms and too few beds are flagged', () => {
+    expect(problems(rooms)).toEqual([]);
+    expect(problems(rooms.filter((r) => r.type !== 'trauma'))).toContain('The plan needs a trauma room');
+    expect(problems(rooms.filter((r) => r.id !== 'acute-b')).some((p) => /at least 20 needed/.test(p))).toBe(true);
+  });
+});

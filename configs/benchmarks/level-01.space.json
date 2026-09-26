@@ -1,0 +1,11 @@
+{
+ "dims": [
+  {
+   "path": "queue.discipline",
+   "values": [
+    "fifo",
+    "acuity"
+   ]
+  }
+ ]
+}

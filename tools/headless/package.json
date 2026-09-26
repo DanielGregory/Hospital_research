@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "bin": { "er-headless": "src/cli.ts" },
-  "dependencies": { "@er/sim": "workspace:*" }
+  "bin": {
+    "er-headless": "src/cli.ts"
+  },
+  "dependencies": {
+    "@er/sim": "workspace:*",
+    "@er/research": "workspace:*"
+  }
 }

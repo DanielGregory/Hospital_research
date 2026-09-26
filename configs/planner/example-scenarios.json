@@ -1,0 +1,17 @@
+{
+  "scenarios": [
+    { "id": "beds-22", "name": "Four more treatment spaces", "settings": { "beds.main": 22 } },
+    {
+      "id": "fast-track",
+      "name": "Fast track, 10:00–22:00",
+      "description": "Four recliners and one clinician for ESI 4–5.",
+      "settings": {
+        "fastTrack.enabled": true,
+        "beds.fastTrack": 4,
+        "staffing.schedule.fastTrackClinician": [{ "startHour": 10, "hours": 12, "count": 1 }]
+      }
+    },
+    { "id": "escalation", "name": "Full-capacity protocol always on", "settings": { "boarding.escalation": true } },
+    { "id": "flu", "name": "Flu season (+25% arrivals)", "settings": { "arrivals.rateMultiplier": 1.25 } }
+  ]
+}

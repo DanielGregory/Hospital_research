@@ -32,11 +32,17 @@ export function maxArrivalRatePerMinute(p: ArrivalPattern): number {
 export class ArrivalProcess {
   private readonly lambdaMax: number;
 
+  /**
+   * @param multiplier optional extra rate factor over time (e.g. surges)
+   * @param maxMultiplier an upper bound for `multiplier`, needed for thinning
+   */
   constructor(
     private readonly pattern: ArrivalPattern,
     private readonly rng: Rng,
+    private readonly multiplier: (t: number) => number = () => 1,
+    maxMultiplier = 1,
   ) {
-    this.lambdaMax = maxArrivalRatePerMinute(pattern);
+    this.lambdaMax = maxArrivalRatePerMinute(pattern) * maxMultiplier;
   }
 
   /** Time of the next arrival strictly after `from`, or undefined if none before `until`. */
@@ -46,7 +52,7 @@ export class ArrivalProcess {
     for (;;) {
       t += this.rng.exponential(1 / this.lambdaMax);
       if (t >= until) return undefined;
-      if (this.rng.next() * this.lambdaMax < arrivalRatePerMinute(this.pattern, t)) return t;
+      if (this.rng.next() * this.lambdaMax < arrivalRatePerMinute(this.pattern, t) * this.multiplier(t)) return t;
     }
   }
 }

@@ -1,0 +1,293 @@
+{
+  "id": "level-06-mass-casualty",
+  "name": "Mass Casualty",
+  "durationMinutes": 480,
+  "startDayOfWeek": 5,
+  "startHour": 20,
+  "modules": {
+    "staffing": true,
+    "shocks": true,
+    "process": true
+  },
+  "staffing": {
+    "triageNurses": 1,
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 20,
+          "hours": 12,
+          "count": 3
+        }
+      ]
+    }
+  },
+  "beds": {
+    "main": 16,
+    "fastTrack": 6
+  },
+  "shocks": [
+    {
+      "type": "massCasualty",
+      "atMinute": 60,
+      "patients": 30,
+      "overMinutes": 40,
+      "acuityMix": {
+        "1": 0.2,
+        "2": 0.35,
+        "3": 0.3,
+        "4": 0.15
+      }
+    }
+  ],
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "level": {
+    "number": 6,
+    "title": "Mass Casualty",
+    "tagline": "A bus has left the motorway. Thirty casualties in an hour.",
+    "seed": 1,
+    "briefing": [
+      "Simulation six. Saturday, 20:00. Ambulance control has just called: a bus has left the motorway. About thirty casualties, the first arriving in an hour.",
+      "Paramedics will tag them on scene, so they skip your triage desk. Many of them are critically hurt.",
+      "You can call in extra doctors and open surge spaces in corridors and side rooms. Do it now, before the first ambulance arrives."
+    ],
+    "debrief": {
+      "pass": [
+        "You set up your capacity before the wave arrived, so the sickest patients reached a doctor while they could still be helped.",
+        "A surge plan only works if you start it before the patients arrive."
+      ],
+      "fail": [
+        "The wave arrived faster than doctors or beds could be found. Critically injured patients waited, and some got worse while they waited.",
+        "Call staff in and open space before the first ambulance, not after."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 25,
+        "label": "ESI 1–2: median door-to-doctor under 25 minutes"
+      },
+      {
+        "metric": "deterioration.events",
+        "max": 4,
+        "label": "No more than 4 patients get worse while waiting"
+      },
+      {
+        "metric": "lwbsRate",
+        "max": 0.12,
+        "label": "Fewer than 12% leave without being seen"
+      }
+    ],
+    "playerControls": [
+      "staffing.schedule.doctor",
+      "beds.main",
+      "queue.discipline",
+      "process.steps"
+    ],
+    "liveCalls": [
+      "callIn",
+      "hallway",
+      "diversion",
+      "moveStaff"
+    ],
+    "stars": {
+      "two": 45,
+      "three": 56
+    },
+    "limits": {
+      "maxOnDuty": {
+        "doctor": 8
+      },
+      "maxBeds": {
+        "main": 28
+      }
+    },
+    "reference": {
+      "staffing.schedule.doctor": [
+        {
+          "startHour": 20,
+          "hours": 12,
+          "count": 3
+        },
+        {
+          "startHour": 20,
+          "hours": 8,
+          "count": 5
+        }
+      ],
+      "beds.main": 26
+    },
+    "trap": {
+      "beds.main": 28
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.schedule.doctor": [
+          {
+            "startHour": 20,
+            "hours": 12,
+            "count": 3
+          },
+          {
+            "startHour": 20,
+            "hours": 8,
+            "count": 5
+          }
+        ],
+        "beds.main": 28,
+        "queue.discipline": "acuity"
+      },
+      "score": 57,
+      "goalsMet": true,
+      "evaluated": 112,
+      "fixed": [
+        "process.steps"
+      ]
+    }
+  },
+  "process": {
+    "steps": [
+      {
+        "id": "triage",
+        "kind": "triage",
+        "label": "Triage",
+        "role": "triageNurse",
+        "meanMinutesByAcuity": {
+          "1": 6,
+          "2": 6,
+          "3": 6,
+          "4": 6,
+          "5": 6
+        },
+        "distribution": "lognormal",
+        "cv": 0.5,
+        "turnaroundMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [],
+        "inBed": false,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      },
+      {
+        "id": "doctorEval",
+        "kind": "doctorEval",
+        "label": "Doctor evaluation",
+        "role": "doctor",
+        "meanMinutesByAcuity": {
+          "1": 60,
+          "2": 45,
+          "3": 35,
+          "4": 20,
+          "5": 15
+        },
+        "distribution": "lognormal",
+        "cv": 0.8,
+        "turnaroundMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [
+          "triage"
+        ],
+        "inBed": true,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      },
+      {
+        "id": "workup",
+        "kind": "workup",
+        "label": "Tests and results",
+        "role": null,
+        "meanMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "distribution": "lognormal",
+        "cv": 0.5,
+        "turnaroundMinutesByAcuity": {
+          "1": 90,
+          "2": 90,
+          "3": 75,
+          "4": 20,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [
+          "doctorEval"
+        ],
+        "inBed": true,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      },
+      {
+        "id": "disposition",
+        "kind": "disposition",
+        "label": "Disposition",
+        "role": "doctor",
+        "meanMinutesByAcuity": {
+          "1": 5,
+          "2": 5,
+          "3": 5,
+          "4": 5,
+          "5": 5
+        },
+        "distribution": "lognormal",
+        "cv": 0.5,
+        "turnaroundMinutesByAcuity": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0
+        },
+        "turnaroundCv": 0.6,
+        "thoroughness": 0.5,
+        "after": [
+          "workup"
+        ],
+        "inBed": true,
+        "minAcuity": 1,
+        "maxAcuity": 5,
+        "lanes": [
+          "main",
+          "fastTrack"
+        ]
+      }
+    ]
+  },
+  "liveCalls": {
+    "maxCallIns": 2
+  }
+}

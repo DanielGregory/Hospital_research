@@ -1,0 +1,281 @@
+/**
+ * Story-level data: goals, limits, player controls, narrative.
+ * Pure functions only; the game decides how to present them.
+ */
+
+import type { ResolvedConfig } from './config.js';
+import type { Metrics } from './metrics.js';
+import { onDutyCount, scheduleBoundaries } from './schedule.js';
+import { ROLES, type Role } from './types.js';
+import { ROOM_TYPES, type RoomType } from './layout.js';
+
+export interface Goal {
+  /** Dot path into Metrics, e.g. "doorToDoctor.median" or "lwbsRate". */
+  metric: string;
+  max?: number;
+  min?: number;
+  label: string;
+  /** Pass when the metric has no data (e.g. no urgent patients arrived). Default false. */
+  passIfNoData?: boolean;
+}
+
+/** Settings the player may change in a level. Everything else is locked. */
+export const PLAYER_CONTROLS = [
+  'queue.discipline',
+  'staffing.doctors',
+  'staffing.triageNurses',
+  'staffing.fastTrackClinicians',
+  'staffing.schedule.doctor',
+  'staffing.schedule.triageNurse',
+  'staffing.schedule.fastTrackClinician',
+  'fastTrack.enabled',
+  'fastTrack.minAcuity',
+  'beds.main',
+  'beds.fastTrack',
+  'boarding.escalation',
+  'diagnosis.thoroughness',
+  /** The patient process (needs the process module on in the level). */
+  'process.steps',
+  /** The rooms of the floor plan (layout module on; the footprint, entrance and ambulance door stay fixed). */
+  'layout.rooms',
+] as const;
+export type PlayerControl = (typeof PLAYER_CONTROLS)[number];
+
+/** Decisions a level lets the player make during the shift, besides changing its player controls. */
+export const LIVE_CALLS = ['callIn', 'diversion', 'hallway', 'moveStaff'] as const;
+export type LiveCall = (typeof LIVE_CALLS)[number];
+
+/** Moments a tutorial tip can wait for. */
+export const COACH_TRIGGERS = ['start', 'firstTriaged', 'firstInBed', 'emergentWaiting', 'firstLeft'] as const;
+export type CoachTrigger = (typeof COACH_TRIGGERS)[number];
+
+/** A tutorial tip shown during play when its moment comes (once per run). */
+export interface CoachTip {
+  when: CoachTrigger;
+  text: string;
+  /** Pause the clock while the tip is showing. */
+  pause?: boolean;
+  /** A player control or UI element to point at (e.g. 'queue.discipline', 'speed', 'hover'). */
+  highlight?: string;
+}
+
+export interface LevelLimits {
+  /** Average staff-hours per day, by role. */
+  staffHoursPerDay?: Partial<Record<Role, number>>;
+  /** Most staff of a role on duty at once. */
+  maxOnDuty?: Partial<Record<Role, number>>;
+  /** Most treatment spaces per lane. */
+  maxBeds?: Partial<Record<'main' | 'fastTrack', number>>;
+  /** Fewest treatment spaces per lane (main includes trauma bays). */
+  minBeds?: Partial<Record<'main' | 'fastTrack', number>>;
+  /** Room types a floor plan must include (layout module). */
+  requiredRooms?: RoomType[];
+}
+
+export interface LevelSpec {
+  number: number;
+  title: string;
+  /** One line for the level menu. */
+  tagline?: string;
+  /** The level's fixed day: story mode always plays this seed. */
+  seed?: number;
+  /** Notes for designers (why the level is tuned the way it is). Not shown to players. */
+  designNote?: string;
+  /**
+   * A reasonable player solution (settings keyed by player control) used by balance checks:
+   * the shipped setup should fail and this should pass. Not shown to players.
+   */
+  reference?: Partial<Record<PlayerControl, unknown>>;
+  /** A tempting wrong answer the level is built to punish (balance checks: it fails on the level seed). */
+  trap?: Partial<Record<PlayerControl, unknown>>;
+  /** Minimum pass-rate gap (reference minus shipped) across random days that balance checks require. Default 0.25. */
+  minCrossSeedGap?: number;
+  /** Live decisions offered during the shift (default none). */
+  liveCalls?: LiveCall[];
+  /** Tutorial tips (narrative text lives here, never in the engine). */
+  coach?: CoachTip[];
+  /** Balanced-score thresholds for the second and third star (the first is for meeting the goals). */
+  stars?: { two: number; three: number };
+  /**
+   * The best setup a search found for this level's day (`pnpm headless benchmark`): the target in
+   * "beat the best found". Never called optimal: it is only the best of the setups tried.
+   */
+  benchmark?: LevelBenchmark;
+  briefing: string[];
+  debrief: { pass: string[]; fail: string[] };
+  goals: Goal[];
+  playerControls: PlayerControl[];
+  limits?: LevelLimits;
+}
+
+export interface LevelBenchmark {
+  /** Player control -> value (a planned setup; no live calls). */
+  settings: Partial<Record<PlayerControl, unknown>>;
+  /** Balanced score of that setup on the level seed. */
+  score: number;
+  goalsMet: boolean;
+  /** Distinct setups scored during the search. */
+  evaluated: number;
+  /** Controls the search did not vary (kept as shipped). */
+  fixed?: PlayerControl[];
+}
+
+/** Did a run beat the best found? Its goals must be met and its score higher (rounded as stored). */
+export function beatsBenchmark(b: Pick<LevelBenchmark, 'score' | 'goalsMet'>, score: number, goalsMet: boolean): boolean {
+  return goalsMet && (!b.goalsMet || Math.round(score * 100) / 100 > b.score);
+}
+
+const ROOM_LABEL: Record<RoomType, string> = {
+  waiting: 'waiting room',
+  triage: 'triage room',
+  trauma: 'trauma room',
+  acute: 'acute bay',
+  fastTrack: 'fast-track area',
+  station: 'staff station',
+  imaging: 'imaging room',
+  lab: 'lab',
+};
+
+const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const strings = (x: unknown) => Array.isArray(x) && x.every((s) => typeof s === 'string');
+
+export function checkLevel(level: unknown): string[] {
+  const p: string[] = [];
+  if (!isObj(level)) return ['level: must be an object'];
+  if (!(Number.isInteger(level.number) && (level.number as number) >= 1)) p.push('level.number: positive integer');
+  if (typeof level.title !== 'string' || !level.title) p.push('level.title: non-empty string');
+  if (level.tagline !== undefined && typeof level.tagline !== 'string') p.push('level.tagline: string');
+  if (level.seed !== undefined && !(Number.isInteger(level.seed) && (level.seed as number) >= 0 && (level.seed as number) <= 0xffffffff))
+    p.push('level.seed: integer in [0, 2^32)');
+  if (!strings(level.briefing)) p.push('level.briefing: array of paragraphs');
+  if (!(isObj(level.debrief) && strings(level.debrief.pass) && strings(level.debrief.fail)))
+    p.push('level.debrief: { pass: string[], fail: string[] }');
+  if (!Array.isArray(level.goals)) p.push('level.goals: array');
+  else
+    level.goals.forEach((g, i) => {
+      if (!isObj(g) || typeof g.metric !== 'string' || typeof g.label !== 'string') p.push(`level.goals[${i}]: { metric, label, max?, min? }`);
+      else if (g.max === undefined && g.min === undefined) p.push(`level.goals[${i}]: needs max or min`);
+      else if ([g.max, g.min].some((v) => v !== undefined && typeof v !== 'number')) p.push(`level.goals[${i}]: max/min must be numbers`);
+    });
+  if (level.benchmark !== undefined) {
+    const b = level.benchmark;
+    if (!isObj(b) || !isObj(b.settings) || typeof b.score !== 'number' || typeof b.goalsMet !== 'boolean' || typeof b.evaluated !== 'number')
+      p.push('level.benchmark: { settings, score, goalsMet, evaluated, fixed? }');
+    else
+      for (const k of Object.keys(b.settings))
+        if (!Array.isArray(level.playerControls) || !level.playerControls.includes(k)) p.push(`level.benchmark.settings.${k}: not one of this level's player controls`);
+  }
+  for (const key of ['reference', 'trap'] as const) {
+    const v = level[key];
+    if (v === undefined) continue;
+    if (!isObj(v)) p.push(`level.${key}: object of player control -> value`);
+    else
+      for (const k of Object.keys(v))
+        if (!Array.isArray(level.playerControls) || !level.playerControls.includes(k)) p.push(`level.${key}.${k}: not one of this level's player controls`);
+  }
+  if (level.liveCalls !== undefined && (!Array.isArray(level.liveCalls) || level.liveCalls.some((x) => !(LIVE_CALLS as readonly unknown[]).includes(x))))
+    p.push(`level.liveCalls: array of ${LIVE_CALLS.join(', ')}`);
+  if (
+    level.coach !== undefined &&
+    (!Array.isArray(level.coach) || level.coach.some((t) => !isObj(t) || !(COACH_TRIGGERS as readonly unknown[]).includes(t.when) || typeof t.text !== 'string'))
+  )
+    p.push(`level.coach: array of { when: ${COACH_TRIGGERS.join(' | ')}, text, pause?, highlight? }`);
+  if (level.stars !== undefined) {
+    const st = level.stars;
+    if (!isObj(st) || typeof st.two !== 'number' || typeof st.three !== 'number' || st.two > st.three) p.push('level.stars: { two, three } with two <= three');
+  }
+  if (!Array.isArray(level.playerControls)) p.push('level.playerControls: array');
+  else
+    for (const ctl of level.playerControls)
+      if (!(PLAYER_CONTROLS as readonly unknown[]).includes(ctl)) p.push(`level.playerControls: unknown control '${String(ctl)}'`);
+  if (level.limits !== undefined) {
+    if (!isObj(level.limits)) p.push('level.limits: must be an object');
+    else
+      for (const key of ['staffHoursPerDay', 'maxOnDuty']) {
+        const m = level.limits[key];
+        if (m === undefined) continue;
+        if (!isObj(m) || Object.entries(m).some(([r, v]) => !(ROLES as readonly string[]).includes(r) || typeof v !== 'number'))
+          p.push(`level.limits.${key}: object of role -> number`);
+      }
+    for (const key of ['maxBeds', 'minBeds'] as const)
+      if (isObj(level.limits) && level.limits[key] !== undefined) {
+        const m = level.limits[key];
+        if (!isObj(m) || Object.entries(m).some(([k, v]) => (k !== 'main' && k !== 'fastTrack') || typeof v !== 'number'))
+          p.push(`level.limits.${key}: { main?: number, fastTrack?: number }`);
+      }
+    if (isObj(level.limits) && level.limits.requiredRooms !== undefined) {
+      const r = level.limits.requiredRooms;
+      if (!Array.isArray(r) || r.some((t) => !(ROOM_TYPES as readonly unknown[]).includes(t))) p.push(`level.limits.requiredRooms: array of ${ROOM_TYPES.join(', ')}`);
+    }
+  }
+  return p;
+}
+
+/** Look up a dot path in metrics. Returns undefined for unknown paths. */
+export function getMetric(metrics: Metrics, path: string): number | null | undefined {
+  let cur: unknown = metrics;
+  for (const key of path.split('.')) {
+    if (!isObj(cur) || !(key in cur)) return undefined;
+    cur = cur[key];
+  }
+  return typeof cur === 'number' || cur === null ? cur : undefined;
+}
+
+export interface GoalResult extends Goal {
+  value: number | null;
+  passed: boolean;
+  /** Set when the metric path does not exist (a config bug). */
+  error?: string;
+}
+
+export function evaluateGoals(metrics: Metrics, goals: readonly Goal[]): { passed: boolean; results: GoalResult[] } {
+  const results = goals.map((g): GoalResult => {
+    const v = getMetric(metrics, g.metric);
+    if (v === undefined) return { ...g, value: null, passed: false, error: `unknown metric '${g.metric}'` };
+    const passed = v === null ? g.passIfNoData === true : (g.max === undefined || v <= g.max) && (g.min === undefined || v >= g.min);
+    return { ...g, value: v, passed };
+  });
+  return { passed: results.every((r) => r.passed), results };
+}
+
+/** Staff-hours per day and peak on-duty count implied by the starting config (averaged over a week). */
+export function staffingSummary(c: ResolvedConfig): Record<Role, { hoursPerDay: number; maxOnDuty: number }> {
+  const out = {} as Record<Role, { hoursPerDay: number; maxOnDuty: number }>;
+  for (const role of ROLES) {
+    const shifts = c.modules.staffing ? c.schedule[role] : undefined;
+    if (!shifts) {
+      out[role] = { hoursPerDay: c.staff[role] * 24, maxOnDuty: c.staff[role] };
+      continue;
+    }
+    const hoursPerDay = shifts.reduce((s, sh) => s + (sh.count * sh.hours * (sh.days?.length ?? 7)) / 7, 0);
+    // Peak: check just after every boundary across one week.
+    let maxOnDuty = onDutyCount(shifts, 0, 0);
+    for (const t of scheduleBoundaries(shifts, 0, 7 * 1440)) maxOnDuty = Math.max(maxOnDuty, onDutyCount(shifts, 0, t));
+    out[role] = { hoursPerDay, maxOnDuty };
+  }
+  return out;
+}
+
+/** Problems with the starting config against the level's limits (empty = within limits). */
+export function checkLimits(c: ResolvedConfig): string[] {
+  const limits = c.level?.limits;
+  if (!limits) return [];
+  const sum = staffingSummary(c);
+  const out: string[] = [];
+  for (const role of ROLES) {
+    const h = limits.staffHoursPerDay?.[role];
+    if (h !== undefined && sum[role].hoursPerDay > h + 1e-9)
+      out.push(`${role}: ${sum[role].hoursPerDay.toFixed(1)} staff-hours/day exceeds the limit of ${h}`);
+    const m = limits.maxOnDuty?.[role];
+    if (m !== undefined && sum[role].maxOnDuty > m) out.push(`${role}: ${sum[role].maxOnDuty} on duty at once exceeds the limit of ${m}`);
+  }
+  for (const lane of ['main', 'fastTrack'] as const) {
+    const max = limits.maxBeds?.[lane];
+    if (max !== undefined && c.beds[lane] > max) out.push(`${lane} beds: ${Number.isFinite(c.beds[lane]) ? c.beds[lane] : 'unlimited'} exceeds the limit of ${max}`);
+    const min = limits.minBeds?.[lane];
+    if (min !== undefined && c.beds[lane] < min) out.push(`${lane === 'main' ? 'Main ED' : 'Fast-track'} beds: ${c.beds[lane]}, at least ${min} needed`);
+  }
+  if (limits.requiredRooms && c.layout)
+    for (const t of limits.requiredRooms) if (!c.layout.rooms.some((r) => r.type === t)) out.push(`The plan needs a ${ROOM_LABEL[t]}`);
+  return out;
+}

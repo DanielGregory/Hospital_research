@@ -1,0 +1,115 @@
+{
+  "id": "level-05-boarding-crisis",
+  "name": "Boarding Crisis",
+  "durationMinutes": 2880,
+  "startDayOfWeek": 3,
+  "startHour": 0,
+  "modules": {
+    "boarding": true
+  },
+  "arrivals": {
+    "rateMultiplier": 1.1
+  },
+  "staffing": {
+    "doctors": 4,
+    "triageNurses": 1,
+    "fastTrackClinicians": 1
+  },
+  "beds": {
+    "main": 12,
+    "fastTrack": 6
+  },
+  "boarding": {
+    "inpatientBeds": 40,
+    "initialOccupied": 40,
+    "dischargesPerDay": 12
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "fastTrack": {
+    "enabled": false,
+    "minAcuity": 4
+  },
+  "level": {
+    "number": 5,
+    "title": "Boarding Crisis",
+    "tagline": "The hospital is full. More doctors will not fix it.",
+    "seed": 3,
+    "briefing": [
+      "Simulation five. Thursday and Friday. Every inpatient bed in the hospital is full.",
+      "When you admit someone, they stay in one of your beds until a ward bed frees up. Those beds are the only place your doctors can see new patients.",
+      "You can call in more doctors. You can open the fast track. You can ask the hospital to declare a full-capacity protocol, which pushes the wards to discharge faster. Choose carefully what the problem really is."
+    ],
+    "debrief": {
+      "pass": [
+        "Your department was never short of doctors. It was short of beds, because the hospital behind it was full.",
+        "Fixes that route patients around the blocked beds, or get the wards moving, work. Extra doctors mostly stand around waiting for a bed to free up."
+      ],
+      "fail": [
+        "Look at who was in your beds: admitted patients with nowhere to go. More staff in the ED cannot empty a ward.",
+        "Find a way to treat patients who do not need a main bed, and a way to get the hospital to take its patients."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "lwbsRate",
+        "max": 0.08,
+        "label": "Fewer than 8% leave without being seen"
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 25,
+        "label": "ESI 1–2: median door-to-doctor under 25 minutes"
+      },
+      {
+        "metric": "boarding.meanHours",
+        "max": 6,
+        "label": "Admitted patients board for under 6 hours on average",
+        "passIfNoData": true
+      }
+    ],
+    "playerControls": [
+      "staffing.doctors",
+      "fastTrack.enabled",
+      "boarding.escalation"
+    ],
+    "liveCalls": [
+      "hallway",
+      "diversion",
+      "callIn"
+    ],
+    "stars": {
+      "two": 88,
+      "three": 96
+    },
+    "limits": {
+      "maxOnDuty": {
+        "doctor": 8
+      }
+    },
+    "reference": {
+      "fastTrack.enabled": true,
+      "boarding.escalation": true
+    },
+    "trap": {
+      "staffing.doctors": 8
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.doctors": 6,
+        "fastTrack.enabled": false,
+        "boarding.escalation": true
+      },
+      "score": 96.09,
+      "goalsMet": true,
+      "evaluated": 28
+    }
+  },
+  "liveCalls": {
+    "maxCallIns": 1
+  }
+}

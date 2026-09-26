@@ -1,0 +1,30 @@
+{
+ "dims": [
+  {
+   "path": "staffing.doctors",
+   "values": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ]
+  },
+  {
+   "path": "fastTrack.enabled",
+   "values": [
+    false,
+    true
+   ]
+  },
+  {
+   "path": "boarding.escalation",
+   "values": [
+    false,
+    true
+   ]
+  }
+ ]
+}

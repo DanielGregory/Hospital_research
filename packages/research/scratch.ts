@@ -1,0 +1,11 @@
+import { parseVisits, Simulation, summarizeVisits, resolveConfig } from '@er/sim';
+import { readFileSync } from 'node:fs';
+import base from '../../configs/planner/example-baseline.json';
+import { calibrate } from './src/index.js';
+const parsed = parseVisits(readFileSync('configs/planner/sample-visits.csv', 'utf8'));
+const data = summarizeVisits(parsed.visits);
+const cal = calibrate(base, parsed.visits, data, { seeds: [1] });
+const cfg = { ...(cal.config as object), durationMinutes: 35 * 1440, warmupMinutes: 7 * 1440 };
+const m = new Simulation(cfg, 1).run().metrics;
+console.log('model boarders', m.boarding.boarders, 'admitted', m.admitted, 'arr', m.arrivals);
+const r = resolveConfig(cfg); console.log(JSON.stringify(r.boarding), JSON.stringify(r.modules));

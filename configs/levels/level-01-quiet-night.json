@@ -1,0 +1,110 @@
+{
+  "id": "level-01-quiet-night",
+  "name": "Quiet Night",
+  "durationMinutes": 600,
+  "startDayOfWeek": 1,
+  "startHour": 22,
+  "arrivals": {
+    "rateMultiplier": 0.8,
+    "acuityMix": {
+      "1": 0.03,
+      "2": 0.2,
+      "3": 0.4,
+      "4": 0.27,
+      "5": 0.1
+    }
+  },
+  "staffing": {
+    "doctors": 1,
+    "triageNurses": 1
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "fifo"
+  },
+  "level": {
+    "number": 1,
+    "title": "Quiet Night",
+    "tagline": "One doctor, a quiet night, and a triage nurse who knows who's dying.",
+    "seed": 13,
+    "briefing": [
+      "Welcome, trainee. This is a simulation. Nothing you do here can hurt anyone.",
+      "Tuesday, 22:00. One doctor, one triage nurse, and a waiting room that is nearly empty. It will not stay empty.",
+      "Right now patients are seen in the order they arrived. Your triage nurse knows which of them are dying. Decide whether that should matter."
+    ],
+    "debrief": {
+      "pass": [
+        "Good. The sickest patients reached a doctor first, and the ones who waited longer could afford to.",
+        "One more thing, trainee. The patients tonight were not real. Nights like this one are."
+      ],
+      "fail": [
+        "A patient who needed a doctor now waited behind people who could have waited, because they arrived first.",
+        "The patients tonight were not real. Nights like this one are. Try it again. This time, use the triage."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 15,
+        "label": "ESI 1–2: median door-to-doctor under 15 minutes",
+        "passIfNoData": true
+      },
+      {
+        "metric": "lwbsRate",
+        "max": 0.2,
+        "label": "Fewer than 20% leave without being seen"
+      }
+    ],
+    "playerControls": [
+      "queue.discipline"
+    ],
+    "liveCalls": [],
+    "stars": {
+      "two": 85,
+      "three": 94
+    },
+    "designNote": "One doctor, 22:00-08:00. With ESI 1 pre-emption, acuity order passes ~58% of nights vs ~34% for arrival order (80 nights). The level seed is a night where arrival order fails and acuity order passes.",
+    "reference": {
+      "queue.discipline": "acuity"
+    },
+    "minCrossSeedGap": 0.2,
+    "coach": [
+      {
+        "when": "start",
+        "text": "This is your department tonight. Patients come in through the entrance and wait until the triage nurse sees them. Drag to turn the view, scroll to zoom, and hover over anyone to see who they are.",
+        "pause": true,
+        "highlight": "floor"
+      },
+      {
+        "when": "start",
+        "text": "These buttons set the pace: pause any time to think, or speed up to 8× when it's quiet.",
+        "highlight": "speed"
+      },
+      {
+        "when": "firstTriaged",
+        "text": "The triage nurse has given a patient a level: 1 (red) is the most urgent, 5 (blue) the least. Their badge shows it.",
+        "highlight": "floor"
+      },
+      {
+        "when": "emergentWaiting",
+        "text": "An emergent patient is waiting for the doctor behind less urgent people who arrived first. You can change who goes next, right now.",
+        "pause": true,
+        "highlight": "queue.discipline"
+      },
+      {
+        "when": "firstLeft",
+        "text": "Someone just gave up and left without being seen. Long waits cost patients, not just minutes."
+      }
+    ],
+    "benchmark": {
+      "settings": {
+        "queue.discipline": "acuity"
+      },
+      "score": 94.29,
+      "goalsMet": true,
+      "evaluated": 2
+    }
+  }
+}

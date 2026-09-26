@@ -2,24 +2,33 @@ import { describe, expect, it } from 'vitest';
 import { Simulation } from '../src/engine.js';
 
 const flat = (perHour: number) => Array(24).fill(perHour);
+const doctors = (sim: Simulation) => sim.snapshot().staff.filter((s) => s.role === 'doctor');
 
 describe('Simulation', () => {
-  it('conserves patients', () => {
+  it('conserves patients and tracks every state', () => {
     const sim = new Simulation({ id: 't', durationMinutes: 3000 }, 1);
     const { metrics } = sim.run();
-    const snap = sim.snapshot();
-    expect(snap.totals.arrived).toBe(snap.totals.departed + snap.waiting.length + snap.inService.length);
-    expect(metrics.inSystemAtEnd).toBe(snap.waiting.length + snap.inService.length);
-    expect(snap.finished).toBe(true);
+    const s = sim.snapshot();
+    const inside = s.patients.length;
+    expect(s.totals.arrived).toBe(s.totals.discharged + s.totals.admitted + s.totals.lwbs + inside);
+    expect(metrics.inSystemAtEnd).toBe(inside);
+    expect(s.finished).toBe(true);
+    for (const p of sim.allPatients()) {
+      if (p.triageStartTime !== undefined) expect(p.triageStartTime).toBeGreaterThanOrEqual(p.arrivalTime);
+      if (p.doctorStartTime !== undefined) expect(p.doctorStartTime).toBeGreaterThanOrEqual(p.triageEndTime!);
+      if (p.outcome === 'lwbs') expect(p.doctorStartTime).toBeUndefined();
+    }
   });
 
-  it('never has more patients in service than doctors', () => {
-    const sim = new Simulation({ id: 't', durationMinutes: 5000, staffing: { doctors: 2 } }, 3);
+  it('never lets waiting patients sit next to an idle, on-duty provider', () => {
+    const sim = new Simulation({ id: 't', durationMinutes: 5000, staffing: { doctors: 2, triageNurses: 1 } }, 3);
     for (let t = 0; t <= 5000; t += 7) {
       sim.runUntil(t);
       const s = sim.snapshot();
-      expect(s.inService.length).toBeLessThanOrEqual(s.doctors.length);
-      if (s.waiting.length > 0) expect(s.doctors.every((d) => d.busy || d.retiring)).toBe(true);
+      const free = (role: string) => s.staff.some((x) => x.role === role && !x.busy && !x.retiring);
+      if (sim.queuedTasks('doctor').length > 0) expect(free('doctor')).toBe(false);
+      if (sim.queuedTasks('triageNurse').length > 0) expect(free('triageNurse')).toBe(false);
+      for (const x of s.staff) if (x.busy) expect(s.patients.some((p) => p.staffIds.includes(x.id))).toBe(true);
     }
   });
 
@@ -27,45 +36,48 @@ describe('Simulation', () => {
     const { metrics } = new Simulation({ id: 't', durationMinutes: 600, staffing: { doctors: 0 } }, 1).run();
     expect(metrics.arrivals).toBeGreaterThan(0);
     expect(metrics.seenByDoctor).toBe(0);
-    expect(metrics.doctorUtilization).toBeNull();
+    expect(metrics.utilizationByRole.doctor).toBeNull();
   });
 
-  it('setDoctors: idle doctors leave at once, busy ones finish first', () => {
+  it('setStaff: idle staff leave at once, busy ones finish first', () => {
     const sim = new Simulation(
-      { id: 't', durationMinutes: 10_000, staffing: { doctors: 3 }, arrivals: { hourlyRates: flat(20) } },
+      { id: 't', durationMinutes: 10_000, staffing: { doctors: 3, triageNurses: 3 }, arrivals: { hourlyRates: flat(20) } },
       2,
     );
     sim.runUntil(500);
-    expect(sim.snapshot().doctors.every((d) => d.busy)).toBe(true);
-    sim.command({ type: 'setDoctors', count: 1 });
-    let s = sim.snapshot();
-    expect(s.doctors.filter((d) => !d.retiring)).toHaveLength(1);
-    expect(s.doctors).toHaveLength(3); // the retiring two are still with patients
+    expect(doctors(sim).every((d) => d.busy)).toBe(true);
+    sim.command({ type: 'setStaff', role: 'doctor', count: 1 });
+    expect(doctors(sim).filter((d) => !d.retiring)).toHaveLength(1);
+    expect(doctors(sim)).toHaveLength(3); // the retiring two are still with patients
     sim.runUntil(1000);
-    s = sim.snapshot();
-    expect(s.doctors).toHaveLength(1);
-    sim.command({ type: 'setDoctors', count: 4 });
-    expect(sim.snapshot().doctors).toHaveLength(4);
-    expect(sim.snapshot().inService).toHaveLength(4);
+    expect(doctors(sim)).toHaveLength(1);
+    sim.command({ type: 'setStaff', role: 'doctor', count: 4 });
+    expect(doctors(sim)).toHaveLength(4);
+    expect(sim.snapshot().staff.filter((x) => x.role === 'doctor' && x.busy)).toHaveLength(4);
   });
 
-  it('raising doctors cancels pending departures before hiring', () => {
+  it('raising staff cancels pending departures before hiring', () => {
     const sim = new Simulation({ id: 't', durationMinutes: 5000, staffing: { doctors: 2 }, arrivals: { hourlyRates: flat(20) } }, 4);
     sim.runUntil(300);
-    const ids = sim.snapshot().doctors.map((d) => d.id);
-    sim.command({ type: 'setDoctors', count: 0 });
-    sim.command({ type: 'setDoctors', count: 2 });
-    expect(sim.snapshot().doctors.map((d) => d.id)).toEqual(ids);
-    expect(sim.snapshot().doctors.every((d) => !d.retiring)).toBe(true);
+    const ids = doctors(sim).map((d) => d.id);
+    sim.command({ type: 'setStaff', role: 'doctor', count: 0 });
+    sim.command({ type: 'setStaff', role: 'doctor', count: 2 });
+    expect(doctors(sim).map((d) => d.id)).toEqual(ids);
+    expect(doctors(sim).every((d) => !d.retiring)).toBe(true);
+  });
+
+  it('rejects invalid live commands', () => {
+    const sim = new Simulation({ id: 't' }, 1);
+    expect(() => sim.command({ type: 'setStaff', role: 'janitor' as never, count: 1 })).toThrow(/role/);
+    expect(() => sim.command({ type: 'setSchedule', role: 'doctor', shifts: [] })).toThrow(/staffing module/);
   });
 
   it('snapshot is a copy', () => {
     const sim = new Simulation({ id: 't', durationMinutes: 600 }, 1);
     sim.runUntil(300);
     const s = sim.snapshot();
-    s.waiting.length = 0;
-    s.doctors.length = 0;
-    expect(sim.snapshot().doctors.length).toBeGreaterThan(0);
+    s.staff.length = 0;
+    expect(sim.snapshot().staff.length).toBeGreaterThan(0);
   });
 
   it('warmup excludes early arrivals from stats', () => {

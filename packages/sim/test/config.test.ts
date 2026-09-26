@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, resolveConfig, validateConfig } from '../src/config.js';
+import { ConfigError, IMPLEMENTED_MODULES, MODULES, resolveConfig, validateConfig } from '../src/config.js';
 import { PARAMS } from '../src/params.js';
 
 describe('config', () => {
   it('fills defaults from PARAMS', () => {
     const c = resolveConfig({ id: 'x' });
-    expect(c.doctors).toBe(PARAMS.staffing.doctors);
+    expect(c.staff.doctor).toBe(PARAMS.staffing.doctors);
     expect(c.hourlyRates).toEqual(PARAMS.arrivals.hourlyRates);
     expect(Object.values(c.modules).every((on) => on === false)).toBe(true);
   });
@@ -30,13 +30,23 @@ describe('config', () => {
     }
   });
 
-  it('rejects unknown modules and modules not built yet', () => {
+  it('rejects unknown modules; every spec module is built', () => {
     expect(() => validateConfig({ id: 'x', modules: { teleport: true } })).toThrow(/unknown module/);
-    expect(() => validateConfig({ id: 'x', modules: { boarding: true } })).toThrow(/Phase 3/);
-    expect(() => validateConfig({ id: 'x', modules: { boarding: false } })).not.toThrow();
+    expect([...IMPLEMENTED_MODULES].sort()).toEqual([...MODULES].sort());
+    expect(() => resolveConfig({ id: 'x', modules: { process: true } })).toThrow(/needs a process section/);
   });
 
   it('rejects bad commands', () => {
     expect(() => validateConfig({ id: 'x', commands: [{ atMinute: 5, command: { type: 'fireEveryone' } }] })).toThrow(/unknown command/);
+  });
+});
+
+describe('ambulance share from data', () => {
+  it('can be set per config (calibration output) and is validated', () => {
+    const r = resolveConfig({ id: 'amb', arrivals: { ambulanceShareByAcuity: { '1': 0.9, '4': 0.03 } } });
+    expect(r.ambulanceShareByAcuity[1]).toBe(0.9);
+    expect(r.ambulanceShareByAcuity[4]).toBe(0.03);
+    expect(r.ambulanceShareByAcuity[2]).toBe(PARAMS.arrivals.ambulanceShareByAcuity[2]);
+    expect(() => resolveConfig({ id: 'amb', arrivals: { ambulanceShareByAcuity: { '1': 1.5 } } })).toThrow(/between 0 and 1/);
   });
 });

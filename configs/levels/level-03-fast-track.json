@@ -1,0 +1,143 @@
+{
+  "id": "level-03-fast-track",
+  "name": "Fast Track",
+  "durationMinutes": 1440,
+  "startDayOfWeek": 2,
+  "startHour": 0,
+  "modules": {
+    "staffing": true
+  },
+  "arrivals": {
+    "rateMultiplier": 1.2
+  },
+  "staffing": {
+    "triageNurses": 1,
+    "fastTrackClinicians": 0,
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 22,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 7,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 11,
+          "hours": 12,
+          "count": 2
+        }
+      ],
+      "fastTrackClinician": [
+        {
+          "startHour": 0,
+          "hours": 12,
+          "count": 1
+        }
+      ]
+    }
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "fastTrack": {
+    "enabled": false,
+    "minAcuity": 4
+  },
+  "level": {
+    "number": 3,
+    "title": "Fast Track",
+    "tagline": "Open a lane for the sprains, so the sickest patients reach a doctor sooner.",
+    "seed": 2,
+    "briefing": [
+      "Simulation three. A busier Wednesday, and one doctor shift fewer than you ended with last time.",
+      "You have been given a physician associate for one twelve-hour shift. They can treat minor cases (sprains, small cuts, sore throats) in a separate fast-track area. They cannot take anyone sicker.",
+      "The fast track is closed and the shift is set to start at midnight. Decide when it runs and who goes there."
+    ],
+    "debrief": {
+      "pass": [
+        "The fast track did more than help the minor cases. Every sprain it took was one your doctors didn't have to see, so the sickest patients reached a doctor sooner.",
+        "A separate lane only helps if it is open when the minor cases arrive."
+      ],
+      "fail": [
+        "Low-acuity patients waited behind sicker ones, as the queue told them to, and many of them gave up and went home.",
+        "Check when the fast track was open, and whether its threshold sent it enough patients."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "lwbsRate",
+        "max": 0.04,
+        "label": "Fewer than 4% leave without being seen"
+      },
+      {
+        "metric": "lengthOfStayByGroup.minor.median",
+        "max": 60,
+        "label": "Minor cases (ESI 4–5) out within an hour (median)"
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "max": 20,
+        "label": "ESI 1–2: median door-to-doctor under 20 minutes",
+        "passIfNoData": true
+      }
+    ],
+    "playerControls": [
+      "fastTrack.enabled",
+      "fastTrack.minAcuity",
+      "staffing.schedule.fastTrackClinician"
+    ],
+    "liveCalls": [
+      "moveStaff",
+      "callIn"
+    ],
+    "stars": {
+      "two": 94,
+      "three": 97.5
+    },
+    "limits": {
+      "staffHoursPerDay": {
+        "doctor": 72,
+        "fastTrackClinician": 12
+      },
+      "maxOnDuty": {
+        "fastTrackClinician": 1
+      }
+    },
+    "reference": {
+      "fastTrack.enabled": true,
+      "staffing.schedule.fastTrackClinician": [
+        {
+          "startHour": 10,
+          "hours": 12,
+          "count": 1
+        }
+      ]
+    },
+    "benchmark": {
+      "settings": {
+        "fastTrack.enabled": true,
+        "fastTrack.minAcuity": 4,
+        "staffing.schedule.fastTrackClinician": [
+          {
+            "startHour": 9,
+            "hours": 12,
+            "count": 1
+          }
+        ]
+      },
+      "score": 97.68,
+      "goalsMet": true,
+      "evaluated": 54
+    }
+  },
+  "liveCalls": {
+    "maxCallIns": 1
+  }
+}

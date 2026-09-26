@@ -1,0 +1,274 @@
+{
+  "id": "level-07-budget-mode",
+  "name": "Budget Mode",
+  "durationMinutes": 2880,
+  "startDayOfWeek": 0,
+  "startHour": 0,
+  "modules": {
+    "staffing": true,
+    "boarding": true,
+    "diagnosis": true,
+    "burnout": true,
+    "budget": true
+  },
+  "staffing": {
+    "schedule": {
+      "doctor": [
+        {
+          "startHour": 0,
+          "hours": 24,
+          "count": 3
+        }
+      ],
+      "triageNurse": [
+        {
+          "startHour": 0,
+          "hours": 24,
+          "count": 1
+        }
+      ],
+      "fastTrackClinician": [
+        {
+          "startHour": 8,
+          "hours": 12,
+          "count": 1
+        }
+      ]
+    }
+  },
+  "beds": {
+    "main": 24,
+    "fastTrack": 6
+  },
+  "boarding": {
+    "inpatientBeds": 40,
+    "initialOccupied": 36,
+    "dischargesPerDay": 22
+  },
+  "diagnosis": {
+    "thoroughness": 0.3
+  },
+  "service": {
+    "distribution": "lognormal"
+  },
+  "queue": {
+    "discipline": "acuity"
+  },
+  "fastTrack": {
+    "enabled": false,
+    "minAcuity": 4
+  },
+  "budget": {
+    "capPerDay": 20000
+  },
+  "score": {
+    "terms": [
+      {
+        "metric": "doorToDoctor.median",
+        "weight": 2,
+        "target": 10,
+        "worst": 60
+      },
+      {
+        "metric": "doorToDoctorByGroup.urgent.median",
+        "weight": 2,
+        "target": 5,
+        "worst": 30
+      },
+      {
+        "metric": "lwbsRate",
+        "weight": 2,
+        "target": 0.01,
+        "worst": 0.1
+      },
+      {
+        "metric": "lengthOfStay.median",
+        "weight": 1,
+        "target": 120,
+        "worst": 360
+      },
+      {
+        "metric": "deterioration.per100Arrivals",
+        "weight": 1,
+        "target": 0,
+        "worst": 5
+      },
+      {
+        "metric": "diagnosis.bounceBackRate72h",
+        "weight": 1,
+        "target": 0.01,
+        "worst": 0.08
+      },
+      {
+        "metric": "boarding.meanHours",
+        "weight": 1,
+        "target": 1,
+        "worst": 8
+      }
+    ]
+  },
+  "level": {
+    "number": 7,
+    "title": "Budget Mode",
+    "tagline": "Every system live, one budget. Spend where it counts.",
+    "seed": 3,
+    "briefing": [
+      "Final simulation. Monday and Tuesday, with every system live: shifts, fatigue, a hospital that is nearly full, and diagnoses that can be wrong.",
+      "You have 20,000 a day. Staff, treatment spaces and escalating to the hospital all cost money. You cannot start a plan that goes over budget.",
+      "There is no single number to chase. You are scored on waits, patients who leave, patients who come back, and patients who get worse. Spend where it counts."
+    ],
+    "debrief": {
+      "pass": [
+        "Balanced. Nothing was perfect, but nothing was left to fail.",
+        "That is the job, trainee. Every department you ran was a simulation. The decisions were not."
+      ],
+      "fail": [
+        "Somewhere the money went to the wrong place: idle beds, a rota that ignored the Monday rush, or rushed assessments that sent patients home only for them to come back.",
+        "Check the score breakdown and move money to the weakest part."
+      ]
+    },
+    "goals": [
+      {
+        "metric": "compositeScore",
+        "min": 70,
+        "label": "Balanced score of at least 70 out of 100"
+      },
+      {
+        "metric": "cost.perDay",
+        "max": 20000,
+        "label": "Stay within 20,000 per day"
+      }
+    ],
+    "playerControls": [
+      "staffing.schedule.doctor",
+      "staffing.schedule.triageNurse",
+      "staffing.schedule.fastTrackClinician",
+      "beds.main",
+      "beds.fastTrack",
+      "fastTrack.enabled",
+      "fastTrack.minAcuity",
+      "queue.discipline",
+      "diagnosis.thoroughness",
+      "boarding.escalation"
+    ],
+    "liveCalls": [
+      "callIn",
+      "hallway",
+      "diversion",
+      "moveStaff"
+    ],
+    "stars": {
+      "two": 75,
+      "three": 88
+    },
+    "limits": {
+      "maxOnDuty": {
+        "doctor": 7,
+        "triageNurse": 3,
+        "fastTrackClinician": 2
+      },
+      "maxBeds": {
+        "main": 30,
+        "fastTrack": 10
+      }
+    },
+    "reference": {
+      "staffing.schedule.doctor": [
+        {
+          "startHour": 22,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 8,
+          "hours": 12,
+          "count": 2
+        },
+        {
+          "startHour": 10,
+          "hours": 12,
+          "count": 2
+        }
+      ],
+      "staffing.schedule.triageNurse": [
+        {
+          "startHour": 0,
+          "hours": 24,
+          "count": 1
+        },
+        {
+          "startHour": 9,
+          "hours": 12,
+          "count": 1
+        }
+      ],
+      "staffing.schedule.fastTrackClinician": [
+        {
+          "startHour": 10,
+          "hours": 12,
+          "count": 1
+        }
+      ],
+      "beds.main": 18,
+      "fastTrack.enabled": true,
+      "diagnosis.thoroughness": 0.6
+    },
+    "trap": {
+      "beds.main": 30,
+      "diagnosis.thoroughness": 0.9
+    },
+    "benchmark": {
+      "settings": {
+        "staffing.schedule.doctor": [
+          {
+            "startHour": 22,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 8,
+            "hours": 12,
+            "count": 2
+          },
+          {
+            "startHour": 10,
+            "hours": 12,
+            "count": 2
+          }
+        ],
+        "staffing.schedule.triageNurse": [
+          {
+            "startHour": 0,
+            "hours": 24,
+            "count": 2
+          }
+        ],
+        "staffing.schedule.fastTrackClinician": [
+          {
+            "startHour": 9,
+            "hours": 12,
+            "count": 1
+          },
+          {
+            "startHour": 12,
+            "hours": 12,
+            "count": 1
+          }
+        ],
+        "beds.main": 14,
+        "beds.fastTrack": 8,
+        "fastTrack.enabled": true,
+        "fastTrack.minAcuity": 4,
+        "queue.discipline": "acuity",
+        "diagnosis.thoroughness": 0.8,
+        "boarding.escalation": false
+      },
+      "score": 95.83,
+      "goalsMet": true,
+      "evaluated": 324
+    }
+  },
+  "liveCalls": {
+    "maxCallIns": 2
+  }
+}

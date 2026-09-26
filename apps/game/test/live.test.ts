@@ -10,6 +10,7 @@ import { commandLabel, explain } from '../src/play/explain';
 import { personName } from '../src/play/names';
 import { busiestRoutes, locationName } from '../src/play/WalkMap';
 import { verdict } from '../src/planner/Planner';
+import { newHospital, planBeds, SIZES, toDepartment, typicalStaffing, withVisits } from '../src/builder/hospital';
 import { exampleDepartment, TEMPLATES, toScenario } from '../src/planner/project';
 import { layoutHints } from '../src/screens/FloorDesigner';
 import { COMPLAINTS, profileLine, storyText } from '../src/play/profiles';
@@ -208,5 +209,34 @@ describe('planner', () => {
     expect(verdict(k, { n: 5, mean: -3, ciLo: -5, ciHi: -1, betterShare: 1 }).label).toBe('better');
     expect(verdict(k, { n: 5, mean: 2, ciLo: 1, ciHi: 3, betterShare: 0 }).label).toBe('worse');
     expect(verdict(k, { n: 5, mean: -1, ciLo: -3, ciHi: 1, betterShare: 0.6 }).label).toBe('no clear change');
+  });
+});
+
+describe('build your hospital', () => {
+  it('every starter size opens and runs, with more beds and staff for bigger departments', () => {
+    let lastBeds = 0;
+    for (const size of ['small', 'medium', 'large'] as const) {
+      const h = newHospital(size);
+      const m = new Simulation(h.config, 1).run().metrics;
+      expect(m.arrivals / 6, size).toBeGreaterThan(SIZES[size].visits * 0.8);
+      expect(m.arrivals / 6, size).toBeLessThan(SIZES[size].visits * 1.2);
+      expect(planBeds(h.config.layout!)).toBeGreaterThan(lastBeds);
+      lastBeds = planBeds(h.config.layout!);
+    }
+    const hours = (v: number) => typicalStaffing(v, 20).doctor.reduce((s, x) => s + x.count * x.hours, 0);
+    expect(hours(180)).toBeGreaterThan(hours(100));
+    expect(hours(100)).toBeGreaterThan(hours(40));
+  });
+
+  it('an empty floor cannot open until it has rooms', () => {
+    const h = newHospital('empty');
+    expect(() => new Simulation(h.config, 1)).toThrow();
+  });
+
+  it('goes to the planner as a baseline, where bed what-ifs give way to the floor plan', () => {
+    const dept = toDepartment(withVisits(newHospital('medium'), 120));
+    expect(() => new Simulation(dept.config, 1)).not.toThrow();
+    expect(TEMPLATES.beds.unavailable?.(dept.config)).toMatch(/floor plan/);
+    expect(TEMPLATES.beds.unavailable?.(exampleDepartment().config)).toBeNull();
   });
 });

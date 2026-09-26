@@ -16,6 +16,7 @@ export function Menu(props: {
   career: CareerState | null;
   onCareer: () => void;
   onPlanner: () => void;
+  onBuilder: () => void;
 }) {
   const { onPick, onLayout, onSandbox, results, best, daily } = props;
   const todays = best[`daily:${daily.date}`];
@@ -38,6 +39,18 @@ export function Menu(props: {
           </button>
         </div>
       </section>
+
+      <button className="build-card" onClick={props.onBuilder} data-testid="builder-card">
+        <span className="eyebrow">New · in 3D</span>
+        <strong>Build your own hospital</strong>
+        <span>Pick a size, drag rooms onto the floor in 3D, set the shifts, then open the doors and watch patients arrive.</span>
+        <ol className="build-steps" aria-label="How it works">
+          <li>Draw the floor</li>
+          <li>Set the staff</li>
+          <li>Beds upstairs and labs</li>
+          <li>Open the doors</li>
+        </ol>
+      </button>
 
       <h2>Training scenarios</h2>
       <p className="muted">
@@ -86,7 +99,7 @@ export function Menu(props: {
       <h2>More</h2>
       <div className="sandbox-grid">
         <button className="sandbox-card" onClick={props.onCareer} data-testid="career">
-          <strong>{props.career ? props.career.hospital.name : 'Run your own hospital'}</strong>
+          <strong>{props.career ? props.career.hospital.name : 'Career: run a hospital week by week'}</strong>
           <span>
             {props.career
               ? props.career.over
@@ -96,12 +109,12 @@ export function Menu(props: {
           </span>
         </button>
         <button className="sandbox-card" onClick={onSandbox} data-testid="sandbox">
-          <strong>Build your own ED</strong>
-          <span>Switch every system on or off, set staffing and beds, design the patient process, and test it.</span>
+          <strong>Sandbox: every switch</strong>
+          <span>For experiments: switch every system on or off, design the patient process step by step, and test it.</span>
         </button>
         <button className="sandbox-card" onClick={onLayout} data-testid="layout-editor">
-          <strong>Layout editor</strong>
-          <span>Draw the floor plan. Staff walk every metre, so where you put the rooms matters.</span>
+          <strong>Floor plan only (2D)</strong>
+          <span>Draw a floor plan on a flat grid and compare walking distances.</span>
         </button>
       </div>
     </main>

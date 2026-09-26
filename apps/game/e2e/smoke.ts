@@ -315,6 +315,50 @@ async function main() {
         await page.getByTestId('report').waitFor();
         await shot(page, `planner-report-${scheme}`);
 
+        // Build your hospital in 3D: pick a size, remove and restore a room on the 3D floor, test it, open the doors.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('builder-card').click();
+        await page.getByTestId('size-medium').click();
+        const floor = page.getByTestId('floor-3d-builder');
+        await floor.waitFor();
+        await page.waitForTimeout(1500);
+        await shot(page, `builder-floor-${scheme}`);
+        const rooms = page.locator('.room-list li');
+        const roomsBefore = await rooms.count();
+        await page.getByTestId('tool-erase').click();
+        const fb = (await floor.boundingBox())!;
+        await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2);
+        await page.mouse.click(fb.x + fb.width / 2, fb.y + fb.height / 2); // the staff station, in the middle
+        if ((await rooms.count()) !== roomsBefore - 1) fail(`builder: clicking the 3D floor should remove the station (${roomsBefore} → ${await rooms.count()})`);
+        await page.getByTestId('undo').click();
+        if ((await rooms.count()) !== roomsBefore) fail('builder: undo should restore the room');
+        await page.getByTestId('tool-acute').click();
+        await page.mouse.move(fb.x + fb.width * 0.2, fb.y + fb.height * 0.5);
+        await page.mouse.down();
+        await page.mouse.move(fb.x + fb.width * 0.3, fb.y + fb.height * 0.6, { steps: 5 });
+        await shot(page, `builder-drag-${scheme}`);
+        await page.mouse.up();
+        await page.getByTestId('camera-toggle').click();
+        await page.waitForTimeout(500);
+        await shot(page, `builder-angled-${scheme}`);
+        await page.getByTestId('builder-next').click();
+        await page.getByTestId('typical-staffing').click();
+        await page.getByTestId('builder-next').click();
+        await page.getByTestId('units-card').waitFor();
+        await page.getByTestId('builder-next').click();
+        await page.getByTestId('test-hospital').click();
+        await page.getByTestId('hospital-results').waitFor({ timeout: 90_000 });
+        await page.getByTestId('bottlenecks').waitFor();
+        await shot(page, `builder-try-${scheme}`);
+        await page.getByTestId('open-doors').click();
+        await page.getByTestId('speed-8').click();
+        await page.waitForTimeout(1500);
+        await unhold(page);
+        await shot(page, `builder-play-${scheme}`);
+        await page.getByTestId('skip').click();
+        await page.getByTestId('retry').click();
+        await page.getByTestId('builder').waitFor();
+
         // Level 7 shows the budget line and blocks an over-budget plan.
         await page.goto(`http://localhost:${PORT}/`);
         await page.getByTestId('level-7').click();

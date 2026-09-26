@@ -680,3 +680,31 @@ label.button.file input { position: absolute; inset: 0; opacity: 0; cursor: poin
 .cause-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cause-bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 4px 0; }
 .cause-bar span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+/* Build your hospital */
+.build-card { display: grid; gap: 6px; text-align: left; width: 100%; margin: 20px 0 8px; padding: 18px 20px; border: 2px solid var(--accent); border-radius: 14px; background: var(--accent-soft); color: var(--ink); cursor: pointer; }
+.build-card strong { font-size: 1.35rem; }
+.build-card:hover { box-shadow: 0 2px 12px rgb(0 0 0 / 0.12); }
+.build-steps { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 6px 0 0; padding: 0; list-style: none; counter-reset: step; font-weight: 600; }
+.build-steps li { counter-increment: step; padding: 3px 10px; border-radius: 999px; background: var(--surface); }
+.build-steps li::before { content: counter(step) '  '; color: var(--accent); font-weight: 800; }
+.title-input { font: inherit; font-size: 1.6rem; font-weight: 800; border: 1px dashed transparent; background: transparent; color: var(--ink); padding: 2px 4px; margin-left: -5px; max-width: 100%; }
+.title-input:hover, .title-input:focus { border-color: var(--line-strong); }
+.builder-stage { display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: stretch; margin: 12px 0; }
+.tools.vertical { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+.tools.vertical .push { flex: 1; }
+.stage3d { position: relative; min-height: 460px; height: 62vh; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.stage3d canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+.stage-overlay { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+.stage-overlay > * { pointer-events: auto; }
+.stage-overlay .chip, .stage-beds { background: var(--surface); }
+.stage-help { background: var(--surface); padding: 2px 8px; border-radius: 999px; }
+.stage-overlay .small-btn { margin-left: auto; padding: 4px 12px; }
+.stage-beds { position: absolute; bottom: 8px; left: 8px; margin: 0; }
+.builder-actions { margin-top: 16px; }
+@media (max-width: 640px) {
+  .builder-stage { grid-template-columns: 1fr; }
+  .tools.vertical { flex-direction: row; flex-wrap: wrap; }
+  .stage3d { height: 55vh; min-height: 320px; }
+  .stage-help { display: none; }
+}

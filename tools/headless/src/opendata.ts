@@ -12,7 +12,7 @@ import { baselineCheck, calibrate, type CheckRow } from '@er/research';
 import { mimicEdVisits, OPEN_SOURCES, resolveConfig, restackVisits, summarizeVisits, type VisitSummary } from '@er/sim';
 
 export interface OpenDataResult {
-  source: { id: string; name: string; page: string; license: string; citation: string };
+  source: { id: string; name: string; page: string; license: string; citation: string; caveat?: string };
   retrieved: string;
   stays: number;
   visitsUsed: number;
@@ -23,6 +23,8 @@ export interface OpenDataResult {
   fitted: Record<string, unknown>;
   notes: string[];
   check: CheckRow[];
+  /** The department gridlocked at this volume, so only the case mix was fitted. */
+  overloaded: boolean;
 }
 
 const read = (path: string) => {
@@ -92,9 +94,21 @@ export function openData(o: {
     `${src.name}: ${joined.stays} stays, ${joined.withAcuity} with a triage acuity` +
       (visitsPerDay ? `; dates are shifted per patient, so they were laid out at ${visitsPerDay} visits a day (set with --visits-per-day).` : '.'),
   );
-  const cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3) });
-  const check = baselineCheck(cal.config, data, o.seeds);
-  const notes = [...cal.notes];
+  let cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3) });
+  let check = baselineCheck(cal.config, data, o.seeds);
+  // A department that cannot carry this case mix at this volume gridlocks: time fits would be nonsense.
+  const los = check.find((c) => c.key === 'los');
+  const overloaded = los?.data != null && los.model.median != null && los.model.median > 3 * los.data;
+  if (overloaded) {
+    cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3), fitLengthOfStay: false });
+    check = baselineCheck(cal.config, data, o.seeds);
+  }
+  const notes = [...(src.caveat ? [`Not representative: ${src.caveat}`] : []), ...cal.notes];
+  if (overloaded)
+    notes.push(
+      `The department in --config cannot carry this case mix at ${visitsPerDay ?? Math.round(data.arrivalsPerDay)} visits a day: in the model, patients pile up (median stay ${Math.round(los!.model.median! / 60)} h against ${Math.round(los!.data! / 60)} h in the data). Only the case mix was fitted; times were not. Use a lower --visits-per-day or a bigger department.`,
+    );
+  if (visits.length > joined.visits.length) notes.push(`The ${joined.visits.length} visits were reused in turn to fill a week at ${visitsPerDay} a day.`);
   if (visitsPerDay) notes.push(`Volume (${visitsPerDay} a day) is a setting, not from the data: ${src.name} shifts each patient's dates, so daily volume and crowding are not real.`);
   if (joined.visits.length < 1000)
     notes.push(`Only ${joined.visits.length} visits: shares by acuity and hourly patterns are rough. The full dataset (credentialed) has several hundred thousand.`);
@@ -104,7 +118,7 @@ export function openData(o: {
   return {
     log,
     result: {
-      source: { id: src.id, name: src.name, page: src.page, license: src.license, citation: src.citation },
+      source: { id: src.id, name: src.name, page: src.page, license: src.license, citation: src.citation, ...(src.caveat ? { caveat: src.caveat } : {}) },
       retrieved: new Date().toISOString().slice(0, 10),
       stays: joined.stays,
       visitsUsed: joined.visits.length,
@@ -114,6 +128,7 @@ export function openData(o: {
       fitted: cal.fitted,
       notes,
       check,
+      overloaded,
     },
   };
 }

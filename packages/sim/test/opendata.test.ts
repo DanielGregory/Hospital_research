@@ -45,6 +45,8 @@ describe('open data: MIMIC-IV-ED', () => {
     const { visits } = mimicEdVisits(edstays, triage);
     const restacked = restackVisits(visits, 100);
     expect(restacked).toHaveLength(visits.length);
+    // Too few for a week: reused to reach the volume.
+    expect(summarizeVisits(restackVisits(visits.slice(0, 50), 40)).arrivalsPerDay).toBeCloseTo(40, 0);
     expect(summarizeVisits(restacked).arrivalsPerDay).toBeCloseTo(100, -1);
     for (const v of restacked) {
       expect(Math.floor(v.arrival / 1440) % 7).toBe(v.dayOfWeek);

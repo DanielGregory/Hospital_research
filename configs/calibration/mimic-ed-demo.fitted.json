@@ -1,0 +1,304 @@
+{
+  "source": {
+    "id": "mimic-ed-demo",
+    "name": "MIMIC-IV-ED Demo (v2.2)",
+    "page": "https://physionet.org/content/mimic-iv-ed-demo/2.2/",
+    "license": "Open Data Commons Open Database License v1.0 (check the PhysioNet page)",
+    "citation": "Johnson A, Bulgarelli L, Pollard T, Celi LA, Mark R, Horng S. MIMIC-IV-ED Demo (version 2.2). PhysioNet.",
+    "caveat": "The demo is about 220 visits from 64 patients drawn from the hospital database (mostly admitted patients): about 70% admitted, 60% by ambulance and almost no ESI 4–5. It tests the pipeline; its shares are not representative of an ED population and should not replace the defaults."
+  },
+  "retrieved": "2026-10-04",
+  "stays": 222,
+  "visitsUsed": 222,
+  "withAcuity": 207,
+  "visitsPerDay": 35,
+  "data": {
+    "visits": 245,
+    "days": 7,
+    "arrivalsPerDay": 35,
+    "lwbsRate": 0.0125,
+    "admissionRate": 0.7,
+    "doorToProvider": {
+      "median": null,
+      "p90": null
+    },
+    "lengthOfStay": {
+      "median": 346,
+      "p90": 1009
+    },
+    "lengthOfStayByAcuity": {
+      "1": 260,
+      "2": 351,
+      "3": 416,
+      "4": 580,
+      "5": null
+    },
+    "boardingHoursMedian": null,
+    "boardingHoursMean": null,
+    "femaleShare": 0.5265306122448979,
+    "ambulanceShare": 0.6150442477876106
+  },
+  "fitted": {
+    "arrivals.hourlyRates": [
+      0.2857,
+      0.4286,
+      0.4286,
+      0.2857,
+      0.5714,
+      0.7143,
+      0.8572,
+      0.2857,
+      0.7143,
+      1,
+      0.8572,
+      2.4286,
+      2.4286,
+      1.5715,
+      2.2857,
+      2.2857,
+      2.7143,
+      2,
+      3.1429,
+      2.4286,
+      2.5715,
+      2.2857,
+      1.2857,
+      1.1429
+    ],
+    "arrivals.dayOfWeekMultipliers": [
+      0.7714,
+      0.9714,
+      0.7714,
+      1,
+      1.4,
+      1.1714,
+      0.9143
+    ],
+    "arrivals.acuityMix": {
+      "1": 0.1057,
+      "2": 0.4493,
+      "3": 0.4361,
+      "4": 0.0088,
+      "5": 0
+    },
+    "arrivals.ambulanceShareByAcuity": {
+      "1": 0.5,
+      "2": 0.7041,
+      "3": 0.4842
+    },
+    "disposition.admitProbabilityByAcuity": {
+      "1": 0.9583,
+      "2": 0.7647,
+      "3": 0.5699
+    },
+    "arrivals.rateMultiplier": 0.958,
+    "workup.enabled": true,
+    "workup.meanMinutesByAcuity": {
+      "1": 155.1,
+      "2": 335.6,
+      "3": 421.8,
+      "4": 812.2,
+      "5": 0
+    },
+    "lwbs.patienceMeanMinutesByAcuity": {
+      "1": null,
+      "2": null,
+      "3": 168.5,
+      "4": 126.4,
+      "5": 105.3
+    }
+  },
+  "notes": [
+    "Not representative: The demo is about 220 visits from 64 patients drawn from the hospital database (mostly admitted patients): about 70% admitted, 60% by ambulance and almost no ESI 4–5. It tests the pipeline; its shares are not representative of an ED population and should not replace the defaults.",
+    "Only 7 days of data: hourly and weekday patterns will be noisy (8+ weeks is better).",
+    "Test-result times were scaled by acuity so median length of stay matches the data.",
+    "Patience before leaving unseen was scaled ×0.70 so the share who leave matches the data.",
+    "The 222 visits were reused in turn to fill a week at 35 a day.",
+    "Volume (35 a day) is a setting, not from the data: MIMIC-IV-ED Demo (v2.2) shifts each patient's dates, so daily volume and crowding are not real.",
+    "Only 222 visits: shares by acuity and hourly patterns are rough. The full dataset (credentialed) has several hundred thousand.",
+    "No provider-seen time in this dataset: door to provider is not checked against data."
+  ],
+  "check": [
+    {
+      "key": "arrivals",
+      "label": "Visits per day",
+      "unit": "perDay",
+      "data": 35,
+      "model": {
+        "n": 5,
+        "mean": 34.85,
+        "median": 34.964285714285715,
+        "lo": 33.864285714285714,
+        "hi": 35.75714285714286
+      },
+      "gap": -0.0010204081632652772,
+      "status": "close"
+    },
+    {
+      "key": "d2d",
+      "label": "Door to provider, median",
+      "unit": "min",
+      "data": null,
+      "model": {
+        "n": 5,
+        "mean": 6.104779823384888,
+        "median": 6.079776258666243,
+        "lo": 5.885929662812851,
+        "hi": 6.312089421471319
+      },
+      "gap": null,
+      "status": "no data"
+    },
+    {
+      "key": "d2dP90",
+      "label": "Door to provider, 90th percentile",
+      "unit": "min",
+      "data": null,
+      "model": {
+        "n": 5,
+        "mean": 28.317771342935885,
+        "median": 29.165463602446835,
+        "lo": 18.63939679274481,
+        "hi": 35.378595508030415
+      },
+      "gap": null,
+      "status": "no data"
+    },
+    {
+      "key": "los",
+      "label": "Length of stay, median",
+      "unit": "min",
+      "data": 346,
+      "model": {
+        "n": 5,
+        "mean": 354.13220475467205,
+        "median": 354.4443983601723,
+        "lo": 350.3369086866238,
+        "hi": 357.41589250910545
+      },
+      "gap": 0.024405775607434312,
+      "status": "close"
+    },
+    {
+      "key": "lwbs",
+      "label": "Left without being seen",
+      "unit": "share",
+      "data": 0.0125,
+      "model": {
+        "n": 5,
+        "mean": 0.018271547474306888,
+        "median": 0.022289766970618033,
+        "lo": 0.009363216789306395,
+        "hi": 0.024178568915781327
+      },
+      "gap": 0.7831813576494425,
+      "status": "close"
+    },
+    {
+      "key": "admitted",
+      "label": "Admitted",
+      "unit": "share",
+      "data": 0.7,
+      "model": {
+        "n": 5,
+        "mean": 0.6350653093411803,
+        "median": 0.6311475409836066,
+        "lo": 0.6220210374351548,
+        "hi": 0.6512713893847695
+      },
+      "gap": -0.0983606557377048,
+      "status": "close"
+    },
+    {
+      "key": "boarding",
+      "label": "Decision to departure (admitted), average",
+      "unit": "hours",
+      "data": null,
+      "model": {
+        "n": 5,
+        "mean": 0.058756966018858506,
+        "median": 0,
+        "lo": 0,
+        "hi": 0.23502786407543397
+      },
+      "gap": null,
+      "status": "no data"
+    },
+    {
+      "key": "los1",
+      "label": "Length of stay, ESI 1, median",
+      "unit": "min",
+      "data": 260,
+      "model": {
+        "n": 5,
+        "mean": 263.04734977570405,
+        "median": 266.33544072624136,
+        "lo": 248.69960656954353,
+        "hi": 271.5982100083587
+      },
+      "gap": 0.02436707971631292,
+      "status": "close"
+    },
+    {
+      "key": "los2",
+      "label": "Length of stay, ESI 2, median",
+      "unit": "min",
+      "data": 351,
+      "model": {
+        "n": 5,
+        "mean": 345.09894618053477,
+        "median": 345.48808649546845,
+        "lo": 335.99889325668846,
+        "hi": 357.2682942758667
+      },
+      "gap": -0.01570345727786766,
+      "status": "close"
+    },
+    {
+      "key": "los3",
+      "label": "Length of stay, ESI 3, median",
+      "unit": "min",
+      "data": 416,
+      "model": {
+        "n": 5,
+        "mean": 406.3645888618448,
+        "median": 403.9094005673105,
+        "lo": 395.04135036296213,
+        "hi": 421.9318981247059
+      },
+      "gap": -0.029063940943965114,
+      "status": "close"
+    },
+    {
+      "key": "los4",
+      "label": "Length of stay, ESI 4, median",
+      "unit": "min",
+      "data": 580,
+      "model": {
+        "n": 5,
+        "mean": 446.126394375935,
+        "median": 454.0616549668266,
+        "lo": 408.46692901316857,
+        "hi": 471.58793819453456
+      },
+      "gap": -0.2171350776434024,
+      "status": "off"
+    },
+    {
+      "key": "los5",
+      "label": "Length of stay, ESI 5, median",
+      "unit": "min",
+      "data": null,
+      "model": {
+        "n": 4,
+        "mean": 764.1076276820104,
+        "median": 795.3895104760031,
+        "lo": 533.3361088949911,
+        "hi": 951.0845105574399
+      },
+      "gap": null,
+      "status": "no data"
+    }
+  ],
+  "overloaded": false
+}

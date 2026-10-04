@@ -23,6 +23,8 @@ export interface OpenSource {
   page: string;
   /** Dates are shifted per patient: volume must be set, not fitted. */
   shiftedDates: boolean;
+  /** What the sample is not representative of, if anything (shown with every fit). */
+  caveat?: string;
 }
 
 const MIMIC_FILES = (base: string) => [
@@ -41,6 +43,8 @@ export const OPEN_SOURCES: Record<string, OpenSource> = {
     citation: 'Johnson A, Bulgarelli L, Pollard T, Celi LA, Mark R, Horng S. MIMIC-IV-ED Demo (version 2.2). PhysioNet.',
     page: 'https://physionet.org/content/mimic-iv-ed-demo/2.2/',
     shiftedDates: true,
+    caveat:
+      'The demo is about 220 visits from 64 patients drawn from the hospital database (mostly admitted patients): about 70% admitted, 60% by ambulance and almost no ESI 4–5. It tests the pipeline; its shares are not representative of an ED population and should not replace the defaults.',
   },
   'mimic-ed': {
     id: 'mimic-ed',
@@ -85,18 +89,22 @@ export function mimicEdVisits(edstaysCsv: string, triageCsv: string): VisitParse
 /**
  * Lay visits out on a calendar at `visitsPerDay`, keeping each visit's weekday and time of day
  * (for sources whose dates were shifted per patient). Deterministic: visits are dealt to the days
- * that share their weekday, in order of their original timestamps.
+ * that share their weekday, in order of their original timestamps. A sample too small for a week
+ * at that volume is reused in turn.
  */
 export function restackVisits(visits: readonly Visit[], visitsPerDay: number): Visit[] {
   if (!visits.length) return [];
   const days = Math.max(7, Math.round(visits.length / Math.max(1e-9, visitsPerDay)));
+  // Too few visits for a week at this volume: reuse them in turn (shares and medians are unchanged).
+  const total = Math.max(visits.length, Math.round(days * visitsPerDay));
+  const pool = Array.from({ length: total }, (_, i) => visits[i % visits.length]!);
   // Day d has weekday d % 7 (day 0 is a Monday).
   const daysByWeekday: number[][] = Array.from({ length: 7 }, () => []);
   for (let d = 0; d < days; d++) daysByWeekday[d % 7]!.push(d);
   const next = Array<number>(7).fill(0);
-  const out = visits.map((v) => {
-    const pool = daysByWeekday[v.dayOfWeek]!;
-    const day = pool[next[v.dayOfWeek]!++ % pool.length]!;
+  const out = pool.map((v) => {
+    const slots = daysByWeekday[v.dayOfWeek]!;
+    const day = slots[next[v.dayOfWeek]!++ % slots.length]!;
     return { ...v, arrival: day * 1440 + Math.round(v.hour * 60 * 1000) / 1000 };
   });
   return out.sort((a, b) => a.arrival - b.arrival);

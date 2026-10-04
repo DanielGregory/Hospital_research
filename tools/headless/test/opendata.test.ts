@@ -60,5 +60,17 @@ describe('open-data command', () => {
     expect(res.fitted['disposition.admitProbabilityByAcuity']).toBeDefined();
     expect(res.notes.some((n) => /not from the data/.test(n))).toBe(true);
     expect(res.check.find((c) => c.key === 'los')?.status).toBe('close');
+    expect(res.overloaded).toBe(false);
+  }, 120_000);
+
+  it('says so, and fits only the case mix, when the department cannot carry the volume', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'er-open-'));
+    writeFakeMimic(dir, 1400);
+    const tiny = { ...base, beds: { main: 3 } };
+    const r = openData({ cwd: root, config: tiny, source: 'mimic-ed-demo', dir, fetch: false, visitsPerDay: 200, seeds: [1] });
+    expect(r.result!.overloaded).toBe(true);
+    expect(r.result!.notes.some((n) => /cannot carry/.test(n))).toBe(true);
+    expect(r.result!.fitted['workup.meanMinutesByAcuity']).toBeUndefined();
+    expect(r.result!.fitted['arrivals.acuityMix']).toBeDefined();
   }, 120_000);
 });

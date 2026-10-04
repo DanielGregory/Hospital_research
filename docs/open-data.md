@@ -41,6 +41,26 @@ Other open sources would fill the gaps above:
 
 None of these is wired in yet. Each needs its own reader, written against the real files.
 
+## What the demo showed (fetched 2026-10-04)
+
+The demo downloads and fits, but its people are not an ordinary ED population:
+
+| Measure | Demo | Typical US ED |
+|---|---|---|
+| Visits (patients) | 222 (64) | — |
+| Admitted | 68% | 15–20% |
+| Arrived by ambulance | 60% | 15–20% |
+| ESI 4–5 visits | 2 | about a third |
+
+That fits it being drawn from patients in the hospital database, who are mostly people later admitted.
+At the example department's usual volume (98 a day) this case mix overloads the model, and the
+importer says so instead of fitting times. At 35 a day, the fitted model matches the demo's median
+length of stay (overall and ESI 1–3), share leaving unseen and admission rate. Those results are in
+`configs/calibration/mimic-ed-demo.fitted.json`.
+
+Use them to check the pipeline, not as defaults. Defaults need the full dataset or a nationally
+representative one (NHAMCS).
+
 ## Shifted dates
 
 MIMIC moves each patient's dates by a random offset, into the years 2110–2210. Time of day and day of

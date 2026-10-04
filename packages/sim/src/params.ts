@@ -16,17 +16,18 @@ import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm, ServiceId, UnitId } 
 export const PARAMS = {
   arrivals: {
     /**
-     * Patients per hour for hours 0..23 of the day (~105 visits/day).
-     * Shape: overnight trough, late-morning rise, afternoon/evening peak.
+     * Patients per hour for hours 0..23 of the day (~98 visits/day). The daily total is a setting
+     * (a typical mid-size department); the shape by hour is the US national pattern.
      */
     hourlyRates: [
-      3.0, 2.5, 2.0, 1.8, 1.6, 1.6, 2.0, 2.8, 3.8, 4.8, 5.5, 5.8, // PLACEHOLDER
-      5.8, 5.6, 5.5, 5.4, 5.4, 5.5, 5.4, 5.2, 4.8, 4.4, 3.9, 3.4, // PLACEHOLDER
+      // NHAMCS 2022 ED, weighted arrivals by hour (configs/calibration/nhamcs-2022.fitted.json), scaled to 97.5/day
+      2.32, 2.09, 1.93, 1.72, 1.8, 1.63, 1.8, 2.61, 4.11, 5.24, 6.26, 5.88,
+      6.16, 5.97, 5.43, 4.97, 5.49, 5.6, 5.38, 5.13, 4.8, 4.35, 3.97, 2.85,
     ],
-    /** Multiplier per day of week, index 0 = Monday. */
-    dayOfWeekMultipliers: [1.12, 1.03, 1.0, 0.99, 0.98, 0.93, 0.95], // PLACEHOLDER
-    /** Share of walk-in-stream patients who come by ambulance, by true acuity (diversion turns these away). */
-    ambulanceShareByAcuity: { 1: 0.8, 2: 0.5, 3: 0.22, 4: 0.06, 5: 0.02 } as Record<Acuity, number>, // PLACEHOLDER
+    /** Multiplier per day of week, index 0 = Monday. NHAMCS 2022 ED, weighted visits by weekday. */
+    dayOfWeekMultipliers: [1.15, 1.099, 1.005, 1.021, 0.965, 0.874, 0.886],
+    /** Share of walk-in-stream patients who come by ambulance, by true acuity (diversion turns these away). NHAMCS 2022 ED (ARREMS by IMMEDR, weighted). */
+    ambulanceShareByAcuity: { 1: 0.54, 2: 0.35, 3: 0.2, 4: 0.07, 5: 0.12 } as Record<Acuity, number>,
   },
 
   /** Career mode: money, reputation, upgrades and the weeks' events. */
@@ -299,11 +300,12 @@ export const PARAMS = {
     } as Record<UnitId, { beds: number; stayHours: number; initialOccupiedShare: number }>,
     /** Which unit an admitted patient needs, by true acuity at the decision (shares; missing units fall to the ward). */
     unitShareByAcuity: {
-      1: { icu: 0.6, stepdown: 0.25, ward: 0.15 }, // PLACEHOLDER
-      2: { icu: 0.15, stepdown: 0.3, ward: 0.55 }, // PLACEHOLDER
-      3: { icu: 0.03, stepdown: 0.12, ward: 0.85 }, // PLACEHOLDER
-      4: { icu: 0, stepdown: 0.02, ward: 0.98 }, // PLACEHOLDER
-      5: { icu: 0, stepdown: 0, ward: 1 }, // PLACEHOLDER
+      // NHAMCS 2022 ED: unit for admitted patients (ADMIT: critical care, step-down, other) by triage level, weighted
+      1: { icu: 0.41, stepdown: 0.09, ward: 0.5 },
+      2: { icu: 0.24, stepdown: 0.05, ward: 0.71 },
+      3: { icu: 0.13, stepdown: 0.03, ward: 0.84 },
+      4: { icu: 0.07, stepdown: 0.01, ward: 0.92 },
+      5: { icu: 0.12, stepdown: 0.03, ward: 0.85 },
     } as Record<Acuity, Record<UnitId, number>>,
     /** Relative discharge rate by hour of day (discharges cluster late morning to afternoon). */
     /** Hospital full-capacity protocol: extra inpatient discharges per day while escalated. */

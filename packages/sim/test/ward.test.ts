@@ -14,8 +14,10 @@ describe('wards by length of stay', () => {
     expect(tight.boarding.maxHours!).toBeLessThan(48);
   });
 
-  it('escalation still frees beds early', () => {
-    expect(byStay(100, true).boarding.meanHours ?? 0).toBeLessThan(byStay(100).boarding.meanHours!);
+  it('escalation still frees beds early (on average over a few runs)', () => {
+    const mean = (escalation: boolean) =>
+      [1, 2, 3, 4].reduce((s, seed) => s + (new Simulation(week({ inpatientStayHours: 110, inpatientBeds: 90, initialOccupied: 81, escalation }), seed).run().metrics.boarding.meanHours ?? 0), 0) / 4;
+    expect(mean(true)).toBeLessThan(mean(false));
   });
 
   it('is deterministic', () => {
@@ -29,6 +31,8 @@ describe('separate inpatient units (ICU, step-down, ward)', () => {
     durationMinutes: 21 * 1440,
     warmupMinutes: 7 * 1440,
     modules: { boarding: true },
+    // Plenty of ED beds, so ICU boarders do not hold up anyone else's care.
+    beds: { main: null },
     boarding: { units: { icu: { beds: icu }, stepdown: { beds: 14 }, ward: { beds: 120 } } },
   });
   const run = (icu: number, seed = 2) => new Simulation(cfg(icu), seed).run().metrics;

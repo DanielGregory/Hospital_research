@@ -10,6 +10,7 @@ import { commandLabel, explain } from '../src/play/explain';
 import { personName } from '../src/play/names';
 import { busiestRoutes, locationName } from '../src/play/WalkMap';
 import { verdict } from '../src/planner/Planner';
+import { searchHospitals, titleCase } from '../src/data/cms';
 import { newHospital, planBeds, SIZES, toDepartment, typicalStaffing, withVisits } from '../src/builder/hospital';
 import { exampleDepartment, TEMPLATES, toScenario } from '../src/planner/project';
 import { layoutHints } from '../src/screens/FloorDesigner';
@@ -238,5 +239,21 @@ describe('build your hospital', () => {
     expect(() => new Simulation(dept.config, 1)).not.toThrow();
     expect(TEMPLATES.beds.unavailable?.(dept.config)).toMatch(/floor plan/);
     expect(TEMPLATES.beds.unavailable?.(exampleDepartment().config)).toBeNull();
+  });
+});
+
+describe('hospital search (CMS)', () => {
+  const hs = [
+    { id: '1', name: 'SAINT MARY MEDICAL CENTER', city: 'SPRINGFIELD', state: 'IL', visitsPerYear: 40000 },
+    { id: '2', name: 'SPRINGFIELD GENERAL', city: 'SPRINGFIELD', state: 'MO', visitsPerYear: 90000 },
+    { id: '3', name: 'MERCY HOSPITAL', city: 'JOPLIN', state: 'MO', visitsPerYear: 50000 },
+  ] as never[];
+  it('matches every word against name, city and state, busiest first', () => {
+    expect(searchHospitals(hs, 'springfield').map((h: { id: string }) => h.id)).toEqual(['2', '1']);
+    expect(searchHospitals(hs, 'mercy mo').map((h: { id: string }) => h.id)).toEqual(['3']);
+    expect(searchHospitals(hs, 'x')).toEqual([]);
+  });
+  it('writes names in title case', () => {
+    expect(titleCase('SAINT MARY OF THE WOODS HOSPITAL')).toBe('Saint Mary of the Woods Hospital');
   });
 });

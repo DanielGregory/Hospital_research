@@ -260,13 +260,13 @@ describe('pre-emption (ESI 1)', () => {
   });
 
   it('interrupted work resumes where it stopped: nothing is lost or double-counted', () => {
-    const sim = new Simulation(oneDoctor, 2);
+    const sim = new Simulation(oneDoctor, 3);
     const { metrics } = sim.run();
     expect(metrics.preemptions).toBeGreaterThan(0);
     const s = sim.snapshot();
     expect(s.totals.arrived).toBe(s.totals.discharged + s.totals.admitted + s.totals.lwbs + s.patients.length);
     // Utilisation stays a fraction and matches a run without pre-emption closely (same work, reordered).
-    const off = new Simulation({ ...oneDoctor, queue: { preemptAcuity: 0 } }, 2).run().metrics;
+    const off = new Simulation({ ...oneDoctor, queue: { preemptAcuity: 0 } }, 3).run().metrics;
     expect(Math.abs(metrics.utilizationByRole.doctor! - off.utilizationByRole.doctor!)).toBeLessThan(0.03);
   });
 

@@ -8,9 +8,13 @@ import { applySettings, PARAMS, type Role, type Shift, type SimConfig } from '@e
 import { useEffect, useRef, useState } from 'react';
 import { ScheduleEditor, Stepper } from '../screens/ScheduleEditor';
 import type { GameConfig } from '../sandbox';
-import { loadProject, newProject, saveProject, service, TEMPLATES, unitsOf, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
+import { exampleDepartment, loadProject, newProject, saveProject, service, TEMPLATES, unitsOf, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
 import type { WorkerRequest, WorkerResponse } from './worker';
 import { planBeds } from '../builder/hospital';
+import { NATIONAL } from '../data/national';
+import { HospitalSearch } from '../data/HospitalSearch';
+import { titleCase } from '../data/cms';
+import type { CmsHospital } from '@er/sim';
 
 type Tab = 'department' | 'scenarios' | 'results' | 'report';
 
@@ -124,6 +128,30 @@ export function Planner(props: { onBack?: () => void; onWatch: (config: GameConf
             })
           }
           onNext={() => setTab('scenarios')}
+          onHospital={(h, period) =>
+            run(
+              {
+                kind: 'fitHospital',
+                // Always from the national starting department, so picking again never compounds.
+                base: exampleDepartment().config,
+                targets: { visitsPerDay: h.visitsPerYear! / 365, medianMinutesDischarged: h.medianMinutesDischarged, lwbsRate: h.lwbsRate },
+                seeds: [1, 2],
+              },
+              (m) => {
+                if (m.kind !== 'fitHospital') return;
+                setCheck(null);
+                setProject({
+                  ...project,
+                  department: {
+                    name: titleCase(h.name),
+                    config: { ...m.fit.config, name: titleCase(h.name) },
+                    hospital: { id: h.id, name: titleCase(h.name), city: titleCase(h.city), state: h.state, period, check: m.fit.check, notes: m.fit.notes },
+                  },
+                  results: undefined,
+                });
+              },
+            )
+          }
         />
       )}
       {tab === 'scenarios' && <ScenariosTab project={project} onProject={setProject} onRun={runScenarios} busy={busy !== null} />}
@@ -164,6 +192,7 @@ function DepartmentTab(props: {
   busy: boolean;
   onCheck: (kind: 'check' | 'calibrate') => void;
   onNext: () => void;
+  onHospital: (h: CmsHospital, period: string) => void;
 }) {
   const { project } = props;
   const dept = project.department;
@@ -183,9 +212,48 @@ function DepartmentTab(props: {
           <input value={dept.name} onChange={(e) => props.onProject({ ...project, department: { ...dept, name: e.target.value } })} data-testid="dept-name" />
         </label>
         <p className="muted small">
-          Describe the department as it runs today. This is the baseline every what-if is compared with. Numbers you do not set use placeholder defaults
-          until the model is calibrated with your data.
+          Describe the department as it runs today. This is the baseline every what-if is compared with. Until you fit it to your own visit data, it starts from a
+          typical US emergency department fitted to national data ({NATIONAL.name}: {NATIONAL.close} of {NATIONAL.checked} checks match national figures).
         </p>
+      </section>
+
+      <section className="card" data-testid="start-hospital">
+        <h3>Start from a real hospital (US)</h3>
+        <p className="muted small">
+          Pick a hospital to start from its published emergency department figures (CMS Care Compare): visits a year, median time in the ED for patients sent home, and
+          the share who left before being seen. Beds and shifts are scaled from a typical department until you enter the real ones.
+        </p>
+        <HospitalSearch busy={props.busy} action="Start from this hospital" onPick={(h, data) => props.onHospital(h, data.periods.OP_18b ?? data.periods.OP_22 ?? '')} />
+        {dept.hospital && (
+          <div data-testid="hospital-check">
+            <p className="chip pass" style={{ marginTop: 8 }}>
+              Started from {dept.hospital.name}, {dept.hospital.city}, {dept.hospital.state} (CMS, {dept.hospital.period})
+            </p>
+            <table className="metrics">
+              <thead>
+                <tr>
+                  <th>Measure</th>
+                  <th>Hospital reports</th>
+                  <th>Model</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dept.hospital.check.map((c) => (
+                  <tr key={c.label}>
+                    <th scope="row">{c.label}</th>
+                    <td>{c.target === null ? '—' : unitFmt[c.unit](c.target)}</td>
+                    <td>{c.model === null ? '—' : unitFmt[c.unit](c.model)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {dept.hospital.notes.map((n) => (
+              <p key={n} className="muted small">
+                {n}
+              </p>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="card calibrate" data-testid="calibrate">
@@ -862,13 +930,27 @@ function Report({ project, check }: { project: Project; check: CheckRow[] | null
               .join(', ') || 'core flow only'}
           </li>
         </ul>
+        {dept.hospital && (
+          <p>
+            Started from the published emergency department figures of {dept.hospital.name}, {dept.hospital.city}, {dept.hospital.state} (CMS Care Compare,{' '}
+            {dept.hospital.period}):{' '}
+            {dept.hospital.check
+              .filter((c) => c.target !== null)
+              .map((c) => `${lower(c.label)} ${unitFmt[c.unit](c.target!)} (model ${c.model === null ? '—' : unitFmt[c.unit](c.model)})`)
+              .join('; ')}
+            . Beds and shifts were estimated by scaling unless entered.
+          </p>
+        )}
         {dept.calibration ? (
           <p>
             Calibrated from {dept.calibration.file} ({dept.calibration.visits.toLocaleString('en-US')} visits over {dept.calibration.days} days).{' '}
             {dept.calibration.notes.join(' ')}
           </p>
         ) : (
-          <p className="warn-text">Not calibrated: the baseline uses placeholder parameters, so treat results as illustrative.</p>
+          <p className="warn-text">
+            Not calibrated to this department: the baseline is a typical US emergency department fitted to {NATIONAL.name}. Staffing, space and other
+            numbers not in that survey are placeholders, so treat results as illustrative until the model is fitted to the department’s own visits.
+          </p>
         )}
         {check && (
           <p>
@@ -883,7 +965,8 @@ function Report({ project, check }: { project: Project; check: CheckRow[] | null
           Discrete-event simulation of patient flow: arrivals by hour and weekday, triage, treatment spaces, provider evaluation, test results, disposition and, where
           enabled, boarding, missed diagnoses and security incidents. Each setup was run for {c.seeds.length} weeks using the same random patient streams
           (common random numbers), so differences reflect the change tested. Intervals are 95% confidence intervals for the average weekly difference. Results
-          describe this model, not guarantees; parameters marked as placeholders should be validated with the department before decisions are made.
+          describe this model, not guarantees; parameters marked as placeholders should be validated with the department before decisions are made. National
+          figures: {NATIONAL.citation}
         </p>
       </section>
     </article>

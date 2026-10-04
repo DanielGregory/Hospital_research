@@ -9,7 +9,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs
 import { resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { baselineCheck, calibrate, type CheckRow } from '@er/research';
-import { mimicEdVisits, OPEN_SOURCES, resolveConfig, restackVisits, summarizeVisits, type VisitSummary } from '@er/sim';
+import { inflateRawSync } from 'node:zlib';
+import { parseCmsTimelyCare, mimicEdVisits, nhamcsVisits, OPEN_SOURCES, parseNhamcs, resolveConfig, restackVisits, summarizeNhamcs, summarizeVisits, type NhamcsSummary, type OpenSource, type Visit, type VisitSummary } from '@er/sim';
 
 export interface OpenDataResult {
   source: { id: string; name: string; page: string; license: string; citation: string; caveat?: string };
@@ -23,14 +24,51 @@ export interface OpenDataResult {
   fitted: Record<string, unknown>;
   notes: string[];
   check: CheckRow[];
+  /** National estimates from the survey weights (NHAMCS only). */
+  national?: NhamcsSummary;
   /** The department gridlocked at this volume, so only the case mix was fitted. */
   overloaded: boolean;
 }
 
+/** The first file in a zip archive (stored or deflated), read from its central directory. */
+export function unzipFirst(zip: Buffer): Buffer {
+  let eocd = zip.length - 22;
+  while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+  if (eocd < 0) throw new Error('not a zip file');
+  const cd = zip.readUInt32LE(eocd + 16);
+  if (zip.readUInt32LE(cd) !== 0x02014b50) throw new Error('zip: no central directory');
+  const method = zip.readUInt16LE(cd + 10);
+  const size = zip.readUInt32LE(cd + 20);
+  const local = zip.readUInt32LE(cd + 42);
+  const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+  const data = zip.subarray(start, start + size);
+  if (method === 0) return Buffer.from(data);
+  if (method === 8) return inflateRawSync(data);
+  throw new Error(`zip: compression method ${method} not supported`);
+}
+
 const read = (path: string) => {
   const buf = readFileSync(path);
-  return (path.endsWith('.gz') ? gunzipSync(buf) : buf).toString('utf8');
+  // NHAMCS files are plain ASCII; latin1 keeps every byte position.
+  return path.endsWith('.gz') ? gunzipSync(buf).toString('utf8') : path.endsWith('.zip') ? unzipFirst(buf).toString('latin1') : buf.toString('utf8');
 };
+
+/** Read a source's files into visits (arrival times still to be laid out). */
+function loadVisits(src: OpenSource, dir: string): { visits: Visit[]; problems: string[]; described: string; national?: NhamcsSummary } {
+  const files = src.files.map((f) => read(resolve(dir, f.name)));
+  if (src.format === 'nhamcs-ed') {
+    const parsed = parseNhamcs(files[0]!, src.year!);
+    const national = summarizeNhamcs(parsed.visits);
+    return {
+      visits: nhamcsVisits(parsed.visits),
+      problems: parsed.problems,
+      national,
+      described: `${src.name}: ${parsed.visits.length} sampled visits standing for ${(national.weightedVisits / 1e6).toFixed(1)} million US ED visits; drawn by weight`,
+    };
+  }
+  const j = mimicEdVisits(files[0]!, files[1]!);
+  return { visits: j.visits, problems: j.problems, described: `${src.name}: ${j.stays} stays, ${j.withAcuity} with a triage acuity` };
+}
 
 /** Download one file with curl; returns an error message naming the host when it fails. */
 function download(url: string, to: string): string | null {
@@ -58,7 +96,7 @@ export function openData(o: {
   fetch: boolean;
   visitsPerDay?: number;
   seeds: number[];
-}): { log: string[]; result: OpenDataResult | null } {
+}): { log: string[]; result: OpenDataResult | null; extract?: CompactCms } {
   const log: string[] = [];
   const src = OPEN_SOURCES[o.source];
   if (!src) return { log: [`Unknown source '${o.source}' (one of: ${Object.keys(OPEN_SOURCES).join(', ')})`], result: null };
@@ -76,24 +114,29 @@ export function openData(o: {
       );
       return { log, result: null };
     }
-    log.push(`Downloading ${f.url}`);
-    const err = download(f.url, path);
+    let url = f.url;
+    if (src.format === 'cms-hospitals') {
+      // The metadata names the current CSV.
+      const meta = resolve(dir, 'metadata.json');
+      const e = download(url, meta);
+      if (e) return { log: [...log, e], result: null };
+      url = (JSON.parse(readFileSync(meta, 'utf8')) as { distribution: { downloadURL: string }[] }).distribution[0]!.downloadURL;
+    }
+    log.push(`Downloading ${url}`);
+    const err = download(url, path);
     if (err) return { log: [...log, err], result: null };
   }
+  if (src.format === 'cms-hospitals') return { log, result: null, extract: cmsExtract(readFileSync(resolve(dir, src.files[0]!.name), 'utf8')) };
 
-  const [edstays, triage] = src.files.map((f) => read(resolve(dir, f.name)));
-  const joined = mimicEdVisits(edstays!, triage!);
-  log.push(...joined.problems);
-  if (!joined.visits.length) return { log: [...log, 'No usable visits.'], result: null };
+  const loaded = loadVisits(src, dir);
+  log.push(...loaded.problems);
+  if (!loaded.visits.length) return { log: [...log, 'No usable visits.'], result: null };
 
-  // Dates are shifted per patient: lay the visits out at a daily volume we choose.
+  // No shared calendar (shifted dates, or a sample across many EDs): lay the visits out at a daily volume we choose.
   const visitsPerDay = src.shiftedDates ? (o.visitsPerDay ?? Math.round(resolveConfig(o.config).hourlyRates.reduce((s: number, r: number) => s + r, 0))) : null;
-  const visits = visitsPerDay ? restackVisits(joined.visits, visitsPerDay) : joined.visits;
+  const visits = visitsPerDay ? restackVisits(loaded.visits, visitsPerDay) : loaded.visits;
   const data = summarizeVisits(visits);
-  log.push(
-    `${src.name}: ${joined.stays} stays, ${joined.withAcuity} with a triage acuity` +
-      (visitsPerDay ? `; dates are shifted per patient, so they were laid out at ${visitsPerDay} visits a day (set with --visits-per-day).` : '.'),
-  );
+  log.push(`${loaded.described}${visitsPerDay ? `; laid out at ${visitsPerDay} visits a day (set with --visits-per-day).` : '.'}`);
   let cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3) });
   let check = baselineCheck(cal.config, data, o.seeds);
   // A department that cannot carry this case mix at this volume gridlocks: time fits would be nonsense.
@@ -103,15 +146,20 @@ export function openData(o: {
     cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3), fitLengthOfStay: false });
     check = baselineCheck(cal.config, data, o.seeds);
   }
+  // Which inpatient unit admitted patients need, by acuity (NHAMCS records it).
+  if (loaded.national) cal.fitted['boarding.unitShareByAcuity'] = loaded.national.unitShareByAcuity;
   const notes = [...(src.caveat ? [`Not representative: ${src.caveat}`] : []), ...cal.notes];
   if (overloaded)
     notes.push(
       `The department in --config cannot carry this case mix at ${visitsPerDay ?? Math.round(data.arrivalsPerDay)} visits a day: in the model, patients pile up (median stay ${Math.round(los!.model.median! / 60)} h against ${Math.round(los!.data! / 60)} h in the data). Only the case mix was fitted; times were not. Use a lower --visits-per-day or a bigger department.`,
     );
-  if (visits.length > joined.visits.length) notes.push(`The ${joined.visits.length} visits were reused in turn to fill a week at ${visitsPerDay} a day.`);
-  if (visitsPerDay) notes.push(`Volume (${visitsPerDay} a day) is a setting, not from the data: ${src.name} shifts each patient's dates, so daily volume and crowding are not real.`);
-  if (joined.visits.length < 1000)
-    notes.push(`Only ${joined.visits.length} visits: shares by acuity and hourly patterns are rough. The full dataset (credentialed) has several hundred thousand.`);
+  if (visits.length > loaded.visits.length) notes.push(`The ${loaded.visits.length} visits were reused in turn to fill a week at ${visitsPerDay} a day.`);
+  if (visitsPerDay)
+    notes.push(
+      `Volume (${visitsPerDay} a day) is a setting, not from the data: ${src.format === 'nhamcs-ed' ? 'NHAMCS samples visits across many EDs and days' : `${src.name} shifts each patient's dates`}, so one department's daily volume and crowding are not in it.`,
+    );
+  if (loaded.visits.length < 1000)
+    notes.push(`Only ${loaded.visits.length} visits: shares by acuity and hourly patterns are rough. The full dataset (credentialed) has several hundred thousand.`);
   if (data.doorToProvider.median === null) notes.push('No provider-seen time in this dataset: door to provider is not checked against data.');
   for (const n of notes) log.push(`note: ${n}`);
   for (const r of check) log.push(`${r.status.padEnd(8)} ${r.label.padEnd(42)} data ${fmt(r.data)}  model ${fmt(r.model.median)}`);
@@ -120,16 +168,39 @@ export function openData(o: {
     result: {
       source: { id: src.id, name: src.name, page: src.page, license: src.license, citation: src.citation, ...(src.caveat ? { caveat: src.caveat } : {}) },
       retrieved: new Date().toISOString().slice(0, 10),
-      stays: joined.stays,
-      visitsUsed: joined.visits.length,
-      withAcuity: joined.withAcuity,
+      stays: loaded.national?.records ?? loaded.visits.length,
+      visitsUsed: loaded.visits.length,
+      withAcuity: loaded.visits.filter((v) => v.acuity !== null).length,
       visitsPerDay,
       data,
       fitted: cal.fitted,
       notes,
       check,
       overloaded,
+      ...(loaded.national ? { national: loaded.national } : {}),
     },
+  };
+}
+
+/** Hospital ED measures as compact rows (the app loads this on demand). */
+export interface CompactCms {
+  source: string;
+  periods: Record<string, string>;
+  retrieved: string;
+  columns: string[];
+  rows: (string | number | null)[][];
+}
+
+const CMS_COLUMNS = ['id', 'name', 'city', 'state', 'volumeBand', 'medianMinutesDischarged', 'medianMinutesAll', 'medianMinutesPsych', 'medianMinutesTransfer', 'lwbsRate', 'visitsPerYear'] as const;
+
+export function cmsExtract(csv: string): CompactCms {
+  const x = parseCmsTimelyCare(csv);
+  return {
+    source: x.source,
+    periods: x.periods,
+    retrieved: new Date().toISOString().slice(0, 10),
+    columns: [...CMS_COLUMNS],
+    rows: x.hospitals.map((h) => CMS_COLUMNS.map((c) => h[c])),
   };
 }
 

@@ -3,13 +3,14 @@
  * Planner runs off the main thread: scenario comparisons and calibration take seconds.
  * Messages in: { kind: 'compare' | 'calibrate', ... }; out: progress, then a result or an error.
  */
-import { baselineCheck, calibrate, compareScenarios, type Scenario } from '@er/research';
+import { baselineCheck, calibrate, compareScenarios, fitToHospital, type HospitalTargets, type Scenario } from '@er/research';
 import { parseVisits, summarizeVisits, type SimConfig } from '@er/sim';
 
 export type WorkerRequest =
   | { kind: 'compare'; base: SimConfig; scenarios: Scenario[]; seeds: number[] }
   | { kind: 'calibrate'; base: SimConfig; csv: string; seeds: number[] }
-  | { kind: 'check'; base: SimConfig; csv: string; seeds: number[] };
+  | { kind: 'check'; base: SimConfig; csv: string; seeds: number[] }
+  | { kind: 'fitHospital'; base: SimConfig; targets: HospitalTargets; seeds: number[] };
 
 export type WorkerResponse =
   | { kind: 'progress'; done: number; total: number; label: string }
@@ -24,6 +25,7 @@ export type WorkerResponse =
       notes: string[];
       check: ReturnType<typeof baselineCheck>;
     }
+  | { kind: 'fitHospital'; fit: ReturnType<typeof fitToHospital> }
   | { kind: 'error'; message: string };
 
 const post = (m: WorkerResponse) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m);
@@ -39,6 +41,11 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         },
       });
       post({ kind: 'compare', comparison });
+      return;
+    }
+    if (req.kind === 'fitHospital') {
+      post({ kind: 'progress', done: 0, total: 1, label: 'Fitting the model to the hospital’s published figures' });
+      post({ kind: 'fitHospital', fit: fitToHospital(req.base, req.targets, req.seeds) });
       return;
     }
     const parsed = parseVisits(req.csv);

@@ -30,7 +30,7 @@ The test suite checks the engine against theory, not just itself:
 
 Browser end-to-end tests (`pnpm e2e`) play levels, the planner and the 3D builder in headless Chromium, in light and dark mode and at mobile width.
 
-> **Parameters are placeholders.** Every number in `packages/sim/src/params.ts` is marked `// PLACEHOLDER`: plausible, but not yet calibrated against real data. Calibration code exists (`python/er_sim/calibrate.py`, `pnpm headless calibrate`) for MIMIC-IV-ED and published aggregates, but has not been run on real records yet.
+> **Parameters are placeholders.** Every number in `packages/sim/src/params.ts` is marked `// PLACEHOLDER`: plausible, but not yet calibrated against real data. The open-data pipeline (`pnpm headless open-data --source mimic-ed-demo --fetch`, see [`docs/open-data.md`](docs/open-data.md)) has fitted the model to the public MIMIC-IV-ED demo (222 stays). That sample is small and mostly admitted patients, so its fit is kept as a pipeline check and not applied to the defaults; the next step is the credentialed MIMIC-IV-ED dataset (`--source mimic-ed`).
 
 ## Getting started
 

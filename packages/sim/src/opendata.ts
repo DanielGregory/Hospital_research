@@ -14,6 +14,10 @@ import { parseCsv, parseVisits, type Visit, type VisitParse } from './visits.js'
 export interface OpenSource {
   id: string;
   name: string;
+  /** How to read the files. */
+  format: 'mimic-ed' | 'nhamcs-ed';
+  /** Survey year (NHAMCS layouts differ by year). */
+  year?: number;
   /** Files to fetch (or place in the data folder), by name, with their download URL. */
   files: { name: string; url: string }[];
   /** Whether the files can be downloaded without an account. */
@@ -37,6 +41,7 @@ export const OPEN_SOURCES: Record<string, OpenSource> = {
   'mimic-ed-demo': {
     id: 'mimic-ed-demo',
     name: 'MIMIC-IV-ED Demo (v2.2)',
+    format: 'mimic-ed',
     files: MIMIC_FILES('https://physionet.org/files/mimic-iv-ed-demo/2.2'),
     open: true,
     license: 'Open Data Commons Open Database License v1.0 (check the PhysioNet page)',
@@ -49,11 +54,27 @@ export const OPEN_SOURCES: Record<string, OpenSource> = {
   'mimic-ed': {
     id: 'mimic-ed',
     name: 'MIMIC-IV-ED (v2.2)',
+    format: 'mimic-ed',
     files: MIMIC_FILES('https://physionet.org/files/mimic-iv-ed/2.2'),
     open: false,
     license: 'PhysioNet Credentialed Health Data License 1.5.0 (credentialed access; do not redistribute the data)',
     citation: 'Johnson A, Bulgarelli L, Pollard T, Celi LA, Mark R, Horng S. MIMIC-IV-ED (version 2.2). PhysioNet.',
     page: 'https://physionet.org/content/mimic-iv-ed/2.2/',
+    shiftedDates: true,
+  },
+  'nhamcs-2022': {
+    id: 'nhamcs-2022',
+    name: 'NHAMCS 2022 Emergency Department public-use file (NCHS/CDC)',
+    format: 'nhamcs-ed',
+    year: 2022,
+    files: [{ name: 'ed2022.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2022.zip' }],
+    open: true,
+    license:
+      'US government public-use data (NCHS). Terms: statistical reporting and analysis only; no attempt to identify any person or establishment; no linking to identifiable data.',
+    citation:
+      'National Center for Health Statistics. National Hospital Ambulatory Medical Care Survey: 2022 Emergency Department public-use data file and documentation. Hyattsville, MD.',
+    page: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/',
+    // A national sample of visits across many EDs: no shared calendar, so volume is a setting.
     shiftedDates: true,
   },
 };

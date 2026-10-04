@@ -6,6 +6,7 @@
  */
 import type { Comparison, Scenario } from '@er/research';
 import { PARAMS, type Shift, type SimConfig } from '@er/sim';
+import { NATIONAL, withNational } from '../data/national';
 
 export interface Department {
   name: string;
@@ -214,7 +215,12 @@ export const TEMPLATES: Record<TemplateId, Template> = {
     describe: (p) => `The wards take ${p.percent}% fewer ED admissions, so admitted patients wait in ED beds longer.`,
     settings: (p, b) =>
       b.boarding?.inpatientStayHours
-        ? { 'boarding.inpatientBeds': Math.round((b.boarding.inpatientBeds ?? 40) * (1 - p.percent! / 100)) }
+        ? (() => {
+            const beds = Math.round((b.boarding!.inpatientBeds ?? 40) * (1 - p.percent! / 100));
+            // Fewer beds, the same share of them occupied at the start.
+            const occupied = b.boarding!.initialOccupied;
+            return { 'boarding.inpatientBeds': beds, ...(occupied !== undefined ? { 'boarding.initialOccupied': Math.min(beds, Math.round(occupied * (1 - p.percent! / 100))) } : {}) };
+          })()
         : { 'boarding.dischargesPerDay': (b.boarding?.dischargesPerDay ?? 26) * (1 - p.percent! / 100) },
   },
   escalation: {
@@ -232,11 +238,11 @@ export function toScenario(spec: ScenarioSpec, base: SimConfig): Scenario {
   return { id: spec.id, name: spec.name || t.label, description: t.describe(spec.params, base), settings: t.settings(spec.params, base) };
 }
 
-/** A typical department to start from (placeholder numbers until calibrated). */
+/** A typical US department to start from: fitted to NHAMCS 2022 national figures until calibrated with the hospital's own data. */
 export function exampleDepartment(): Department {
   return {
-    name: 'Example department',
-    config: {
+    name: 'Example department (typical US ED)',
+    config: withNational({
       id: 'planner-baseline',
       name: 'Baseline',
       durationMinutes: 7 * 1440,
@@ -259,8 +265,8 @@ export function exampleDepartment(): Department {
           ],
         },
       },
-      beds: { main: 18 },
-    },
+      beds: { main: NATIONAL.beds ?? 32 },
+    }),
   };
 }
 

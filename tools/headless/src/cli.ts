@@ -366,7 +366,7 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       for (const line of r.log) process.stderr.write(`${line}\n`);
       if (!r.result) return 1;
       const out = args.out ?? `configs/calibration/${args.source}.fitted.json`;
-      writeFileSync(resolve(cwd, out), JSON.stringify(r.result, null, 2) + '\n');
+      writeFileSync(resolve(cwd, out), JSON.stringify({ ...r.result, department: { config: args.config, overrides: Object.fromEntries(args.overrides) } }, null, 2) + '\n');
       process.stderr.write(`Wrote ${out}\n`);
       return 0;
     }

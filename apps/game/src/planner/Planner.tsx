@@ -11,6 +11,7 @@ import type { GameConfig } from '../sandbox';
 import { loadProject, newProject, saveProject, service, TEMPLATES, unitsOf, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
 import type { WorkerRequest, WorkerResponse } from './worker';
 import { planBeds } from '../builder/hospital';
+import { NATIONAL } from '../data/national';
 
 type Tab = 'department' | 'scenarios' | 'results' | 'report';
 
@@ -183,8 +184,8 @@ function DepartmentTab(props: {
           <input value={dept.name} onChange={(e) => props.onProject({ ...project, department: { ...dept, name: e.target.value } })} data-testid="dept-name" />
         </label>
         <p className="muted small">
-          Describe the department as it runs today. This is the baseline every what-if is compared with. Numbers you do not set use placeholder defaults
-          until the model is calibrated with your data.
+          Describe the department as it runs today. This is the baseline every what-if is compared with. Until you fit it to your own visit data, it starts from a
+          typical US emergency department fitted to national data ({NATIONAL.name}: {NATIONAL.close} of {NATIONAL.checked} checks match national figures).
         </p>
       </section>
 
@@ -868,7 +869,10 @@ function Report({ project, check }: { project: Project; check: CheckRow[] | null
             {dept.calibration.notes.join(' ')}
           </p>
         ) : (
-          <p className="warn-text">Not calibrated: the baseline uses placeholder parameters, so treat results as illustrative.</p>
+          <p className="warn-text">
+            Not calibrated to this department: the baseline is a typical US emergency department fitted to {NATIONAL.name}. Staffing, space and other
+            numbers not in that survey are placeholders, so treat results as illustrative until the model is fitted to the department’s own visits.
+          </p>
         )}
         {check && (
           <p>
@@ -883,7 +887,8 @@ function Report({ project, check }: { project: Project; check: CheckRow[] | null
           Discrete-event simulation of patient flow: arrivals by hour and weekday, triage, treatment spaces, provider evaluation, test results, disposition and, where
           enabled, boarding, missed diagnoses and security incidents. Each setup was run for {c.seeds.length} weeks using the same random patient streams
           (common random numbers), so differences reflect the change tested. Intervals are 95% confidence intervals for the average weekly difference. Results
-          describe this model, not guarantees; parameters marked as placeholders should be validated with the department before decisions are made.
+          describe this model, not guarantees; parameters marked as placeholders should be validated with the department before decisions are made. National
+          figures: {NATIONAL.citation}
         </p>
       </section>
     </article>

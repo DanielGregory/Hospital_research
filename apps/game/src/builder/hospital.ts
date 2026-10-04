@@ -5,6 +5,7 @@
  */
 import { PARAMS, resolveLayout, type LayoutSpec, type Shift, type SimConfig } from '@er/sim';
 import type { Department } from '../planner/project';
+import { withNational } from '../data/national';
 
 export interface Hospital {
   version: 1;
@@ -149,7 +150,8 @@ export function newHospital(size: HospitalSize, name = 'My hospital'): Hospital 
       },
     },
   };
-  return withTypicalStaffing(withVisits(h, s.visits));
+  // Case mix, admissions, test times and patience from the US national fit; volume, beds and wards are this hospital's own.
+  return withTypicalStaffing(withVisits({ ...h, config: withNational(h.config, false) }, s.visits));
 }
 
 /** The hospital as a planner baseline. */

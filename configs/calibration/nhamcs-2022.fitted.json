@@ -1,0 +1,427 @@
+{
+  "source": {
+    "id": "nhamcs-2022",
+    "name": "NHAMCS 2022 Emergency Department public-use file (NCHS/CDC)",
+    "page": "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/",
+    "license": "US government public-use data (NCHS). Terms: statistical reporting and analysis only; no attempt to identify any person or establishment; no linking to identifiable data.",
+    "citation": "National Center for Health Statistics. National Hospital Ambulatory Medical Care Survey: 2022 Emergency Department public-use data file and documentation. Hyattsville, MD."
+  },
+  "retrieved": "2026-10-04",
+  "stays": 16025,
+  "visitsUsed": 20000,
+  "withAcuity": 13169,
+  "visitsPerDay": 98,
+  "data": {
+    "visits": 20000,
+    "days": 204,
+    "arrivalsPerDay": 98.03921568627452,
+    "lwbsRate": 0.02014284980216844,
+    "admissionRate": 0.11551307743692513,
+    "doorToProvider": {
+      "median": 16,
+      "p90": 98
+    },
+    "lengthOfStay": {
+      "median": 190,
+      "p90": 513
+    },
+    "lengthOfStayByAcuity": {
+      "1": 372,
+      "2": 282,
+      "3": 227,
+      "4": 128,
+      "5": 101
+    },
+    "boardingHoursMedian": 1.05,
+    "boardingHoursMean": 3.3729247550378947,
+    "femaleShare": 0.54415,
+    "ambulanceShare": 0.1741025641025641
+  },
+  "fitted": {
+    "arrivals.hourlyRates": [
+      2.335,
+      2.0995,
+      1.9426,
+      1.7267,
+      1.8101,
+      1.6384,
+      1.815,
+      2.6293,
+      4.1353,
+      5.2734,
+      6.3035,
+      5.9209,
+      6.2005,
+      6.0092,
+      5.4598,
+      4.9987,
+      5.5236,
+      5.6364,
+      5.4107,
+      5.1605,
+      4.8319,
+      4.3806,
+      3.998,
+      2.8697
+    ],
+    "arrivals.dayOfWeekMultipliers": [
+      1.1492,
+      1.0981,
+      1.0042,
+      1.0204,
+      0.9648,
+      0.873,
+      0.8853
+    ],
+    "arrivals.acuityMix": {
+      "1": 0.0149,
+      "2": 0.1535,
+      "3": 0.5066,
+      "4": 0.298,
+      "5": 0.0269
+    },
+    "arrivals.ambulanceShareByAcuity": {
+      "1": 0.5538,
+      "2": 0.3478,
+      "3": 0.1981,
+      "4": 0.0673,
+      "5": 0.1161
+    },
+    "disposition.admitProbabilityByAcuity": {
+      "1": 0.5389,
+      "2": 0.3172,
+      "3": 0.1267,
+      "4": 0.0179,
+      "5": 0.0336
+    },
+    "arrivals.rateMultiplier": 0.967,
+    "boarding.inpatientStayHours": 110,
+    "boarding.inpatientBeds": 57,
+    "boarding.initialOccupied": 52,
+    "workup.enabled": true,
+    "workup.meanMinutesByAcuity": {
+      "1": 340.9,
+      "2": 248.8,
+      "3": 165.2,
+      "4": 29.7,
+      "5": 8.3
+    },
+    "lwbs.patienceMeanMinutesByAcuity": {
+      "1": null,
+      "2": null,
+      "3": 1020.6,
+      "4": 765.5,
+      "5": 637.9
+    },
+    "boarding.unitShareByAcuity": {
+      "1": {
+        "icu": 0.4126,
+        "stepdown": 0.0876,
+        "ward": 0.4998
+      },
+      "2": {
+        "icu": 0.2355,
+        "stepdown": 0.0474,
+        "ward": 0.7171
+      },
+      "3": {
+        "icu": 0.1285,
+        "stepdown": 0.0346,
+        "ward": 0.8369
+      },
+      "4": {
+        "icu": 0.0736,
+        "stepdown": 0.0053,
+        "ward": 0.9212
+      },
+      "5": {
+        "icu": 0.1184,
+        "stepdown": 0.0278,
+        "ward": 0.8537
+      }
+    }
+  },
+  "notes": [
+    "6831 visits have no acuity and were left out of the acuity fits.",
+    "Wards modelled by length of stay (110 h on average, a placeholder until ward data is available): 57 ward beds for ED admissions reproduce the wait for a ward bed.",
+    "Test-result times were scaled by acuity so median length of stay matches the data.",
+    "Patience before leaving unseen was scaled ×4.25 so the share who leave matches the data.",
+    "Volume (98 a day) is a setting, not from the data: NHAMCS samples visits across many EDs and days, so one department's daily volume and crowding are not in it."
+  ],
+  "check": [
+    {
+      "key": "arrivals",
+      "label": "Visits per day",
+      "unit": "perDay",
+      "data": 98.03921568627452,
+      "model": {
+        "n": 5,
+        "mean": 98.15714285714287,
+        "median": 97.85714285714286,
+        "lo": 97.33571428571429,
+        "hi": 99.02142857142857
+      },
+      "gap": -0.0018571428571428866,
+      "status": "close"
+    },
+    {
+      "key": "d2d",
+      "label": "Door to provider, median",
+      "unit": "min",
+      "data": 16,
+      "model": {
+        "n": 5,
+        "mean": 16.431914556838457,
+        "median": 16.832341173147142,
+        "lo": 14.44022799662198,
+        "hi": 17.84416913358291
+      },
+      "gap": 0.0520213233216964,
+      "status": "close"
+    },
+    {
+      "key": "d2dP90",
+      "label": "Door to provider, 90th percentile",
+      "unit": "min",
+      "data": 98,
+      "model": {
+        "n": 5,
+        "mean": 146.71809722323525,
+        "median": 150.73445879734572,
+        "lo": 120.41763265024274,
+        "hi": 167.0450415116473
+      },
+      "gap": 0.5381067224218952,
+      "status": "off"
+    },
+    {
+      "key": "los",
+      "label": "Length of stay, median",
+      "unit": "min",
+      "data": 190,
+      "model": {
+        "n": 5,
+        "mean": 218.52911673119743,
+        "median": 217.17649756114042,
+        "lo": 206.43665066640386,
+        "hi": 230.67524584939673
+      },
+      "gap": 0.14303419769021275,
+      "status": "off"
+    },
+    {
+      "key": "lwbs",
+      "label": "Left without being seen",
+      "unit": "share",
+      "data": 0.02014284980216844,
+      "model": {
+        "n": 5,
+        "mean": 0.022851262134009183,
+        "median": 0.025583982202447165,
+        "lo": 0.009569877380322547,
+        "hi": 0.030813865193076426
+      },
+      "gap": 0.27012723888220475,
+      "status": "close"
+    },
+    {
+      "key": "admitted",
+      "label": "Admitted",
+      "unit": "share",
+      "data": 0.11551307743692513,
+      "model": {
+        "n": 5,
+        "mean": 0.11690529087962509,
+        "median": 0.1156963890935888,
+        "lo": 0.1146863666715207,
+        "hi": 0.11975315419857861
+      },
+      "gap": 0.0015869342305746205,
+      "status": "close"
+    },
+    {
+      "key": "boarding",
+      "label": "Decision to departure (admitted), average",
+      "unit": "hours",
+      "data": 3.3729247550378947,
+      "model": {
+        "n": 5,
+        "mean": 4.2778975834968245,
+        "median": 3.466352352862808,
+        "lo": 1.1577914322465643,
+        "hi": 8.518330286070126
+      },
+      "gap": 0.027699283147472296,
+      "status": "close"
+    },
+    {
+      "key": "los1",
+      "label": "Length of stay, ESI 1, median",
+      "unit": "min",
+      "data": 372,
+      "model": {
+        "n": 5,
+        "mean": 364.0051540029017,
+        "median": 372.67469692430313,
+        "lo": 332.5868920976092,
+        "hi": 384.92350419481807
+      },
+      "gap": 0.001813701409417028,
+      "status": "close"
+    },
+    {
+      "key": "los2",
+      "label": "Length of stay, ESI 2, median",
+      "unit": "min",
+      "data": 282,
+      "model": {
+        "n": 5,
+        "mean": 282.3493768975997,
+        "median": 288.5629859693436,
+        "lo": 263.4668149383193,
+        "hi": 296.20567792965886
+      },
+      "gap": 0.023272999891289264,
+      "status": "close"
+    },
+    {
+      "key": "los3",
+      "label": "Length of stay, ESI 3, median",
+      "unit": "min",
+      "data": 227,
+      "model": {
+        "n": 5,
+        "mean": 228.1823383428411,
+        "median": 229.15734041848918,
+        "lo": 216.66022918538656,
+        "hi": 240.34475042694976
+      },
+      "gap": 0.009503702284093323,
+      "status": "close"
+    },
+    {
+      "key": "los4",
+      "label": "Length of stay, ESI 4, median",
+      "unit": "min",
+      "data": 128,
+      "model": {
+        "n": 5,
+        "mean": 133.13763335355617,
+        "median": 133.40041618509713,
+        "lo": 127.9192013326261,
+        "hi": 139.8650262837822
+      },
+      "gap": 0.04219075144607132,
+      "status": "close"
+    },
+    {
+      "key": "los5",
+      "label": "Length of stay, ESI 5, median",
+      "unit": "min",
+      "data": 101,
+      "model": {
+        "n": 5,
+        "mean": 95.50196344837241,
+        "median": 94.54920684732133,
+        "lo": 91.9773626658156,
+        "hi": 99.93275077737925
+      },
+      "gap": -0.06386923913543238,
+      "status": "close"
+    }
+  ],
+  "overloaded": false,
+  "national": {
+    "records": 16025,
+    "weightedVisits": 155397747,
+    "acuityMix": {
+      "1": 0.015,
+      "2": 0.1542,
+      "3": 0.5074,
+      "4": 0.2964,
+      "5": 0.0271
+    },
+    "triagedShare": 0.6533,
+    "admissionRate": 0.1178,
+    "admitByAcuity": {
+      "1": 0.5087,
+      "2": 0.3153,
+      "3": 0.1289,
+      "4": 0.0187,
+      "5": 0.0384
+    },
+    "ambulanceByAcuity": {
+      "1": 0.5392,
+      "2": 0.3521,
+      "3": 0.1955,
+      "4": 0.0685,
+      "5": 0.1207
+    },
+    "lwbsRate": 0.0194,
+    "waitMedian": 16,
+    "waitP90": 98,
+    "waitMedianByAcuity": {
+      "1": 11,
+      "2": 12,
+      "3": 16,
+      "4": 18,
+      "5": 13
+    },
+    "lengthOfVisitMedian": 190,
+    "lengthOfVisitMedianByAcuity": {
+      "1": 372,
+      "2": 284,
+      "3": 226,
+      "4": 130,
+      "5": 100
+    },
+    "boardedMedian": 62,
+    "units": {
+      "icu": {
+        "share": 0.1744,
+        "hospitalDaysMedian": 4
+      },
+      "stepdown": {
+        "share": 0.0359,
+        "hospitalDaysMedian": 4
+      },
+      "ward": {
+        "share": 0.7897,
+        "hospitalDaysMedian": 4
+      }
+    },
+    "unitShareByAcuity": {
+      "1": {
+        "icu": 0.4126,
+        "stepdown": 0.0876,
+        "ward": 0.4998
+      },
+      "2": {
+        "icu": 0.2355,
+        "stepdown": 0.0474,
+        "ward": 0.7171
+      },
+      "3": {
+        "icu": 0.1285,
+        "stepdown": 0.0346,
+        "ward": 0.8369
+      },
+      "4": {
+        "icu": 0.0736,
+        "stepdown": 0.0053,
+        "ward": 0.9212
+      },
+      "5": {
+        "icu": 0.1184,
+        "stepdown": 0.0278,
+        "ward": 0.8537
+      }
+    }
+  },
+  "department": {
+    "config": "configs/planner/example-baseline.json",
+    "overrides": {
+      "beds.main": 32
+    }
+  }
+}

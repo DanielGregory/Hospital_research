@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { openData } from './opendata.js';
 import { BASELINES, baselineCheck, benchmarkLevel, calibrate, compareScenarios, type Comparison, type Scenario, fitToTargets, optimize, runWithPolicy, Session, type AggregateTargets, type SearchSpace } from '@er/research';
 import { applySettings, balanceReport, career, parseVisits, summarizeVisits, patientStories, type PatientStory, checkSetup, ConfigError, evaluateGoals, resolveConfig, Simulation, type GoalResult, type LevelSpec, type Metrics, type TimedCommand, type WeekRecord } from '@er/sim';
 
@@ -35,6 +36,10 @@ export const USAGE = `Usage:
       Run the baseline and each scenario on the same seeds; report ranges and differences with 95% intervals.
   fit-visits --config <department.json> --visits <visits.csv> [--seeds 1-5] [--out calibrated.json]
       Fit the department's inputs to its own visit records and print the baseline check (model vs data).
+  open-data --source <mimic-ed-demo|mimic-ed> [--fetch] [--dir data/open/<source>] [--visits-per-day 100] [--config <department.json>] [--out <file>]
+      Fit the model to an open ED dataset (MIMIC-IV-ED): --fetch downloads the open demo; the credentialed
+      full dataset has to be downloaded with your PhysioNet account into --dir. Writes the fitted settings,
+      the model-vs-data check and the citation (default configs/calibration/<source>.fitted.json).
   career [--seed <n>] [--weeks 12] [--out <file>]
       Play a career without changing anything between weeks: money, reputation and events per week.
   serve
@@ -51,8 +56,12 @@ Options:
   --format   json or csv. Defaults to csv if --out ends in .csv, else json.`;
 
 export interface RunArgs {
-  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark' | 'compare' | 'fit-visits';
+  command: 'run' | 'balance' | 'policy' | 'optimize' | 'serve' | 'calibrate' | 'career' | 'benchmark' | 'compare' | 'fit-visits' | 'open-data';
   visits?: string;
+  source?: string;
+  dir?: string;
+  fetch?: boolean;
+  visitsPerDay?: number;
   scenarios?: string;
   write?: boolean;
   weeks?: number;
@@ -73,7 +82,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv: readonly string[]): RunArgs {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark' && cmd !== 'compare' && cmd !== 'fit-visits')
+  if (cmd !== 'run' && cmd !== 'balance' && cmd !== 'policy' && cmd !== 'optimize' && cmd !== 'serve' && cmd !== 'calibrate' && cmd !== 'career' && cmd !== 'benchmark' && cmd !== 'compare' && cmd !== 'fit-visits' && cmd !== 'open-data')
     throw new UsageError(cmd ? `Unknown command '${cmd}'` : 'Missing command');
   if (cmd === 'serve') return { command: 'serve', config: '', seeds: [], overrides: [], format: 'json' };
   const opts: Record<string, string> = {};
@@ -85,6 +94,10 @@ export function parseArgs(argv: readonly string[]): RunArgs {
       write = true;
       continue;
     }
+    if (key === '--fetch' && cmd === 'open-data') {
+      opts.fetch = 'true';
+      continue;
+    }
     if (!key.startsWith('--')) throw new UsageError(`Unexpected argument '${key}'`);
     const val = rest[i + 1];
     if (val === undefined || val.startsWith('--')) throw new UsageError(`Missing value for ${key}`);
@@ -93,7 +106,13 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     i++;
   }
   const known = new Set(['config', 'seed', 'seeds', 'out', 'format', 'policy', 'space', 'iterations', 'objective', 'targets', 'weeks', 'scenarios', 'visits']);
+  if (cmd === 'open-data') for (const k of ['source', 'dir', 'fetch', 'visits-per-day']) known.add(k);
   for (const k of Object.keys(opts)) if (!known.has(k)) throw new UsageError(`Unknown option --${k}`);
+  if (cmd === 'open-data') {
+    if (!opts.source) throw new UsageError('--source is required (mimic-ed-demo or mimic-ed)');
+    if (opts['visits-per-day'] !== undefined && !(Number(opts['visits-per-day']) > 0)) throw new UsageError('--visits-per-day must be a positive number');
+    opts.config ??= 'configs/planner/example-baseline.json';
+  }
   if (cmd === 'career') {
     if (opts.seed !== undefined && !/^\d+$/.test(opts.seed)) throw new UsageError('--seed must be a non-negative integer');
     if (opts.weeks !== undefined && !/^[1-9]\d*$/.test(opts.weeks)) throw new UsageError('--weeks must be a positive integer');
@@ -136,6 +155,9 @@ export function parseArgs(argv: readonly string[]): RunArgs {
     scenarios: opts.scenarios,
     visits: opts.visits,
     ...(cmd === 'benchmark' ? { write } : {}),
+    ...(cmd === 'open-data'
+      ? { source: opts.source, dir: opts.dir, fetch: opts.fetch === 'true', visitsPerDay: opts['visits-per-day'] ? Number(opts['visits-per-day']) : undefined }
+      : {}),
   };
 }
 
@@ -337,6 +359,15 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       for (const r of check)
         process.stderr.write(`${r.status.padEnd(8)} ${r.label.padEnd(42)} data ${fmt(r.data)}  model ${fmt(r.model.median)} (${fmt(r.model.lo)}–${fmt(r.model.hi)})\n`);
       write(JSON.stringify({ visitsFile: args.visits, columns: parsed.columns, data, fitted: cal.fitted, notes: cal.notes, check, config: cal.config }, null, 2) + '\n');
+      return 0;
+    }
+    if (args.command === 'open-data') {
+      const r = openData({ cwd, config, source: args.source!, dir: args.dir, fetch: !!args.fetch, visitsPerDay: args.visitsPerDay, seeds: args.seeds.length ? args.seeds : [1, 2, 3, 4, 5] });
+      for (const line of r.log) process.stderr.write(`${line}\n`);
+      if (!r.result) return 1;
+      const out = args.out ?? `configs/calibration/${args.source}.fitted.json`;
+      writeFileSync(resolve(cwd, out), JSON.stringify(r.result, null, 2) + '\n');
+      process.stderr.write(`Wrote ${out}\n`);
       return 0;
     }
     if (args.command === 'compare') {

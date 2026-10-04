@@ -153,7 +153,7 @@ export function parseVisits(text: string): VisitParse {
       toDecision: since(row, 'decision', t),
       lengthOfStay: since(row, 'departure', t),
       disposition: idx.disposition >= 0 ? classifyDisposition(row[idx.disposition] ?? '') : 'other',
-      byAmbulance: mode ? /AMBUL|EMS|HELI|PARAMEDIC/.test(mode) : null,
+      byAmbulance: mode && !/^(UNKNOWN|OTHER|UNK|NA|N\/A)$/.test(mode) ? /AMBUL|EMS|HELI|PARAMEDIC/.test(mode) : null,
       age: Number.isFinite(ageRaw) ? ageRaw : null,
       sex: sexRaw.startsWith('F') ? 'F' : sexRaw.startsWith('M') ? 'M' : null,
     };

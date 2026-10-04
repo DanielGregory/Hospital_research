@@ -11,6 +11,8 @@ import { NATIONAL, withNational } from '../data/national';
 export interface Department {
   name: string;
   config: SimConfig;
+  /** Set when the baseline started from a hospital's published CMS figures. */
+  hospital?: { id: string; name: string; city: string; state: string; period: string; check: { label: string; target: number | null; model: number | null; unit: 'perDay' | 'min' | 'share' }[]; notes: string[] };
   /** Set when the baseline was calibrated from visit records. */
   calibration?: { file: string; visits: number; days: number; fitted: Record<string, unknown>; notes: string[] };
 }

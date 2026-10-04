@@ -708,3 +708,9 @@ label.button.file input { position: absolute; inset: 0; opacity: 0; cursor: poin
   .stage3d { height: 55vh; min-height: 320px; }
   .stage-help { display: none; }
 }
+
+/* Hospital search (CMS Care Compare) */
+.hospital-search input[type='search'] { width: 100%; padding: 8px 10px; font: inherit; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.hospital-hits { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.hospital-hits li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.hospital-hits li button { flex: none; }

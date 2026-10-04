@@ -15,7 +15,7 @@ export interface OpenSource {
   id: string;
   name: string;
   /** How to read the files. */
-  format: 'mimic-ed' | 'nhamcs-ed';
+  format: 'mimic-ed' | 'nhamcs-ed' | 'cms-hospitals';
   /** Survey year (NHAMCS layouts differ by year). */
   year?: number;
   /** Files to fetch (or place in the data folder), by name, with their download URL. */
@@ -61,6 +61,18 @@ export const OPEN_SOURCES: Record<string, OpenSource> = {
     citation: 'Johnson A, Bulgarelli L, Pollard T, Celi LA, Mark R, Horng S. MIMIC-IV-ED (version 2.2). PhysioNet.',
     page: 'https://physionet.org/content/mimic-iv-ed/2.2/',
     shiftedDates: true,
+  },
+  'cms-ed': {
+    id: 'cms-ed',
+    name: 'CMS Care Compare: Timely and Effective Care - Hospital (emergency department measures)',
+    format: 'cms-hospitals',
+    // The file name changes with each release; the dataset's metadata gives the current one.
+    files: [{ name: 'Timely_and_Effective_Care-Hospital.csv', url: 'https://data.cms.gov/provider-data/api/1/metastore/schemas/dataset/items/yv7e-xc69' }],
+    open: true,
+    license: 'US government work (public domain). Cite CMS and the reporting period.',
+    citation: 'Centers for Medicare & Medicaid Services. Care Compare: Timely and Effective Care - Hospital. data.cms.gov, dataset yv7e-xc69.',
+    page: 'https://data.cms.gov/provider-data/dataset/yv7e-xc69',
+    shiftedDates: false,
   },
   'nhamcs-2022': {
     id: 'nhamcs-2022',

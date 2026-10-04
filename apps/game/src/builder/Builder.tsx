@@ -17,6 +17,9 @@ import { webglAvailable } from '../render/webgl';
 import { downloadJson, type GameConfig } from '../sandbox';
 import { RoomPanel, ToolBar, useFloorEditor, type FloorEditor, type Tool } from '../screens/FloorDesigner';
 import { ScheduleEditor, Stepper } from '../screens/ScheduleEditor';
+import { HospitalSearch } from '../data/HospitalSearch';
+import { titleCase } from '../data/cms';
+import type { CmsHospital } from '@er/sim';
 import { loadHospital, newHospital, planBeds, saveHospital, SIZES, toDepartment, withTypicalStaffing, withVisits, type Hospital, type HospitalSize } from './hospital';
 
 type Step = 'floor' | 'staff' | 'hospital' | 'try';
@@ -42,7 +45,19 @@ export function Builder(props: { onBack: () => void; onWatch: (config: GameConfi
     setHospitalState(h);
     saveHospital(h);
   };
-  if (!hospital) return <StartPicker onPick={(size) => setHospital(newHospital(size))} onBack={props.onBack} />;
+  if (!hospital)
+    return (
+      <StartPicker
+        onPick={(size) => setHospital(newHospital(size))}
+        onReal={(h) => {
+          // Floor plan by size; volume and name from the hospital's published figures.
+          const perDay = Math.round((h.visitsPerYear ?? 0) / 365);
+          const size: HospitalSize = perDay < 60 ? 'small' : perDay < 140 ? 'medium' : 'large';
+          setHospital(withTypicalStaffing(withVisits(newHospital(size, titleCase(h.name)), perDay)));
+        }}
+        onBack={props.onBack}
+      />
+    );
 
   const config = hospital.config;
   const problems = problemsOf(config);
@@ -118,7 +133,7 @@ export function Builder(props: { onBack: () => void; onWatch: (config: GameConfi
   );
 }
 
-function StartPicker({ onPick, onBack }: { onPick: (s: HospitalSize) => void; onBack: () => void }) {
+function StartPicker({ onPick, onReal, onBack }: { onPick: (s: HospitalSize) => void; onReal: (h: CmsHospital) => void; onBack: () => void }) {
   return (
     <main className="screen builder" data-testid="builder-start">
       <p className="eyebrow">Build your hospital</p>
@@ -135,6 +150,11 @@ function StartPicker({ onPick, onBack }: { onPick: (s: HospitalSize) => void; on
           </button>
         ))}
       </div>
+      <section className="card" style={{ marginTop: 16 }}>
+        <h3>Or start from a real US hospital</h3>
+        <p className="muted small">Uses its published emergency department visits a year (CMS Care Compare) for the size and patient numbers.</p>
+        <HospitalSearch action="Use its size" onPick={(h) => onReal(h)} />
+      </section>
       <div className="actions">
         <button onClick={onBack}>Menu</button>
       </div>

@@ -284,6 +284,11 @@ async function main() {
         // Planner: fit the model to the sample visits, run what-ifs, read results, watch one, print the report.
         await page.goto(`http://localhost:${PORT}/`);
         await page.getByTestId('planner-card').click();
+        // Start from a real hospital's published figures (CMS).
+        await page.getByTestId('hospital-search').fill('dothan');
+        await page.getByTestId('pick-010001').click();
+        await page.getByTestId('hospital-check').waitFor({ timeout: 90_000 });
+        await shot(page, `planner-hospital-${scheme}`);
         await page.getByTestId('use-sample').click();
         await page.getByTestId('fit-model').click();
         await page.getByTestId('baseline-check').waitFor({ timeout: 90_000 });

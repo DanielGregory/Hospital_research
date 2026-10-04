@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { baselineCheck, calibrate, type CheckRow } from '@er/research';
 import { inflateRawSync } from 'node:zlib';
-import { mimicEdVisits, nhamcsVisits, OPEN_SOURCES, parseNhamcs, resolveConfig, restackVisits, summarizeNhamcs, summarizeVisits, type NhamcsSummary, type OpenSource, type Visit, type VisitSummary } from '@er/sim';
+import { parseCmsTimelyCare, mimicEdVisits, nhamcsVisits, OPEN_SOURCES, parseNhamcs, resolveConfig, restackVisits, summarizeNhamcs, summarizeVisits, type NhamcsSummary, type OpenSource, type Visit, type VisitSummary } from '@er/sim';
 
 export interface OpenDataResult {
   source: { id: string; name: string; page: string; license: string; citation: string; caveat?: string };
@@ -96,7 +96,7 @@ export function openData(o: {
   fetch: boolean;
   visitsPerDay?: number;
   seeds: number[];
-}): { log: string[]; result: OpenDataResult | null } {
+}): { log: string[]; result: OpenDataResult | null; extract?: CompactCms } {
   const log: string[] = [];
   const src = OPEN_SOURCES[o.source];
   if (!src) return { log: [`Unknown source '${o.source}' (one of: ${Object.keys(OPEN_SOURCES).join(', ')})`], result: null };
@@ -114,10 +114,19 @@ export function openData(o: {
       );
       return { log, result: null };
     }
-    log.push(`Downloading ${f.url}`);
-    const err = download(f.url, path);
+    let url = f.url;
+    if (src.format === 'cms-hospitals') {
+      // The metadata names the current CSV.
+      const meta = resolve(dir, 'metadata.json');
+      const e = download(url, meta);
+      if (e) return { log: [...log, e], result: null };
+      url = (JSON.parse(readFileSync(meta, 'utf8')) as { distribution: { downloadURL: string }[] }).distribution[0]!.downloadURL;
+    }
+    log.push(`Downloading ${url}`);
+    const err = download(url, path);
     if (err) return { log: [...log, err], result: null };
   }
+  if (src.format === 'cms-hospitals') return { log, result: null, extract: cmsExtract(readFileSync(resolve(dir, src.files[0]!.name), 'utf8')) };
 
   const loaded = loadVisits(src, dir);
   log.push(...loaded.problems);
@@ -170,6 +179,28 @@ export function openData(o: {
       overloaded,
       ...(loaded.national ? { national: loaded.national } : {}),
     },
+  };
+}
+
+/** Hospital ED measures as compact rows (the app loads this on demand). */
+export interface CompactCms {
+  source: string;
+  periods: Record<string, string>;
+  retrieved: string;
+  columns: string[];
+  rows: (string | number | null)[][];
+}
+
+const CMS_COLUMNS = ['id', 'name', 'city', 'state', 'volumeBand', 'medianMinutesDischarged', 'medianMinutesAll', 'medianMinutesPsych', 'medianMinutesTransfer', 'lwbsRate', 'visitsPerYear'] as const;
+
+export function cmsExtract(csv: string): CompactCms {
+  const x = parseCmsTimelyCare(csv);
+  return {
+    source: x.source,
+    periods: x.periods,
+    retrieved: new Date().toISOString().slice(0, 10),
+    columns: [...CMS_COLUMNS],
+    rows: x.hospitals.map((h) => CMS_COLUMNS.map((c) => h[c])),
   };
 }
 

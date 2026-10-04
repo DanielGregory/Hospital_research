@@ -9,8 +9,8 @@
  * CSV: one row per seed, metric keys flattened with dots, plus goal results for levels.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { openData } from './opendata.js';
@@ -36,7 +36,7 @@ export const USAGE = `Usage:
       Run the baseline and each scenario on the same seeds; report ranges and differences with 95% intervals.
   fit-visits --config <department.json> --visits <visits.csv> [--seeds 1-5] [--out calibrated.json]
       Fit the department's inputs to its own visit records and print the baseline check (model vs data).
-  open-data --source <mimic-ed-demo|mimic-ed> [--fetch] [--dir data/open/<source>] [--visits-per-day 100] [--config <department.json>] [--out <file>]
+  open-data --source <nhamcs-2022|cms-ed|mimic-ed-demo|mimic-ed> [--fetch] [--dir data/open/<source>] [--visits-per-day 100] [--config <department.json>] [--out <file>]
       Fit the model to an open ED dataset (MIMIC-IV-ED): --fetch downloads the open demo; the credentialed
       full dataset has to be downloaded with your PhysioNet account into --dir. Writes the fitted settings,
       the model-vs-data check and the citation (default configs/calibration/<source>.fitted.json).
@@ -364,6 +364,13 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
     if (args.command === 'open-data') {
       const r = openData({ cwd, config, source: args.source!, dir: args.dir, fetch: !!args.fetch, visitsPerDay: args.visitsPerDay, seeds: args.seeds.length ? args.seeds : [1, 2, 3, 4, 5] });
       for (const line of r.log) process.stderr.write(`${line}\n`);
+      if (r.extract) {
+        const out = args.out ?? 'configs/open/cms-ed-hospitals.json';
+        mkdirSync(dirname(resolve(cwd, out)), { recursive: true });
+        writeFileSync(resolve(cwd, out), JSON.stringify(r.extract) + '\n');
+        process.stderr.write(`${r.extract.rows.length} hospitals with ED measures. Wrote ${out}\n`);
+        return 0;
+      }
       if (!r.result) return 1;
       const out = args.out ?? `configs/calibration/${args.source}.fitted.json`;
       writeFileSync(resolve(cwd, out), JSON.stringify({ ...r.result, department: { config: args.config, overrides: Object.fromEntries(args.overrides) } }, null, 2) + '\n');

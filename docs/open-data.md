@@ -31,10 +31,28 @@ The `open-data` command reads both sources. For the full dataset, sign in at
 https://physionet.org/content/mimic-iv-ed/2.2/, download `ed/edstays.csv.gz` and `ed/triage.csv.gz`
 into `data/open/mimic-ed/`, then run `pnpm headless open-data --source mimic-ed`.
 
+## CMS Care Compare: start from a real hospital
+
+`pnpm headless open-data --source cms-ed --fetch` downloads the current "Timely and Effective Care -
+Hospital" file from data.cms.gov. The file name changes with each release, so it is read from the
+dataset's metadata. The command writes `configs/open/cms-ed-hospitals.json`, compact rows for 4,130 hospitals:
+- annual ED visits (the OP_22 denominator)
+- median minutes in the ED for patients sent home, for all patients, for psychiatric patients and for transfers (OP_18b, a, c, d)
+- share who left before being seen (OP_22)
+- volume band
+
+This is public-domain US government data. Cite CMS and the reporting period.
+
+In the planner, "Start from a real hospital" searches that list. The chosen hospital becomes the
+baseline (`fitToHospital`, `packages/research/src/hospital.ts`):
+1. Volume comes from its visits a year.
+2. Beds and shifts are scaled from the national starting department. The planner labels these as estimates until the hospital enters its own.
+3. Test-result times and patience are fitted so the median time in the ED for patients sent home and the share leaving unseen match what it reports.
+
+In the 3D builder, a real hospital sets the size and the patients a day.
+
 Other open sources would add more:
 
-- **CMS Care Compare** (per US hospital, API): median ED time, share leaving unseen, ED volume band.
-  These are useful as targets for one hospital.
 - **NHS England A&E statistics** (monthly, per trust): 4-hour performance and 12-hour
   decision-to-admit waits.
 

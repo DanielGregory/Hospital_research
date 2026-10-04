@@ -30,7 +30,7 @@ The test suite checks the engine against theory, not just itself:
 
 Browser end-to-end tests (`pnpm e2e`) play levels, the planner and the 3D builder in headless Chromium, in light and dark mode and at mobile width.
 
-> **Parameters are placeholders.** Every number in `packages/sim/src/params.ts` is marked `// PLACEHOLDER`: plausible, but not yet calibrated against real data. The open-data pipeline (`pnpm headless open-data --source mimic-ed-demo --fetch`, see [`docs/open-data.md`](docs/open-data.md)) has fitted the model to the public MIMIC-IV-ED demo (222 stays). That sample is small and mostly admitted patients, so its fit is kept as a pipeline check and not applied to the defaults; the next step is the credentialed MIMIC-IV-ED dataset (`--source mimic-ed`).
+> **Calibration status.** The defaults now use US national figures from the NHAMCS 2022 emergency department survey (16,025 visits weighted to 155.4 million). These are arrivals by hour and weekday, ambulance share and admitting unit (ICU, step-down, ward) by acuity. The planner's example department and new hospitals in the builder start from a full fit to that survey, which matches 10 of 12 national checks: wait to provider, share leaving unseen, admissions, boarding, and length of stay at every triage level. Fetch and refit with `pnpm headless open-data --source nhamcs-2022 --fetch --set beds.main=32`; see [`docs/open-data.md`](docs/open-data.md). Staffing, costs and other numbers still marked `// PLACEHOLDER` in `packages/sim/src/params.ts` are not calibrated yet. The story levels keep the arrival pattern they were balanced on. The MIMIC-IV-ED demo (222 stays, mostly admitted patients) was fitted too, as a pipeline check only.
 
 ## Getting started
 

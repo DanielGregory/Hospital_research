@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { baselineCheck, calibrate, type CheckRow } from '@er/research';
 import { inflateRawSync } from 'node:zlib';
-import { parseCmsTimelyCare, mimicEdVisits, nhamcsVisits, OPEN_SOURCES, parseNhamcs, resolveConfig, restackVisits, summarizeNhamcs, summarizeVisits, type NhamcsSummary, type OpenSource, type Visit, type VisitSummary } from '@er/sim';
+import { applySettings, Simulation, parseCmsTimelyCare, mimicEdVisits, nhamcsVisits, OPEN_SOURCES, parseNhamcs, resolveConfig, restackVisits, summarizeNhamcs, summarizeVisits, type NhamcsSummary, type NhamcsVisit, type OpenSource, type Visit, type VisitSummary } from '@er/sim';
 
 export interface OpenDataResult {
   source: { id: string; name: string; page: string; license: string; citation: string; caveat?: string };
@@ -26,6 +26,8 @@ export interface OpenDataResult {
   check: CheckRow[];
   /** National estimates from the survey weights (NHAMCS only). */
   national?: NhamcsSummary;
+  /** More national checks (NHAMCS only): waits and tests by level, returns within 72 hours. */
+  nationalCheck?: { label: string; data: number | null; model: number | null; unit: 'min' | 'share'; note?: string }[];
   /** The department gridlocked at this volume, so only the case mix was fitted. */
   overloaded: boolean;
 }
@@ -57,13 +59,21 @@ const read = (path: string) => {
 function loadVisits(src: OpenSource, dir: string): { visits: Visit[]; problems: string[]; described: string; national?: NhamcsSummary } {
   const files = src.files.map((f) => read(resolve(dir, f.name)));
   if (src.format === 'nhamcs-ed') {
-    const parsed = parseNhamcs(files[0]!, src.year!);
-    const national = summarizeNhamcs(parsed.visits);
+    const years = src.years ?? [];
+    const all: NhamcsVisit[] = [];
+    const problems: string[] = [];
+    years.forEach((y, i) => {
+      const parsed = parseNhamcs(files[i]!, y);
+      problems.push(...parsed.problems.map((p) => `${y}: ${p}`));
+      // Average over the years: each year's weights stand for that year's visits.
+      for (const v of parsed.visits) all.push({ ...v, weight: v.weight / years.length });
+    });
+    const national = summarizeNhamcs(all);
     return {
-      visits: nhamcsVisits(parsed.visits),
-      problems: parsed.problems,
+      visits: nhamcsVisits(all),
+      problems,
       national,
-      described: `${src.name}: ${parsed.visits.length} sampled visits standing for ${(national.weightedVisits / 1e6).toFixed(1)} million US ED visits; drawn by weight`,
+      described: `${src.name}: ${all.length} sampled visits standing for ${(national.weightedVisits / 1e6).toFixed(1)} million US ED visits a year; drawn by weight`,
     };
   }
   const j = mimicEdVisits(files[0]!, files[1]!);
@@ -137,13 +147,14 @@ export function openData(o: {
   const visits = visitsPerDay ? restackVisits(loaded.visits, visitsPerDay) : loaded.visits;
   const data = summarizeVisits(visits);
   log.push(`${loaded.described}${visitsPerDay ? `; laid out at ${visitsPerDay} visits a day (set with --visits-per-day).` : '.'}`);
-  let cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3) });
+  // Fit on the same weeks as the check: near full wards, boarding swings a lot from week to week.
+  let cal = calibrate(o.config, visits, data, { seeds: o.seeds });
   let check = baselineCheck(cal.config, data, o.seeds);
   // A department that cannot carry this case mix at this volume gridlocks: time fits would be nonsense.
   const los = check.find((c) => c.key === 'los');
   const overloaded = los?.data != null && los.model.median != null && los.model.median > 3 * los.data;
   if (overloaded) {
-    cal = calibrate(o.config, visits, data, { seeds: o.seeds.slice(0, 3), fitLengthOfStay: false });
+    cal = calibrate(o.config, visits, data, { seeds: o.seeds, fitLengthOfStay: false });
     check = baselineCheck(cal.config, data, o.seeds);
   }
   // Which inpatient unit admitted patients need, by acuity (NHAMCS records it).
@@ -177,9 +188,43 @@ export function openData(o: {
       notes,
       check,
       overloaded,
-      ...(loaded.national ? { national: loaded.national } : {}),
+      ...(loaded.national ? { national: loaded.national, nationalCheck: nationalChecks(cal.config, loaded.national, o.seeds.slice(0, 3)) } : {}),
     },
   };
+}
+
+/**
+ * Model against national figures the visit check does not cover: wait to provider by triage level,
+ * share of visits with each kind of test (labs and imaging module on), and visits that are returns
+ * within 72 hours (diagnosis module on).
+ */
+export function nationalChecks(config: unknown, n: NhamcsSummary, seeds: number[]): NonNullable<OpenDataResult['nationalCheck']> {
+  // Waits on the department as fitted; tests and returns with the labs-and-imaging and missed-diagnosis models on.
+  const runAll = (c: object) =>
+    seeds.map((s) => {
+      const sim = new Simulation(c, s);
+      return { m: sim.run().metrics, ps: sim.allPatients().filter((p) => p.arrivalTime >= (sim.config.warmupMinutes ?? 0)) };
+    });
+  const asFitted = runAll(config as object);
+  const runs = runAll(applySettings(config as object, { 'modules.diagnostics': true, 'modules.diagnosis': true }));
+  const avg = (f: (r: (typeof runs)[number]) => number | null, rs = runs) => {
+    const xs = rs.map(f).filter((x): x is number => x !== null);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  };
+  const rows: NonNullable<OpenDataResult['nationalCheck']> = [];
+  for (const a of ['1', '2', '3', '4', '5'] as const)
+    rows.push({ label: `Wait to provider, ESI ${a}, median`, data: n.waitMedianByAcuity[a] ?? null, model: avg((r) => r.m.doorToDoctorByAcuity[a].median, asFitted), unit: 'min' });
+  const SV = { lab: 'Lab test', xray: 'X-ray', ct: 'CT', ultrasound: 'Ultrasound' } as const;
+  for (const sv of Object.keys(SV) as (keyof typeof SV)[])
+    rows.push({ label: `Visits with ${SV[sv].toLowerCase().replace('ct', 'CT').replace('x-ray', 'X-ray')}`, data: n.tests[sv], model: avg((r) => (r.ps.length ? r.ps.filter((p) => p.orders?.some((o) => o.service === sv)).length / r.ps.length : null)), unit: 'share' });
+  rows.push({
+    label: 'Visits that are returns within 72 hours',
+    data: n.seen72Rate,
+    model: avg((r) => (r.ps.length ? r.ps.filter((p) => p.source === 'bounceBack').length / r.ps.length : null)),
+    unit: 'share',
+    note: 'National returns are for any reason; the model only returns patients whose problem was missed, so it should sit below this.',
+  });
+  return rows;
 }
 
 /** Hospital ED measures as compact rows (the app loads this on demand). */

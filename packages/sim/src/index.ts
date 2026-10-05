@@ -79,7 +79,7 @@ export type { CareerState, Hospital, UpgradeId, WeekEvent, WeekRecord, Milestone
 export { patientStories, STORY_KINDS, type PatientStory, type StoryKind } from './stories.js';
 export { drawProfile } from './engine.js';
 export { parseCmsTimelyCare, type CmsHospital, type CmsExtract } from './cms.js';
-export { parseNhamcs, summarizeNhamcs, nhamcsVisits, weightedQuantile, NHAMCS_LAYOUTS, type NhamcsVisit, type NhamcsSummary } from './nhamcs.js';
+export { fitOrderRates, parseNhamcs, summarizeNhamcs, nhamcsVisits, weightedQuantile, NHAMCS_LAYOUTS, type NhamcsVisit, type NhamcsSummary } from './nhamcs.js';
 export { mimicEdVisits, restackVisits, OPEN_SOURCES, type OpenSource } from './opendata.js';
 export { parseCsv, parseTime, parseVisits, summarizeVisits, fitVisits, visitsCsv, visitsFromPatients, VISIT_COLUMNS, type Visit, type VisitParse, type VisitSummary, type VisitDisposition } from './visits.js';
 export { findBottlenecks, testProcessingHours, type Bottleneck, type BottleneckKey } from './bottleneck.js';

@@ -6,7 +6,7 @@
  */
 import type { Comparison, Scenario } from '@er/research';
 import { PARAMS, type Shift, type SimConfig } from '@er/sim';
-import { NATIONAL, withNational } from '../data/national';
+import { withNational } from '../data/national';
 
 export interface Department {
   name: string;
@@ -167,6 +167,7 @@ export const TEMPLATES: Record<TemplateId, Template> = {
       { key: 'minAcuity', label: 'ESI from', min: 3, max: 5 },
     ],
     describe: (p) => `${p.spaces} chairs for ESI ${p.minAcuity}–5, one clinician ${hh(p.start!)}–${hh(p.start! + p.hours!)}.`,
+    unavailable: (b) => (b.fastTrack?.enabled ? 'The department already has a fast track: change its chairs or shifts in the department.' : null),
     settings: (p, b) => ({
       'fastTrack.enabled': true,
       'fastTrack.minAcuity': p.minAcuity,
@@ -256,18 +257,13 @@ export function exampleDepartment(): Department {
         doctors: 0,
         triageNurses: 0,
         schedule: {
-          doctor: [
-            { startHour: 8, hours: 12, count: 3 },
-            { startHour: 12, hours: 12, count: 1 },
-            { startHour: 20, hours: 12, count: 2 },
-          ],
           triageNurse: [
             { startHour: 0, hours: 24, count: 1 },
             { startHour: 10, hours: 12, count: 1 },
           ],
         },
       },
-      beds: { main: NATIONAL.beds ?? 32 },
+      // Beds, fast track and provider shifts come from the department the national fit was made for.
     }),
   };
 }
@@ -277,7 +273,7 @@ export function newProject(): Project {
     version: 1,
     department: exampleDepartment(),
     scenarios: [
-      { id: 's1', template: 'fastTrack', params: { ...TEMPLATES.fastTrack.defaults } },
+      { id: 's1', template: 'beds', params: { ...TEMPLATES.beds.defaults } },
       { id: 's2', template: 'doctorShift', params: { ...TEMPLATES.doctorShift.defaults } },
       { id: 's3', template: 'surge', params: { ...TEMPLATES.surge.defaults } },
     ],

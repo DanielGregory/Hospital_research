@@ -39,10 +39,32 @@ const LAYOUT_2022 = {
   YEAR: [2341, 4],
   PATWT: [2359, 11],
   BOARDED: [2379, 4],
+  SEEN72: [71, 2],
+  DIAGSCRN: [177, 1],
+  XRAY: [207, 1],
+  CATSCAN: [208, 1],
+  ULTRASND: [219, 1],
 } as const satisfies Record<string, Field>;
 
-export const NHAMCS_LAYOUTS: Record<number, { layout: typeof LAYOUT_2022; recordLength: number }> = {
-  2022: { layout: LAYOUT_2022, recordLength: 2382 },
+/** Laboratory tests in the 2022 file: blood tests ABG … OTHERBLD (178–197) and HIVTEST … URINE (200–204). */
+const LAB_2022: readonly number[] = [...Array.from({ length: 20 }, (_, i) => 178 + i), 200, 201, 202, 203, 204];
+
+/**
+ * 2019–2021 (doc19/20/21-ed-508.pdf): the same layout, except that the visit disposition block and
+ * the fields at the end of the record sit two characters earlier.
+ */
+const shift = (names: readonly (keyof typeof LAYOUT_2022)[], by: number) =>
+  Object.fromEntries(Object.entries(LAYOUT_2022).map(([k, [st, n]]) => [k, [names.includes(k as keyof typeof LAYOUT_2022) ? st + by : st, n]])) as unknown as typeof LAYOUT_2022;
+const LAYOUT_2019_2021 = shift(
+  ['LWBS', 'LBTC', 'LEFTAMA', 'DOA', 'DIEDED', 'TRANPSYC', 'TRANOTH', 'ADMITHOS', 'OBSHOS', 'OBSDIS', 'ADMIT', 'LOS', 'YEAR', 'PATWT', 'BOARDED'],
+  -2,
+);
+
+export const NHAMCS_LAYOUTS: Record<number, { layout: typeof LAYOUT_2022; lab: readonly number[]; recordLength: number }> = {
+  2019: { layout: LAYOUT_2019_2021, lab: LAB_2022, recordLength: 2380 },
+  2020: { layout: LAYOUT_2019_2021, lab: LAB_2022, recordLength: 2380 },
+  2021: { layout: LAYOUT_2019_2021, lab: LAB_2022, recordLength: 2380 },
+  2022: { layout: LAYOUT_2022, lab: LAB_2022, recordLength: 2382 },
 };
 
 export interface NhamcsVisit {
@@ -67,6 +89,10 @@ export interface NhamcsVisit {
   hospitalDays: number | null;
   /** Admit order to leaving the ED, minutes. */
   boarded: number | null;
+  /** Seen in this ED within the previous 72 hours (null when unknown). */
+  seen72: boolean | null;
+  /** Tests ordered or provided (null when the diagnostic-services item was left blank). */
+  tests: { lab: boolean; xray: boolean; ct: boolean; ultrasound: boolean } | null;
   /** National visit weight. */
   weight: number;
 }
@@ -123,6 +149,13 @@ export function parseNhamcs(text: string, year: number): { visits: NhamcsVisit[]
       unit: disposition === 'admitted' ? (admitUnit === 1 ? 'icu' : admitUnit === 2 ? 'stepdown' : 'ward') : null,
       hospitalDays: disposition === 'admitted' ? pos(L.LOS) : null,
       boarded: pos(L.BOARDED),
+      seen72: num(L.SEEN72) === 1 ? true : num(L.SEEN72) === 2 ? false : null,
+      tests:
+        num(L.DIAGSCRN) === 0
+          ? { lab: false, xray: false, ct: false, ultrasound: false }
+          : num(L.DIAGSCRN) === 1
+            ? { lab: spec.lab.some((c) => line[c - 1] === '1'), xray: flag(L.XRAY), ct: flag(L.CATSCAN), ultrasound: flag(L.ULTRASND) }
+            : null,
       weight: num(L.PATWT) ?? 0,
     });
   }
@@ -164,6 +197,18 @@ export interface NhamcsSummary {
   units: Record<UnitId, { share: number; hospitalDaysMedian: number | null }>;
   /** Unit shares among admitted patients, by triage level. */
   unitShareByAcuity: Record<string, Record<UnitId, number>>;
+  /** Share of visits with each kind of test, by triage level (visits with the item answered). */
+  testsByAcuity: Record<string, { lab: number; xray: number; ct: number; ultrasound: number }>;
+  tests: { lab: number; xray: number; ct: number; ultrasound: number };
+  /** Share of visits by someone seen in the same ED in the previous 72 hours. */
+  seen72Rate: number;
+  seen72ByAcuity: Record<string, number>;
+  /** Admitted patients: mean hospital stay in days, by unit (whole stay, not just that unit). */
+  hospitalDaysMean: Record<UnitId, number | null>;
+  ageMedianByAcuity: Record<string, number | null>;
+  femaleShare: number;
+  /** Share of visits under 16 (the simulator's patient profiles are adults). */
+  under16Share: number;
 }
 
 export function summarizeNhamcs(vs: readonly NhamcsVisit[]): NhamcsSummary {
@@ -214,6 +259,27 @@ export function summarizeNhamcs(vs: readonly NhamcsVisit[]): NhamcsSummary {
     units: Object.fromEntries(
       unitIds.map((u) => [u, { share: r4(share(admitted, (v) => v.unit === u)), hospitalDaysMedian: q(admitted.filter((v) => v.unit === u), (v) => v.hospitalDays, 0.5) }]),
     ) as NhamcsSummary['units'],
+    testsByAcuity: Object.fromEntries(
+      levels.map((a) => {
+        const t = byAcuity(a).filter((v) => v.tests);
+        return [a, { lab: r4(share(t, (v) => v.tests!.lab)), xray: r4(share(t, (v) => v.tests!.xray)), ct: r4(share(t, (v) => v.tests!.ct)), ultrasound: r4(share(t, (v) => v.tests!.ultrasound)) }];
+      }),
+    ),
+    tests: (() => {
+      const t = vs.filter((v) => v.tests);
+      return { lab: r4(share(t, (v) => v.tests!.lab)), xray: r4(share(t, (v) => v.tests!.xray)), ct: r4(share(t, (v) => v.tests!.ct)), ultrasound: r4(share(t, (v) => v.tests!.ultrasound)) };
+    })(),
+    seen72Rate: r4(share(vs.filter((v) => v.seen72 !== null), (v) => v.seen72 === true)),
+    seen72ByAcuity: Object.fromEntries(levels.map((a) => [a, r4(share(byAcuity(a).filter((v) => v.seen72 !== null), (v) => v.seen72 === true))])),
+    hospitalDaysMean: Object.fromEntries(
+      unitIds.map((u) => {
+        const xs = admitted.filter((v) => v.unit === u && v.hospitalDays !== null);
+        return [u, W(xs) ? Math.round((xs.reduce((s, v) => s + v.hospitalDays! * v.weight, 0) / W(xs)) * 100) / 100 : null];
+      }),
+    ) as Record<UnitId, number | null>,
+    ageMedianByAcuity: Object.fromEntries(levels.map((a) => [a, q(byAcuity(a), (v) => v.age, 0.5)])),
+    femaleShare: r4(share(vs.filter((v) => v.sex), (v) => v.sex === 'F')),
+    under16Share: r4(share(vs.filter((v) => v.age !== null), (v) => v.age! < 16)),
     unitShareByAcuity: Object.fromEntries(
       levels.map((a) => {
         const adm = admitted.filter((v) => v.acuity === +a);
@@ -256,5 +322,56 @@ export function nhamcsVisits(vs: readonly NhamcsVisit[], n = 20000): Visit[] {
       next += step;
     }
   }
+  return out;
+}
+
+type Service = 'lab' | 'xray' | 'ct' | 'ultrasound';
+const SERVICES: readonly Service[] = ['lab', 'xray', 'ct', 'ultrasound'];
+
+/**
+ * Rescale each condition's chance of each test so that, weighted by how common the conditions are,
+ * every triage level orders each test at the target rate. Conditions keep their differences (a
+ * stroke still gets a CT far more often than abdominal pain); a level with no condition ordering a
+ * test gets the target rate spread over its conditions that order any test (never to one that
+ * needs none, like a prescription refill). Chances are capped at 1, and the shortfall is moved to the
+ * conditions with room left, a few times over.
+ */
+export function fitOrderRates(
+  orders: Record<string, Partial<Record<Service, number>>>,
+  conditions: readonly { id: string; acuity: number; weight: number }[],
+  target: Record<string, Record<Service, number>>,
+): Record<string, Partial<Record<Service, number>>> {
+  const out: Record<string, Partial<Record<Service, number>>> = Object.fromEntries(conditions.map((c) => [c.id, { ...(orders[c.id] ?? {}) }]));
+  for (const [a, t] of Object.entries(target)) {
+    const group = conditions.filter((c) => c.acuity === +a);
+    const total = group.reduce((s, c) => s + c.weight, 0);
+    if (!total) continue;
+    // Conditions that order no test at all (a prescription refill) never get one spread to them.
+    const testable = group.filter((c) => Object.values(orders[c.id] ?? {}).some((x) => (x ?? 0) > 0));
+    const spreadTo = testable.length ? testable : group;
+    const spreadWeight = spreadTo.reduce((s, c) => s + c.weight, 0);
+    for (const sv of SERVICES) {
+      const avg = () => group.reduce((s, c) => s + c.weight * (out[c.id]![sv] ?? 0), 0) / total;
+      if (avg() === 0) for (const c of spreadTo) out[c.id]![sv] = Math.min(1, (t[sv] * total) / spreadWeight);
+      for (let i = 0; i < 6 && Math.abs(avg() - t[sv]) > 1e-4; i++) {
+        const room = group.filter((c) => (out[c.id]![sv] ?? 0) < 1 && (out[c.id]![sv] ?? 0) > 0);
+        if (!room.length) break;
+        const fixed = group.filter((c) => !room.includes(c)).reduce((s, c) => s + c.weight * (out[c.id]![sv] ?? 0), 0);
+        const moving = room.reduce((s, c) => s + c.weight * (out[c.id]![sv] ?? 0), 0);
+        const f = (t[sv] * total - fixed) / moving;
+        for (const c of room) out[c.id]![sv] = Math.min(1, (out[c.id]![sv] ?? 0) * f);
+      }
+      // Still short (the conditions that order it are all at 1): spread the rest over the others.
+      const short = t[sv] * total - avg() * total;
+      if (short > 1e-6) {
+        const open = spreadTo.filter((c) => (out[c.id]![sv] ?? 0) < 1);
+        const w = open.reduce((s, c) => s + c.weight, 0);
+        for (const c of open) out[c.id]![sv] = Math.min(1, (out[c.id]![sv] ?? 0) + short / w);
+      }
+      for (const c of group) out[c.id]![sv] = Math.round((out[c.id]![sv] ?? 0) * 1000) / 1000;
+    }
+  }
+  // Drop zeros, so the table reads like the original.
+  for (const id of Object.keys(out)) for (const sv of SERVICES) if (!out[id]![sv]) delete out[id]![sv];
   return out;
 }

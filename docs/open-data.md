@@ -24,7 +24,7 @@ settings, a model-versus-data check and the citation. Options:
 | Source | Access | What it gives | What it cannot give |
 |---|---|---|---|
 | **MIMIC-IV-ED Demo** (PhysioNet) | Open download | Arrival hour and weekday, triage acuity (ESI), admitted or not, arrival by ambulance, length of stay, sex | Daily volume (dates shifted), door-to-provider time, decision-to-admit time. Only about 200 stays: rough. |
-| **NHAMCS 2022 ED** (NCHS/CDC, `--source nhamcs-2022`) | Open download from ftp.cdc.gov | A national probability sample: 16,025 visits weighted to 155.4 million US ED visits. Arrival hour and weekday, triage level, arrival by ambulance, wait to first provider, length of visit, every disposition, admitting unit (critical care, step-down, other), hospital stay, boarding minutes. | One department's daily volume and crowding (it samples many EDs). 35% of visits have no triage level. |
+| **NHAMCS ED** (NCHS/CDC, `--source nhamcs-2021-2022`; also `nhamcs-2022`, `nhamcs-2019-2022`) | Open download from ftp.cdc.gov | A national probability sample: about 16,000 visits a year (2022: 16,025 weighted to 155.4 million US ED visits); 2021–2022 pooled is 32,232 visits. Arrival hour and weekday, triage level, arrival by ambulance, wait to first provider, length of visit, every disposition, admitting unit (critical care, step-down, other), hospital stay, boarding minutes, tests ordered (lab, X-ray, CT, ultrasound), seen in the same ED in the previous 72 hours, and whether the ED has a fast track. | One department's daily volume and crowding (it samples many EDs). 35% of visits have no triage level. |
 | **MIMIC-IV-ED** (PhysioNet) | Free, but needs a credentialed PhysioNet account (CITI training and a data use agreement). Download it yourself. | The same as the demo, from about 425,000 visits at one US academic ED: reliable shares by acuity, hourly patterns and length of stay | The same gaps as the demo. You may not redistribute the data, but fitted parameters with a citation are fine. |
 
 The `open-data` command reads both sources. For the full dataset, sign in at
@@ -78,35 +78,57 @@ length of stay (overall and ESI 1–3), share leaving unseen and admission rate.
 Use them to check the pipeline, not as defaults. Defaults need the full dataset or a nationally
 representative one (NHAMCS).
 
-## NHAMCS 2022: what the simulator now uses (fetched 2026-10-04)
+## NHAMCS 2021–2022: what the simulator now uses (fetched 2026-10-04)
 
-`pnpm headless open-data --source nhamcs-2022 --fetch --set beds.main=32` reads the fixed-width file
-by the positions in the 2022 documentation (`packages/sim/src/nhamcs.ts`). The parse is checked
-against the documentation's own tables: the weighted total is exactly 155,397,747 visits, and the
-triage-level shares match.
+```sh
+pnpm headless open-data --source nhamcs-2021-2022 --fetch --set beds.main=32 --set fastTrack.enabled=true \
+  --set fastTrack.minAcuity=4 --set beds.fastTrack=6 \
+  --set 'staffing.schedule.fastTrackClinician=[{"startHour":10,"hours":12,"count":1}]' \
+  --set 'staffing.schedule.doctor=[{"startHour":8,"hours":12,"count":3},{"startHour":14,"hours":8,"count":1},{"startHour":20,"hours":12,"count":2}]'
+```
 
-National estimates (weighted):
+The reader (`packages/sim/src/nhamcs.ts`) knows the 2019, 2020, 2021 and 2022 layouts, taken from each year's documentation. Before 2022, the disposition block and the fields at the end of the record sit two characters earlier. Every year is checked against its documentation's own tables, and the record counts, weighted totals and share female match exactly. Years are pooled with their weights averaged. 2021–2022 is the default: twice the sample of one year, and after the 2020 dip (fewer visits, sicker mix, shorter waits).
+
+| Year | Median wait to provider | Median visit | Admitted | Left unseen |
+|---|---|---|---|---|
+| 2019 | 14 min | 168 min | 11.4% | 1.3% |
+| 2020 | 11 min | 176 min | 14.5% | 1.0% |
+| 2021 | 16 min | 193 min | 13.4% | 1.7% |
+| 2022 | 16 min | 190 min | 11.8% | 1.9% |
+
+National estimates, 2021–2022 pooled (weighted):
 
 | Measure | Value |
 |---|---|
-| Median wait to first provider | 16 min (90th percentile 98 min) |
-| Median length of visit | 190 min (ESI 1 372, ESI 2 282, ESI 3 227, ESI 4 128, ESI 5 101) |
-| Admitted | 11.8% (ESI 1 51%, ESI 2 32%, ESI 3 13%, ESI 4 2%) |
-| Left without being seen | 1.9% |
-| Admitted patients going to critical care / step-down / other | 17% / 4% / 79% |
-| Median boarding (admit order to leaving the ED) | 62 min |
+| Median wait to first provider | 16 min (ESI 1 13, ESI 2 12, ESI 3 16, ESI 4 18, ESI 5 17) |
+| Median length of visit | 193 min (ESI 1 218, ESI 2 287, ESI 3 225, ESI 4 125, ESI 5 100) |
+| Admitted / left without being seen | 12.6% / 1.8% |
+| Visits with a lab test / X-ray / CT / ultrasound | 60% / 37% / 24% / 6.5% |
+| Visits by someone seen in the same ED in the previous 72 hours | 4.1% |
+| Admitted patients going to critical care | 16% |
+| Mean hospital stay, ward admissions / ICU admissions | 5.2 / 7.0 days (whole stay) |
+| Visits to EDs with a separate fast track / a provider at triage | 65% / 54% (of EDs that answered, 2022) |
+| Female / under 16 | 54% / 18% |
 
-A mid-size department (about 98 visits a day, 32 beds) fitted to these figures matches 10 of 12 checks:
-- **Matched:** wait to provider, share leaving unseen, admissions, boarding, and length of stay at every triage level.
-- **Off:** the overall median stay, 217 vs 190 min. The 35% of visits without a triage level are not in the by-level targets and are probably quicker visits. The 90th percentile wait is also off, 151 vs 98 min.
+The fitted department is the typical US ED a planner starts from:
+- about 98 visits a day and 32 beds
+- a fast track (6 chairs for ESI 4–5, a clinician 10:00–22:00), since most visits are to EDs with one; without it the model makes ESI 4 wait twice as long as ESI 3, unlike the national data
+- 72 provider-hours a day
+
+It matches 11 of 12 checks: visits, the slowest 10% of waits, length of stay overall and at every triage level, leaving unseen, admissions and boarding. Further national checks:
+- **Test rates:** all within 3 points.
+- **Returns within 72 hours:** 4.1% against 4.1% nationally. National returns are for any reason, so this is an upper bound for the model's missed-diagnosis returns.
+- **Wait to a provider:** the median is quicker than nationally (about 10 vs 16 min); the national figure includes registration before triage. By triage level, ESI 1 and 4 are seen sooner than nationally.
 
 Where it is used:
-- **`params.ts` defaults:** arrivals by hour (scaled to the same daily total), weekday pattern, ambulance share by acuity, and admitting unit by acuity. These are labelled with the source.
-- **Planner example department and new hospitals in the builder:** the whole fit (`apps/game/src/data/national.ts`): case mix, admission by acuity, test-result times and patience. The builder keeps its own volume and inpatient beds.
-- **Story levels:** they keep the arrival pattern they were balanced on, written into each level's config. They are training scenarios, not data.
+- **`params.ts` defaults:** arrivals by hour and weekday, ambulance share and admitting unit by triage level, test orders by condition (`fitOrderRates` rescales the hand-made table so each triage level orders each test at the national rate; conditions keep their differences, and a prescription refill still gets none), and the typical ward stay (5.2 days). Each is labelled with the source.
+- **Planner example department:** the whole fit, staffing and fast track included (`apps/game/src/data/national.ts`).
+- **New hospitals in the builder:** case mix, admissions, test times and patience; their own volume, beds and shifts.
+- **Story levels:** they keep the arrival pattern they were balanced on (training scenarios, not data).
 
-Terms (NCHS): statistical reporting and analysis only, with no attempt to identify anyone. The raw file
-stays in git-ignored `data/open/`; only aggregates are committed.
+Not used: ICU and step-down stays. NHAMCS gives the whole hospital stay of patients admitted there, not the time in that unit, so those stay placeholders.
+
+Terms (NCHS): statistical reporting and analysis only, with no attempt to identify anyone. Raw files stay in git-ignored `data/open/`; only aggregates are committed.
 
 ## Shifted dates
 

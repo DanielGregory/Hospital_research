@@ -16,6 +16,7 @@ import { Briefing } from './screens/Briefing';
 import { Debrief } from './screens/Debrief';
 import { LayoutEditor } from './screens/LayoutEditor';
 import { Menu } from './screens/Menu';
+import { About } from './screens/About';
 import { Play, SANDBOX_LIVE } from './screens/Play';
 import { defaultSandbox, Sandbox, type SandboxState } from './screens/Sandbox';
 import { Setup } from './screens/Setup';
@@ -42,7 +43,8 @@ type Screen =
   | { name: 'play'; config: GameConfig; seed: number; values: SetupValues; origin: Origin; run: number }
   | { name: 'debrief'; config: GameConfig; metrics: Metrics; origin: Origin; run: RunAnalysis; stars?: number }
   | { name: 'career' }
-  | { name: 'planner' }
+  | { name: 'planner'; demo?: boolean; run?: number }
+  | { name: 'about' }
   | { name: 'builder' }
   | { name: 'careerWeek'; before: { money: number; reputation: number }; settlement: Settlement; metrics: Metrics; run: RunAnalysis };
 
@@ -92,7 +94,17 @@ export function plannerOnly(): boolean {
   }
 }
 
+/** `?demo` opens the planner and runs the example comparison straight away. */
+function demoLink(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).has('demo');
+  } catch {
+    return false;
+  }
+}
+
 function startScreen(): Screen {
+  if (demoLink()) return { name: 'planner', demo: true, run: 1 };
   if (plannerOnly()) return { name: 'planner' };
   try {
     const d = new URLSearchParams(window.location.search).get('daily');
@@ -176,6 +188,8 @@ function Screens() {
               ? 'Career'
               : screen.name === 'builder'
                 ? 'Build your hospital'
+              : screen.name === 'about'
+                ? 'How it works'
               : screen.name === 'planner'
                 ? 'Planner'
               : screen.origin.kind === 'career'
@@ -205,6 +219,8 @@ function Screens() {
             onCareer={() => setScreen({ name: 'career' })}
             onPlanner={() => setScreen({ name: 'planner' })}
             onBuilder={() => setScreen({ name: 'builder' })}
+            onAbout={() => setScreen({ name: 'about' })}
+            onDemo={() => setScreen({ name: 'planner', demo: true, run: Date.now() })}
           />
         );
       case 'builder':
@@ -215,9 +231,20 @@ function Screens() {
             onWatch={(config) => setScreen({ name: 'play', config, seed: 1, values: valuesFor(config, SHIFT_LIVE.controls), origin: { kind: 'builder' }, run: Date.now() })}
           />
         );
+      case 'about':
+        return (
+          <About
+            onBack={home}
+            onDemo={() => setScreen({ name: 'planner', demo: true, run: Date.now() })}
+            onPlanner={() => setScreen({ name: 'planner' })}
+          />
+        );
       case 'planner':
         return (
           <Planner
+            key={screen.run ?? 0}
+            demo={screen.demo}
+            onAbout={() => setScreen({ name: 'about' })}
             onBack={plannerOnly() ? undefined : home}
             onWatch={(config, name) =>
               setScreen({

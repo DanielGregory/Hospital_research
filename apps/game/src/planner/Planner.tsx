@@ -18,8 +18,19 @@ import type { CmsHospital } from '@er/sim';
 
 type Tab = 'department' | 'scenarios' | 'results' | 'report';
 
-export function Planner(props: { onBack?: () => void; onWatch: (config: GameConfig, name: string) => void }) {
-  const [project, setProjectState] = useState<Project>(loadProject);
+const INTRO_KEY = 'er-planner-intro-done';
+const introDone = () => {
+  try {
+    return localStorage.getItem(INTRO_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export function Planner(props: { onBack?: () => void; onWatch: (config: GameConfig, name: string) => void; onAbout?: () => void; demo?: boolean }) {
+  // The demo starts from the example department and its three what-ifs, on fewer weeks so it is quick.
+  const [project, setProjectState] = useState<Project>(() => (props.demo ? { ...newProject(), weeks: 10 } : loadProject()));
+  const [intro, setIntro] = useState(() => !props.demo && !introDone());
   const [tab, setTab] = useState<Tab>(project.results ? 'results' : 'department');
   const [busy, setBusy] = useState<{ label: string; done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +66,23 @@ export function Planner(props: { onBack?: () => void; onWatch: (config: GameConf
   const setBase = (config: SimConfig) => setProject({ ...project, department: { ...dept, config }, results: undefined });
   const seeds = Array.from({ length: project.weeks }, (_, i) => i + 1);
 
+  const closeIntro = () => {
+    setIntro(false);
+    try {
+      localStorage.setItem(INTRO_KEY, '1');
+    } catch {
+      // storage blocked: the guide shows again next time
+    }
+  };
+  // Demo: run the comparison as soon as the planner opens.
+  const demoStarted = useRef(false);
+  useEffect(() => {
+    if (!props.demo || demoStarted.current) return;
+    demoStarted.current = true;
+    saveProject(project);
+    runScenarios();
+  }, []);
+
   const runScenarios = () =>
     run({ kind: 'compare', base, scenarios: project.scenarios.map((s) => toScenario(s, base)), seeds }, (m) => {
       if (m.kind !== 'compare') return;
@@ -84,6 +112,51 @@ export function Planner(props: { onBack?: () => void; onWatch: (config: GameConf
           ))}
         </nav>
       </header>
+
+      {intro && (
+        <section className="card intro no-print" data-testid="planner-intro">
+          <h2>Start here</h2>
+          <ol className="intro-steps">
+            <li>
+              <strong>Your department.</strong> Start from a typical US emergency department, from your hospital’s published figures, or describe your own shifts and
+              beds.
+            </li>
+            <li>
+              <strong>What-ifs.</strong> Pick the changes to test: a new shift, more beds, a fast track, more ICU beds, a second CT scanner.
+            </li>
+            <li>
+              <strong>Results.</strong> Every option runs on the same simulated weeks. You get ranges, changes with confidence intervals, where the waiting comes from,
+              and a printable report.
+            </li>
+          </ol>
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => {
+                closeIntro();
+                const p = { ...newProject(), weeks: 10 };
+                setProject(p);
+                run({ kind: 'compare', base: p.department.config, scenarios: p.scenarios.map((x) => toScenario(x, p.department.config)), seeds: Array.from({ length: p.weeks }, (_, i) => i + 1) }, (m) => {
+                  if (m.kind !== 'compare') return;
+                  setProject({ ...p, results: { at: new Date().toISOString(), comparison: m.comparison } });
+                  setTab('results');
+                });
+              }}
+              data-testid="intro-demo"
+            >
+              Run the example now
+            </button>
+            <button onClick={closeIntro} data-testid="intro-close">
+              Got it, I’ll set it up
+            </button>
+            {props.onAbout && (
+              <button className="ghost" onClick={props.onAbout}>
+                How it works and how accurate it is
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       {busy && (
         <div className="card planner-busy no-print" role="status" data-testid="planner-busy">
@@ -162,6 +235,11 @@ export function Planner(props: { onBack?: () => void; onWatch: (config: GameConf
 
       <div className="actions no-print">
         {props.onBack && <button onClick={props.onBack}>Menu</button>}
+        {props.onAbout && (
+          <button className="ghost" onClick={props.onAbout} data-testid="planner-about">
+            How it works
+          </button>
+        )}
         <button
           className="ghost"
           onClick={() => {
@@ -348,7 +426,7 @@ function DepartmentTab(props: {
         <>
           <ScheduleEditor role="nurse" shifts={schedule('nurse')} config={base as GameConfig} onChange={(s) => set('staffing.schedule.nurse', s)} />
           <p className="muted small">
-            Bedside nurses take patients at set ratios (ESI 1 one-to-one, ESI 2 two per nurse, then 4, 5 and 6). A bed with no nurse free stays empty.
+            Bedside nurses take patients at California’s legal minimum ratios (ESI 1 one-to-one, ESI 2 two per nurse, everyone else four per nurse). A bed with no nurse free stays empty.
             {!schedule('nurse').length && ` With no shifts set, ${PARAMS.nursing.defaultNurses} nurses are on around the clock.`}
           </p>
         </>

@@ -1,14 +1,10 @@
 /**
  * Single source of truth for model numbers.
  *
- * Everything marked PLACEHOLDER is a plausible guess, not calibrated.
- * Calibration targets: MIMIC-IV-ED, CMS ED measures, NHS A&E statistics.
- * Configs (levels / sandbox presets) may override scenario-specific values;
- * anything they leave out comes from here.
- *
- * A fit to US national aggregates exists in configs/calibration/us-aggregates.fitted.json
- * but is NOT applied: its targets are unverified (see that folder). Once verified, fold the
- * fitted admission, patience and workup values in here and cite the sources.
+ * Everything marked PLACEHOLDER is a plausible guess, not calibrated. Everything else cites its
+ * source in a comment: mostly the NHAMCS 2021–2022 ED national survey (configs/calibration/
+ * nhamcs-2021-2022.fitted.json; docs/open-data.md). Configs (levels / sandbox presets) may override
+ * scenario-specific values; anything they leave out comes from here.
  */
 
 import type { Acuity, ConditionSpec, Lane, Role, ScoreTerm, ServiceId, UnitId } from './types.js';
@@ -37,8 +33,14 @@ export const PARAMS = {
    * bed is used only if the nurses on duty can take the patient. All PLACEHOLDER.
    */
   nursing: {
-    patientsPerNurseByAcuity: { 1: 1, 2: 2, 3: 4, 4: 5, 5: 6 } as Record<Acuity, number>, // PLACEHOLDER
-    icuBoarderPatientsPerNurse: 2, // PLACEHOLDER
+    /**
+     * California's legal minimum staffing (Cal. Code Regs. tit. 22, §70217): ED patients 1:4 at all
+     * times, critical care patients in the ED 1:2, trauma patients 1:1; ICU 1:2. California is the only
+     * US state with mandated ratios, so this is a floor, not what every department runs. Mapped by
+     * acuity: ESI 1 as trauma/resuscitation, ESI 2 as critical care, ESI 3–5 as general ED.
+     */
+    patientsPerNurseByAcuity: { 1: 1, 2: 2, 3: 4, 4: 4, 5: 4 } as Record<Acuity, number>,
+    icuBoarderPatientsPerNurse: 2, // ICU 1:2 (same regulation)
     /** Bedside nurses on duty when a config turns nursing on without saying how many. */
     defaultNurses: 6, // PLACEHOLDER
   },

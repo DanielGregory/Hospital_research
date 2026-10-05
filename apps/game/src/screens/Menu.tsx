@@ -17,6 +17,8 @@ export function Menu(props: {
   onCareer: () => void;
   onPlanner: () => void;
   onBuilder: () => void;
+  onAbout: () => void;
+  onDemo: () => void;
 }) {
   const { onPick, onLayout, onSandbox, results, best, daily } = props;
   const todays = best[`daily:${daily.date}`];
@@ -33,6 +35,12 @@ export function Menu(props: {
         <div className="actions">
           <button className="primary" onClick={props.onPlanner} data-testid="planner-card">
             Open the planner
+          </button>
+          <button onClick={props.onDemo} data-testid="menu-demo">
+            Watch a 1-minute demo
+          </button>
+          <button className="ghost" onClick={props.onAbout} data-testid="menu-about">
+            How it works and how accurate it is
           </button>
           <button onClick={() => onPick(next)} data-testid="continue-story">
             {Object.keys(results).length ? `Continue training: ${next.level.title}` : 'Try a training scenario'}

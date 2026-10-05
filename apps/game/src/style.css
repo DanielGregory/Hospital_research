@@ -714,3 +714,10 @@ label.button.file input { position: absolute; inset: 0; opacity: 0; cursor: poin
 .hospital-hits { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .hospital-hits li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .hospital-hits li button { flex: none; }
+
+/* How it works page and the planner's Start here guide */
+.about h2 { margin-top: 0; }
+.about-steps, .intro-steps { display: grid; gap: 8px; padding-left: 20px; margin: 8px 0; }
+.about .card { max-width: 860px; }
+.intro { border: 2px solid var(--accent); background: var(--accent-soft); }
+.intro h2 { margin: 0 0 4px; }

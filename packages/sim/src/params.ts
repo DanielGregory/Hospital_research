@@ -20,14 +20,14 @@ export const PARAMS = {
      * (a typical mid-size department); the shape by hour is the US national pattern.
      */
     hourlyRates: [
-      // NHAMCS 2022 ED, weighted arrivals by hour (configs/calibration/nhamcs-2022.fitted.json), scaled to 97.5/day
-      2.32, 2.09, 1.93, 1.72, 1.8, 1.63, 1.8, 2.61, 4.11, 5.24, 6.26, 5.88,
-      6.16, 5.97, 5.43, 4.97, 5.49, 5.6, 5.38, 5.13, 4.8, 4.35, 3.97, 2.85,
+      // NHAMCS 2021–2022 ED, weighted arrivals by hour (configs/calibration/nhamcs-2021-2022.fitted.json), scaled to 97.5/day
+      2.32, 1.93, 1.78, 1.73, 1.55, 1.51, 1.75, 2.68, 4.09, 5.15, 6.26, 5.97,
+      6.02, 6.13, 5.28, 5.29, 5.78, 5.86, 5.39, 5.24, 4.9, 4.19, 3.9, 2.81,
     ],
-    /** Multiplier per day of week, index 0 = Monday. NHAMCS 2022 ED, weighted visits by weekday. */
-    dayOfWeekMultipliers: [1.15, 1.099, 1.005, 1.021, 0.965, 0.874, 0.886],
-    /** Share of walk-in-stream patients who come by ambulance, by true acuity (diversion turns these away). NHAMCS 2022 ED (ARREMS by IMMEDR, weighted). */
-    ambulanceShareByAcuity: { 1: 0.54, 2: 0.35, 3: 0.2, 4: 0.07, 5: 0.12 } as Record<Acuity, number>,
+    /** Multiplier per day of week, index 0 = Monday. NHAMCS 2021–2022 ED, weighted visits by weekday. */
+    dayOfWeekMultipliers: [1.138, 1.071, 0.997, 1.033, 0.978, 0.888, 0.894],
+    /** Share of walk-in-stream patients who come by ambulance, by true acuity (diversion turns these away). NHAMCS 2021–2022 ED (ARREMS by IMMEDR, weighted). */
+    ambulanceShareByAcuity: { 1: 0.33, 2: 0.36, 3: 0.19, 4: 0.06, 5: 0.1 } as Record<Acuity, number>,
   },
 
   /** Career mode: money, reputation, upgrades and the weeks' events. */
@@ -59,28 +59,34 @@ export const PARAMS = {
     /** Spread of process and report times (lognormal cv). */
     cv: 0.5, // PLACEHOLDER
     /** Chance of each test by condition (conditions not listed order nothing). */
+    /**
+     * Chance of each test by hidden condition. The placeholder chances were rescaled (fitOrderRates)
+     * so the share of visits with a lab test, X-ray, CT and ultrasound at each triage level matches
+     * NHAMCS 2021–2022 ED (weighted; lab 60%, X-ray 37%, CT 24%, ultrasound 6.5% of all visits). The split
+     * between conditions within a level is still a placeholder.
+     */
     ordersByCondition: {
-      'cardiac-arrest': { lab: 0.9, xray: 0.7, ct: 0.3 },
-      'major-trauma': { lab: 0.8, xray: 0.9, ct: 0.85, ultrasound: 0.6 },
-      'septic-shock': { lab: 1, xray: 0.7, ct: 0.3 },
-      acs: { lab: 1, xray: 0.8 },
-      stroke: { lab: 0.9, ct: 1 },
-      sepsis: { lab: 1, xray: 0.6, ct: 0.25 },
-      overdose: { lab: 0.9, ct: 0.15 },
-      'chest-pain-benign': { lab: 0.9, xray: 0.7 },
-      'abdominal-pain': { lab: 0.85, ct: 0.5, ultrasound: 0.3 },
-      pneumonia: { lab: 0.8, xray: 0.95 },
-      'kidney-stone': { lab: 0.7, ct: 0.6, ultrasound: 0.3 },
-      asthma: { lab: 0.2, xray: 0.3 },
-      appendicitis: { lab: 0.9, ct: 0.6, ultrasound: 0.4 },
-      influenza: { lab: 0.2, xray: 0.2 },
-      sprain: { xray: 0.7 },
-      laceration: { xray: 0.1 },
-      uti: { lab: 0.8 },
-      'minor-fracture': { xray: 1 },
-      rash: { lab: 0.05 },
-      'sore-throat': { lab: 0.1 },
-    } as Record<string, Partial<Record<ServiceId, number>>>, // PLACEHOLDER
+      'cardiac-arrest': { lab: 0.69, xray: 0.485, ct: 0.207 },
+      'major-trauma': { lab: 0.613, xray: 0.623, ct: 0.586, ultrasound: 0.222 },
+      'septic-shock': { lab: 1, xray: 0.485, ct: 0.207 },
+      acs: { lab: 1, xray: 0.917, ultrasound: 0.066 },
+      stroke: { lab: 0.746, ct: 1, ultrasound: 0.066 },
+      sepsis: { lab: 1, xray: 0.688, ct: 0.773, ultrasound: 0.066 },
+      overdose: { lab: 0.746, ct: 0.464, ultrasound: 0.066 },
+      'chest-pain-benign': { lab: 0.746, xray: 0.802, ultrasound: 0.066 },
+      'abdominal-pain': { lab: 1, ct: 0.555, ultrasound: 0.172 },
+      pneumonia: { lab: 0.971, xray: 1 },
+      'kidney-stone': { lab: 0.849, ct: 0.667, ultrasound: 0.172 },
+      asthma: { lab: 0.243, xray: 0.922 },
+      appendicitis: { lab: 1, ct: 0.667, ultrasound: 0.23 },
+      influenza: { lab: 0.243, xray: 0.615 },
+      sprain: { xray: 0.426, lab: 0.145, ct: 0.085, ultrasound: 0.029 },
+      laceration: { xray: 0.061, lab: 0.145, ct: 0.085, ultrasound: 0.029 },
+      uti: { lab: 1, ct: 0.085, ultrasound: 0.029 },
+      'minor-fracture': { xray: 1, lab: 0.145, ct: 0.085, ultrasound: 0.029 },
+      rash: { lab: 0.181, xray: 0.178, ct: 0.068, ultrasound: 0.021 },
+      'sore-throat': { lab: 0.361, xray: 0.178, ct: 0.068, ultrasound: 0.021 },
+    } as Record<string, Partial<Record<ServiceId, number>>>,
   },
 
   /**
@@ -288,24 +294,24 @@ export const PARAMS = {
     /** Ward model by length of stay (boarding.inpatientStayHours): spread of inpatient stays. */
     inpatientStayCv: 0.8, // PLACEHOLDER
     /** Typical adult inpatient stay, hours: used when calibration switches to the ward model by length of stay. */
-    typicalStayHours: 110, // PLACEHOLDER
+    typicalStayHours: 125, // NHAMCS 2021–2022 ED: mean hospital stay of ward (non-critical, non-step-down) admissions, 5.2 days
     /**
      * Inpatient units (boarding.units): beds for ED admissions, typical stay, and occupancy at the start.
      * Used only when a config lists units; otherwise there is one ward pool.
      */
     units: {
-      icu: { beds: 12, stayHours: 80, initialOccupiedShare: 0.9 }, // PLACEHOLDER
+      icu: { beds: 12, stayHours: 80, initialOccupiedShare: 0.9 }, // PLACEHOLDER (NHAMCS gives the whole hospital stay of ICU admissions, 7.0 days, not the ICU part)
       stepdown: { beds: 16, stayHours: 72, initialOccupiedShare: 0.9 }, // PLACEHOLDER
-      ward: { beds: 110, stayHours: 110, initialOccupiedShare: 0.92 }, // PLACEHOLDER
+      ward: { beds: 110, stayHours: 125, initialOccupiedShare: 0.92 }, // stayHours: NHAMCS 2021–2022 ED, mean hospital stay of admissions to non-critical, non-step-down beds (5.2 days); beds and occupancy PLACEHOLDER
     } as Record<UnitId, { beds: number; stayHours: number; initialOccupiedShare: number }>,
     /** Which unit an admitted patient needs, by true acuity at the decision (shares; missing units fall to the ward). */
     unitShareByAcuity: {
-      // NHAMCS 2022 ED: unit for admitted patients (ADMIT: critical care, step-down, other) by triage level, weighted
-      1: { icu: 0.41, stepdown: 0.09, ward: 0.5 },
-      2: { icu: 0.24, stepdown: 0.05, ward: 0.71 },
-      3: { icu: 0.13, stepdown: 0.03, ward: 0.84 },
-      4: { icu: 0.07, stepdown: 0.01, ward: 0.92 },
-      5: { icu: 0.12, stepdown: 0.03, ward: 0.85 },
+      // NHAMCS 2021–2022 ED: unit for admitted patients (ADMIT: critical care, step-down, other) by triage level, weighted
+      1: { icu: 0.32, stepdown: 0.04, ward: 0.64 },
+      2: { icu: 0.21, stepdown: 0.05, ward: 0.74 },
+      3: { icu: 0.12, stepdown: 0.03, ward: 0.85 },
+      4: { icu: 0.09, stepdown: 0.02, ward: 0.89 },
+      5: { icu: 0.21, stepdown: 0.02, ward: 0.77 },
     } as Record<Acuity, Record<UnitId, number>>,
     /** Relative discharge rate by hour of day (discharges cluster late morning to afternoon). */
     /** Hospital full-capacity protocol: extra inpatient discharges per day while escalated. */

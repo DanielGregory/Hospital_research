@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nhamcsVisits, parseNhamcs, summarizeNhamcs, weightedQuantile } from '../src/index';
+import { fitOrderRates, nhamcsVisits, parseNhamcs, summarizeNhamcs, weightedQuantile } from '../src/index';
 
 /** A made-up 2022 record: fields placed at the documented 1-based positions, everything else blank. */
 function record(f: Partial<Record<string, string>>): string {
@@ -53,5 +53,31 @@ describe('NHAMCS ED file (2022 layout)', () => {
     expect(drawn).toHaveLength(50);
     expect(drawn.filter((v) => v.disposition === 'admitted').length).toBe(30);
     expect(drawn.find((v) => v.disposition === 'admitted')!.toDecision).toBe(210);
+  });
+});
+
+describe('fitting test orders to national rates by triage level', () => {
+  const conditions = [
+    { id: 'a', acuity: 3, weight: 1 },
+    { id: 'b', acuity: 3, weight: 1 },
+    { id: 'refill', acuity: 5, weight: 1 },
+    { id: 'rash', acuity: 5, weight: 1 },
+  ];
+  const orders = { a: { ct: 0.8 }, b: { ct: 0.2, lab: 0.5 }, rash: { lab: 0.1 } };
+  const target = { '3': { lab: 0.6, xray: 0, ct: 0.25, ultrasound: 0 }, '5': { lab: 0.2, xray: 0.1, ct: 0, ultrasound: 0 } };
+  const f = fitOrderRates(orders, conditions, target);
+  const avg = (ids: string[], sv: 'lab' | 'ct' | 'xray') => ids.reduce((s, id) => s + (f[id]![sv] ?? 0), 0) / ids.length;
+
+  it('matches each level’s rate and keeps the differences between conditions', () => {
+    expect(avg(['a', 'b'], 'ct')).toBeCloseTo(0.25, 2);
+    expect(f.a!.ct!).toBeGreaterThan(f.b!.ct!);
+    // b capped at 1 for lab, the rest spread to a.
+    expect(avg(['a', 'b'], 'lab')).toBeCloseTo(0.6, 2);
+    expect(f.b!.lab).toBeLessThanOrEqual(1);
+  });
+
+  it('never gives tests to a condition that needs none', () => {
+    expect(f.refill).toEqual({});
+    expect(f.rash!.xray).toBeCloseTo(0.2, 2);
   });
 });

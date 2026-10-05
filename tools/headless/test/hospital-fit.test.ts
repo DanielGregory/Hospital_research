@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../../..');
 const base0 = JSON.parse(readFileSync(resolve(root, 'configs/planner/example-baseline.json'), 'utf8')) as SimConfig;
-const national = JSON.parse(readFileSync(resolve(root, 'configs/calibration/nhamcs-2022.fitted.json'), 'utf8')) as { fitted: Record<string, unknown> };
-const base = applySettings({ ...base0, beds: { main: 32 } }, national.fitted) as SimConfig;
+const national = JSON.parse(readFileSync(resolve(root, 'configs/calibration/nhamcs-2021-2022.fitted.json'), 'utf8')) as { fitted: Record<string, unknown>; department: { overrides: Record<string, unknown> } };
+const base = applySettings(base0, { ...national.department.overrides, ...national.fitted }) as SimConfig;
 
 describe('starting from a hospital’s published figures', () => {
   it('scales beds and shifts with volume, never below one per staffed shift', () => {

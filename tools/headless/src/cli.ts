@@ -36,7 +36,7 @@ export const USAGE = `Usage:
       Run the baseline and each scenario on the same seeds; report ranges and differences with 95% intervals.
   fit-visits --config <department.json> --visits <visits.csv> [--seeds 1-5] [--out calibrated.json]
       Fit the department's inputs to its own visit records and print the baseline check (model vs data).
-  open-data --source <nhamcs-2022|cms-ed|mimic-ed-demo|mimic-ed> [--fetch] [--dir data/open/<source>] [--visits-per-day 100] [--config <department.json>] [--out <file>]
+  open-data --source <nhamcs-2021-2022|nhamcs-2019-2022|nhamcs-2022|cms-ed|mimic-ed-demo|mimic-ed> [--fetch] [--dir data/open/<source>] [--visits-per-day 100] [--config <department.json>] [--out <file>]
       Fit the model to an open ED dataset (MIMIC-IV-ED): --fetch downloads the open demo; the credentialed
       full dataset has to be downloaded with your PhysioNet account into --dir. Writes the fitted settings,
       the model-vs-data check and the citation (default configs/calibration/<source>.fitted.json).
@@ -373,6 +373,7 @@ export function main(argv: readonly string[], cwd = process.cwd()): number {
       }
       if (!r.result) return 1;
       const out = args.out ?? `configs/calibration/${args.source}.fitted.json`;
+      for (const c of r.result.nationalCheck ?? []) process.stderr.write(`national ${c.label.padEnd(42)} data ${fmt(c.data)}  model ${fmt(c.model)}\n`);
       writeFileSync(resolve(cwd, out), JSON.stringify({ ...r.result, department: { config: args.config, overrides: Object.fromEntries(args.overrides) } }, null, 2) + '\n');
       process.stderr.write(`Wrote ${out}\n`);
       return 0;

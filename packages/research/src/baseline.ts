@@ -116,7 +116,10 @@ export function calibrate(base: unknown, visits: readonly Visit[], data: VisitSu
     let wardBeds = Math.max(1, Math.round((admitsPerDay * stay) / 24));
     let bLo = Math.round(wardBeds * 0.85);
     let bHi = Math.round(wardBeds * 1.4) + 2;
-    const ward = () => ({ 'boarding.inpatientStayHours': stay, 'boarding.inpatientBeds': wardBeds, 'boarding.initialOccupied': Math.max(0, Math.round(wardBeds * 0.92)) });
+    // Start the wards at their expected steady occupancy (admissions a day × stay), not full: with
+    // multi-day stays an over-full start takes weeks to drain and shows up as boarding.
+    const steady = Math.round((admitsPerDay * stay) / 24);
+    const ward = () => ({ 'boarding.inpatientStayHours': stay, 'boarding.inpatientBeds': wardBeds, 'boarding.initialOccupied': Math.max(0, Math.min(wardBeds, steady)) });
     let volume = ((config as { arrivals?: { rateMultiplier?: number } }).arrivals?.rateMultiplier ?? 1) as number;
     const trial = () =>
       applySettings(config, { 'workup.enabled': true, 'workup.meanMinutesByAcuity': workup, 'lwbs.patienceMeanMinutesByAcuity': patience(), 'arrivals.rateMultiplier': volume, ...(boardingOn ? ward() : {}) });

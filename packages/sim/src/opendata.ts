@@ -16,8 +16,8 @@ export interface OpenSource {
   name: string;
   /** How to read the files. */
   format: 'mimic-ed' | 'nhamcs-ed' | 'cms-hospitals';
-  /** Survey year (NHAMCS layouts differ by year). */
-  year?: number;
+  /** Survey years, one file each in `files` order (NHAMCS layouts differ by year). Weights are averaged over the years. */
+  years?: number[];
   /** Files to fetch (or place in the data folder), by name, with their download URL. */
   files: { name: string; url: string }[];
   /** Whether the files can be downloaded without an account. */
@@ -74,11 +74,42 @@ export const OPEN_SOURCES: Record<string, OpenSource> = {
     page: 'https://data.cms.gov/provider-data/dataset/yv7e-xc69',
     shiftedDates: false,
   },
+  'nhamcs-2021-2022': {
+    id: 'nhamcs-2021-2022',
+    name: 'NHAMCS 2021–2022 Emergency Department public-use files (NCHS/CDC)',
+    format: 'nhamcs-ed',
+    years: [2021, 2022],
+    files: [{ name: 'ed2021.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2021.zip' }, { name: 'ed2022.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2022.zip' }],
+    open: true,
+    license:
+      'US government public-use data (NCHS). Terms: statistical reporting and analysis only; no attempt to identify any person or establishment; no linking to identifiable data.',
+    citation:
+      'National Center for Health Statistics. National Hospital Ambulatory Medical Care Survey: 2021–2022 Emergency Department public-use data files and documentation. Hyattsville, MD.',
+    page: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/',
+    // A national sample of visits across many EDs: no shared calendar, so volume is a setting.
+    shiftedDates: true,
+  },
+  'nhamcs-2019-2022': {
+    id: 'nhamcs-2019-2022',
+    name: 'NHAMCS 2019–2022 Emergency Department public-use files (NCHS/CDC)',
+    format: 'nhamcs-ed',
+    years: [2019, 2020, 2021, 2022],
+    files: [{ name: 'ed2019.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ED2019.zip' }, { name: 'ed2020.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2020.zip' }, { name: 'ed2021.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2021.zip' }, { name: 'ed2022.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2022.zip' }],
+    open: true,
+    license:
+      'US government public-use data (NCHS). Terms: statistical reporting and analysis only; no attempt to identify any person or establishment; no linking to identifiable data.',
+    citation:
+      'National Center for Health Statistics. National Hospital Ambulatory Medical Care Survey: 2019–2022 Emergency Department public-use data files and documentation. Hyattsville, MD.',
+    page: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/',
+    // A national sample of visits across many EDs: no shared calendar, so volume is a setting.
+    shiftedDates: true,
+    caveat: '2020 and 2021 were pandemic years (fewer visits, sicker mix, shorter waits in 2020); use nhamcs-2021-2022 for current operations.',
+  },
   'nhamcs-2022': {
     id: 'nhamcs-2022',
     name: 'NHAMCS 2022 Emergency Department public-use file (NCHS/CDC)',
     format: 'nhamcs-ed',
-    year: 2022,
+    years: [2022],
     files: [{ name: 'ed2022.zip', url: 'https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHAMCS/ed2022.zip' }],
     open: true,
     license:

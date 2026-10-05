@@ -3,6 +3,12 @@ import type { CmsHospital } from '@er/sim';
 import { useEffect, useState } from 'react';
 import { loadCms, searchHospitals, titleCase, type CmsData } from './cms';
 
+/** Days since an ISO date (YYYY-MM-DD). */
+export function staleDays(iso: string, now = Date.now()): number {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? Math.floor((now - t) / 86_400_000) : Infinity;
+}
+
 export function HospitalSearch(props: { onPick: (h: CmsHospital, data: CmsData) => void; busy?: boolean; action: string }) {
   const [data, setData] = useState<CmsData | null>(null);
   const [failed, setFailed] = useState(false);
@@ -25,6 +31,12 @@ export function HospitalSearch(props: { onPick: (h: CmsHospital, data: CmsData) 
         aria-label="Search hospitals"
         data-testid="hospital-search"
       />
+      {data && (
+        <p className="muted small" data-testid="cms-date">
+          CMS Care Compare figures, reporting period {data.periods.OP_18b ?? data.periods.OP_22}; downloaded {data.retrieved}.
+          {staleDays(data.retrieved) > 120 && ' CMS updates these every quarter, so they may be out of date: refresh with pnpm data:cms.'}
+        </p>
+      )}
       {q.trim().length > 1 && data && (
         <ul className="hospital-hits">
           {hits.length === 0 && <li className="muted small">No match.</li>}

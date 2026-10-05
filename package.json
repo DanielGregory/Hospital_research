@@ -9,7 +9,9 @@
     "headless": "tsx tools/headless/src/cli.ts",
     "e2e": "pnpm --filter @er/game build && tsx apps/game/e2e/smoke.ts",
     "game": "pnpm --filter @er/game dev",
-    "test:python": "python3 -m unittest discover python/tests"
+    "test:python": "python3 -m unittest discover python/tests",
+    "data:cms": "pnpm headless open-data --source cms-ed --fetch",
+    "data:national": "pnpm headless open-data --source nhamcs-2021-2022 --fetch --set beds.main=32 --set fastTrack.enabled=true --set fastTrack.minAcuity=4 --set beds.fastTrack=6 --set 'staffing.schedule.fastTrackClinician=[{\"startHour\":10,\"hours\":12,\"count\":1}]' --set 'staffing.schedule.doctor=[{\"startHour\":8,\"hours\":12,\"count\":3},{\"startHour\":14,\"hours\":8,\"count\":1},{\"startHour\":20,\"hours\":12,\"count\":2}]'"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

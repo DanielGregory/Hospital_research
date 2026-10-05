@@ -121,8 +121,19 @@ export function calibrate(base: unknown, visits: readonly Visit[], data: VisitSu
     const steady = Math.round((admitsPerDay * stay) / 24);
     const ward = () => ({ 'boarding.inpatientStayHours': stay, 'boarding.inpatientBeds': wardBeds, 'boarding.initialOccupied': Math.max(0, Math.min(wardBeds, steady)) });
     let volume = ((config as { arrivals?: { rateMultiplier?: number } }).arrivals?.rateMultiplier ?? 1) as number;
+    // Registration: minutes from walking in to the triage queue, fitted when the data has provider times
+    // (the wait to a provider counts from arrival).
+    let registration = r.triage.registrationMinutes;
+    let fittedRegistration = false;
     const trial = () =>
-      applySettings(config, { 'workup.enabled': true, 'workup.meanMinutesByAcuity': workup, 'lwbs.patienceMeanMinutesByAcuity': patience(), 'arrivals.rateMultiplier': volume, ...(boardingOn ? ward() : {}) });
+      applySettings(config, {
+        'workup.enabled': true,
+        'workup.meanMinutesByAcuity': workup,
+        'lwbs.patienceMeanMinutesByAcuity': patience(),
+        'arrivals.rateMultiplier': volume,
+        'triage.registrationMinutes': registration,
+        ...(boardingOn ? ward() : {}),
+      });
     let fittedLos = false;
     let fittedLwbs = false;
     const mean = (ms: VisitSummary[], f: (m: VisitSummary) => number | null) => range(ms.map(f)).mean;
@@ -139,7 +150,12 @@ export function calibrate(base: unknown, visits: readonly Visit[], data: VisitSu
         if (b > data.boardingHoursMean!) bLo = wardBeds;
         else bHi = wardBeds;
       }
-      wardBeds = bHi;
+      // Keep whichever of the last two bed counts comes closer: one bed can swing boarding a lot near capacity.
+      const at = (b: number) => {
+        wardBeds = b;
+        return Math.abs((mean(modelSummaries(trial(), seeds), (m) => m.boardingHoursMean) ?? 0) - data.boardingHoursMean!);
+      };
+      wardBeds = at(bLo) < at(bHi) ? bLo : bHi;
     };
     if (boardingOn) fitWard();
     // Stage 3: test-result times (length of stay by acuity) and patience (share leaving unseen).
@@ -151,6 +167,12 @@ export function calibrate(base: unknown, visits: readonly Visit[], data: VisitSu
         if (target === null || target === undefined || model === null) continue;
         workup[a] = Math.max(0, Math.round((workup[a]! + 0.7 * (target - model)) * 10) / 10);
         fittedLos = true;
+      }
+      const d2d = data.doorToProvider.median;
+      const modelD2d = range(ms.map((m) => m.doorToProvider.median)).median;
+      if (d2d !== null && modelD2d !== null) {
+        registration = Math.min(60, Math.max(0, Math.round((registration + 0.7 * (d2d - modelD2d)) * 10) / 10));
+        fittedRegistration = true;
       }
       const lw = mean(ms, (m) => m.lwbsRate);
       if (data.lwbsRate !== null && data.lwbsRate > 0 && lw !== null && lw > 0) {
@@ -177,11 +199,15 @@ export function calibrate(base: unknown, visits: readonly Visit[], data: VisitSu
       fitted['workup.meanMinutesByAcuity'] = workup;
       notes.push('Test-result times were scaled by acuity so median length of stay matches the data.');
     }
+    if (fittedRegistration) {
+      fitted['triage.registrationMinutes'] = registration;
+      notes.push(`Registration (walking in to joining the triage queue) set to ${registration} minutes so the wait to a provider matches the data.`);
+    }
     if (fittedLwbs) {
       fitted['lwbs.patienceMeanMinutesByAcuity'] = patience();
       notes.push(`Patience before leaving unseen was scaled ×${scale.toFixed(2)} so the share who leave matches the data.`);
     }
-    config = applySettings(config, Object.fromEntries(Object.entries(fitted).filter(([k]) => k.startsWith('workup') || k.startsWith('lwbs') || k.startsWith('boarding.') || k === 'arrivals.rateMultiplier')));
+    config = applySettings(config, Object.fromEntries(Object.entries(fitted).filter(([k]) => k.startsWith('workup') || k.startsWith('lwbs') || k.startsWith('boarding.') || k === 'arrivals.rateMultiplier' || k === 'triage.registrationMinutes')));
   }
   return { config, fitted, notes };
 }

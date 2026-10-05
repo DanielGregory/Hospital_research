@@ -18,7 +18,7 @@ describe('starting from a hospital’s published figures', () => {
   });
 
   it('matches visits a day, median time in the ED for patients sent home, and leaving unseen', () => {
-    const f = fitToHospital(base, { visitsPerDay: 60, medianMinutesDischarged: 150, lwbsRate: 0.02 }, [1]);
+    const f = fitToHospital(base, { visitsPerDay: 60, medianMinutesDischarged: 150, lwbsRate: 0.02 }, [1, 2]);
     const [visits, los, lwbs] = f.check;
     expect(visits!.model!).toBeGreaterThan(55);
     expect(visits!.model!).toBeLessThan(65);

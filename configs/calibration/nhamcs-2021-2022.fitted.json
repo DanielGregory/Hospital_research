@@ -96,22 +96,23 @@
     },
     "arrivals.rateMultiplier": 0.969,
     "boarding.inpatientStayHours": 125,
-    "boarding.inpatientBeds": 67,
+    "boarding.inpatientBeds": 66,
     "boarding.initialOccupied": 64,
     "workup.enabled": true,
     "workup.meanMinutesByAcuity": {
-      "1": 86.5,
-      "2": 265.3,
-      "3": 155.1,
-      "4": 63.9,
-      "5": 51.1
+      "1": 89.5,
+      "2": 261.7,
+      "3": 159.5,
+      "4": 58,
+      "5": 44.5
     },
+    "triage.registrationMinutes": 6.5,
     "lwbs.patienceMeanMinutesByAcuity": {
       "1": null,
       "2": null,
-      "3": 459.4,
-      "4": 344.5,
-      "5": 287.1
+      "3": 447.3,
+      "4": 335.5,
+      "5": 279.6
     },
     "boarding.unitShareByAcuity": {
       "1": {
@@ -143,9 +144,10 @@
   },
   "notes": [
     "6393 visits have no acuity and were left out of the acuity fits.",
-    "Wards modelled by length of stay (125 h on average, a placeholder until ward data is available): 67 ward beds for ED admissions reproduce the wait for a ward bed.",
+    "Wards modelled by length of stay (125 h on average, a placeholder until ward data is available): 66 ward beds for ED admissions reproduce the wait for a ward bed.",
     "Test-result times were scaled by acuity so median length of stay matches the data.",
-    "Patience before leaving unseen was scaled ×1.91 so the share who leave matches the data.",
+    "Registration (walking in to joining the triage queue) set to 6.5 minutes so the wait to a provider matches the data.",
+    "Patience before leaving unseen was scaled ×1.86 so the share who leave matches the data.",
     "Volume (98 a day) is a setting, not from the data: NHAMCS samples visits across many EDs and days, so one department's daily volume and crowding are not in it."
   ],
   "check": [
@@ -156,12 +158,12 @@
       "data": 98.03921568627452,
       "model": {
         "n": 5,
-        "mean": 98.07857142857144,
-        "median": 97.53571428571429,
+        "mean": 98.02857142857144,
+        "median": 97.42857142857143,
         "lo": 96.08571428571429,
-        "hi": 99.91428571428571
+        "hi": 99.90714285714286
       },
-      "gap": -0.005135714285714295,
+      "gap": -0.006228571428571478,
       "status": "close"
     },
     {
@@ -171,13 +173,13 @@
       "data": 16,
       "model": {
         "n": 5,
-        "mean": 10.687562740286012,
-        "median": 10.489034194204578,
-        "lo": 9.81228458622354,
-        "hi": 11.903327256241027
+        "mean": 16.100763712327534,
+        "median": 15.97887159176571,
+        "lo": 15.35979325362132,
+        "hi": 16.92470883508213
       },
-      "gap": -0.3444353628622139,
-      "status": "off"
+      "gap": -0.0013205255146431227,
+      "status": "close"
     },
     {
       "key": "d2dP90",
@@ -186,12 +188,12 @@
       "data": 95,
       "model": {
         "n": 5,
-        "mean": 82.19726489751993,
-        "median": 88.40392637776313,
-        "lo": 66.40153484329785,
-        "hi": 92.45618805770792
+        "mean": 85.28862709373861,
+        "median": 88.81643087355405,
+        "lo": 70.37400486503248,
+        "hi": 97.1009835301833
       },
-      "gap": -0.06943235391828287,
+      "gap": -0.06509020133100996,
       "status": "close"
     },
     {
@@ -201,12 +203,12 @@
       "data": 193,
       "model": {
         "n": 5,
-        "mean": 196.6192626132335,
-        "median": 200.97659406297134,
-        "lo": 187.79275383682543,
-        "hi": 203.31118500619633
+        "mean": 201.9596568638899,
+        "median": 203.96170682002412,
+        "lo": 193.17186974277283,
+        "hi": 210.64807960922045
       },
-      "gap": 0.04132950291694997,
+      "gap": 0.05679640839390735,
       "status": "close"
     },
     {
@@ -216,12 +218,12 @@
       "data": 0.018214468958440224,
       "model": {
         "n": 5,
-        "mean": 0.017037189163661714,
-        "median": 0.015810276679841896,
-        "lo": 0.012500235135299617,
-        "hi": 0.024158802997629257
+        "mean": 0.01895312830180303,
+        "median": 0.01881224640354113,
+        "lo": 0.011745875553507258,
+        "hi": 0.0266458157742417
       },
-      "gap": -0.1319935422813561,
+      "gap": 0.0328188236761032,
       "status": "close"
     },
     {
@@ -231,12 +233,12 @@
       "data": 0.12606464853771165,
       "model": {
         "n": 5,
-        "mean": 0.11955734628655443,
-        "median": 0.12105263157894737,
-        "lo": 0.1138021579034065,
-        "hi": 0.12415131813046963
+        "mean": 0.1192739160901208,
+        "median": 0.12057272042200452,
+        "lo": 0.11292604503312452,
+        "hi": 0.1248880449241955
       },
-      "gap": -0.03975751344172401,
+      "gap": -0.043564378907257624,
       "status": "close"
     },
     {
@@ -246,13 +248,13 @@
       "data": 3.5744791666666713,
       "model": {
         "n": 5,
-        "mean": 3.0300904003424085,
-        "median": 3.577948073278522,
-        "lo": 0.19082601656330367,
-        "hi": 6.332419366132689
+        "mean": 3.1967809175274993,
+        "median": 1.8833230920436559,
+        "lo": 0.13896246698501188,
+        "hi": 7.035456749533518
       },
-      "gap": 0.0009704649125387431,
-      "status": "close"
+      "gap": -0.4731195779216356,
+      "status": "off"
     },
     {
       "key": "los1",
@@ -261,12 +263,12 @@
       "data": 218,
       "model": {
         "n": 5,
-        "mean": 217.12778007406595,
-        "median": 224.02250748174265,
-        "lo": 192.3301064049221,
-        "hi": 230.95625174482848
+        "mean": 226.57079564038503,
+        "median": 228.75511008857575,
+        "lo": 201.63496876108474,
+        "hi": 244.0521312729019
       },
-      "gap": 0.02762618110891124,
+      "gap": 0.04933536737878783,
       "status": "close"
     },
     {
@@ -276,12 +278,12 @@
       "data": 289,
       "model": {
         "n": 5,
-        "mean": 273.0148964023512,
-        "median": 274.14966036719125,
-        "lo": 259.0729215290736,
-        "hi": 283.32523595341775
+        "mean": 276.69442047578593,
+        "median": 281.8592394257066,
+        "lo": 264.4985628899907,
+        "hi": 283.6998655208008
       },
-      "gap": -0.05138525824501299,
+      "gap": -0.024708514097900973,
       "status": "close"
     },
     {
@@ -291,12 +293,12 @@
       "data": 226,
       "model": {
         "n": 5,
-        "mean": 223.00676842391476,
-        "median": 225.63815045207593,
-        "lo": 213.74292167227105,
-        "hi": 231.39073835843374
+        "mean": 228.62081243842695,
+        "median": 232.42462914712814,
+        "lo": 219.1485729471744,
+        "hi": 237.7183663450669
       },
-      "gap": -0.0016011041943542763,
+      "gap": 0.02842756259791214,
       "status": "close"
     },
     {
@@ -306,12 +308,12 @@
       "data": 125,
       "model": {
         "n": 5,
-        "mean": 126.04031141726664,
-        "median": 125.20210908136505,
-        "lo": 122.64008595004707,
-        "hi": 129.59662996677943
+        "mean": 125.0465938626403,
+        "median": 126.1635713192045,
+        "lo": 121.09547699017203,
+        "hi": 128.5265140747797
       },
-      "gap": 0.0016168726509204134,
+      "gap": 0.009308570553635945,
       "status": "close"
     },
     {
@@ -321,12 +323,12 @@
       "data": 100,
       "model": {
         "n": 5,
-        "mean": 99.63080818400377,
-        "median": 99.29405373219197,
-        "lo": 94.68418987982004,
-        "hi": 105.94125252138255
+        "mean": 99.07553385189676,
+        "median": 97.22250800279289,
+        "lo": 95.0009299522244,
+        "hi": 105.48948229041125
       },
-      "gap": -0.007059462678080308,
+      "gap": -0.027774919972071075,
       "status": "close"
     }
   ],
@@ -482,61 +484,61 @@
     {
       "label": "Wait to provider, ESI 1, median",
       "data": 13,
-      "model": 6.316820939299457,
+      "model": 11.76386921619754,
       "unit": "min"
     },
     {
       "label": "Wait to provider, ESI 2, median",
       "data": 12,
-      "model": 10.821515429567777,
+      "model": 15.511275833894919,
       "unit": "min"
     },
     {
       "label": "Wait to provider, ESI 3, median",
       "data": 16,
-      "model": 14.091192647760636,
+      "model": 19.745407290265877,
       "unit": "min"
     },
     {
       "label": "Wait to provider, ESI 4, median",
       "data": 18,
-      "model": 8.859089013580766,
+      "model": 15.030725890760095,
       "unit": "min"
     },
     {
       "label": "Wait to provider, ESI 5, median",
       "data": 17,
-      "model": 18.690788305733047,
+      "model": 14.671146438086302,
       "unit": "min"
     },
     {
       "label": "Visits with lab test",
       "data": 0.5956,
-      "model": 0.6190165320439739,
+      "model": 0.6192326963501085,
       "unit": "share"
     },
     {
       "label": "Visits with X-ray",
       "data": 0.3749,
-      "model": 0.37673573801431615,
+      "model": 0.3777415213323949,
       "unit": "share"
     },
     {
       "label": "Visits with CT",
       "data": 0.2385,
-      "model": 0.25462161013168627,
+      "model": 0.25608224467716795,
       "unit": "share"
     },
     {
       "label": "Visits with ultrasound",
       "data": 0.0646,
-      "model": 0.08349928867732971,
+      "model": 0.0840335511628117,
       "unit": "share"
     },
     {
       "label": "Visits that are returns within 72 hours",
       "data": 0.0408,
-      "model": 0.04093007616111186,
+      "model": 0.04148756745031048,
       "unit": "share",
       "note": "National returns are for any reason; the model only returns patients whose problem was missed, so it should sit below this."
     }

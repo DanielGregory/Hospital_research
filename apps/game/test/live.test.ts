@@ -14,7 +14,7 @@ import { searchHospitals, titleCase } from '../src/data/cms';
 import { newHospital, planBeds, SIZES, toDepartment, typicalStaffing, withVisits } from '../src/builder/hospital';
 import { exampleDepartment, TEMPLATES, toScenario } from '../src/planner/project';
 import { layoutHints } from '../src/screens/FloorDesigner';
-import { COMPLAINTS, profileLine, storyText } from '../src/play/profiles';
+import { ageSex, COMPLAINTS, profileLine, storyText } from '../src/play/profiles';
 import { recordBest, starsFor } from '../src/play/stars';
 
 const level = (n: number) => LEVELS.find((l) => l.level.number === n)!;
@@ -255,5 +255,14 @@ describe('hospital search (CMS)', () => {
   });
   it('writes names in title case', () => {
     expect(titleCase('SAINT MARY OF THE WOODS HOSPITAL')).toBe('Saint Mary of the Woods Hospital');
+  });
+});
+
+describe('children', () => {
+  it('are described as children', () => {
+    expect(ageSex({ age: 0, sex: 'F', complaint: 'fever' })).toBe('baby girl');
+    expect(ageSex({ age: 6, sex: 'M', complaint: 'fever' })).toBe('6-year-old boy');
+    expect(ageSex({ age: 15, sex: 'F', complaint: 'fever' })).toBe('15-year-old teenage girl');
+    expect(ageSex({ age: 40, sex: 'M', complaint: 'fever' })).toBe('40-year-old man');
   });
 });

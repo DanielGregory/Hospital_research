@@ -170,10 +170,12 @@ class Figure {
   style(a: Actor, gown: boolean) {
     const key =
       a.kind === 'patient'
-        ? `p|${a.data.acuity ?? '-'}|${a.data.boarding}|${a.data.special}|${a.data.waited > 120}|${gown}|${a.data.agitated === true}`
+        ? `p|${a.data.acuity ?? '-'}|${a.data.boarding}|${a.data.special}|${a.data.waited > 120}|${gown}|${a.data.agitated === true}|${(a.data.profile?.age ?? 30) < 13}`
         : `s|${a.data.role}|${a.data.busy}`;
     if (key === this.styleKey) return;
     this.styleKey = key;
+    // Children are drawn smaller (under 13: about two-thirds of adult height).
+    this.body.scale.setScalar(a.kind === 'patient' && (a.data.profile?.age ?? 30) < 13 ? 0.68 : 1);
     const id = a.data.id;
     const m = (c: string) => this.scene.mat(c);
     this.head.material = m(SKIN[(id * 7) % SKIN.length]!);

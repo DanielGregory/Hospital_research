@@ -44,9 +44,13 @@ export function complaintText(key: string, id: number, seed = 1): string {
   return list[Math.abs(Math.imul(id + 1, 2654435761) ^ seed) % list.length]!;
 }
 
-/** "72-year-old man" */
+/** "72-year-old man", "6-year-old girl", "baby boy" */
 export function ageSex(p: PatientProfile): string {
-  return `${p.age}-year-old ${p.sex === 'F' ? 'woman' : 'man'}`;
+  const f = p.sex === 'F';
+  if (p.age < 1) return f ? 'baby girl' : 'baby boy';
+  if (p.age < 13) return `${p.age}-year-old ${f ? 'girl' : 'boy'}`;
+  if (p.age < 18) return `${p.age}-year-old teenage ${f ? 'girl' : 'boy'}`;
+  return `${p.age}-year-old ${f ? 'woman' : 'man'}`;
 }
 
 /** "Ava Okafor, 72: “pain in my chest”" */

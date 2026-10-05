@@ -33,6 +33,8 @@ export interface ConditionSpec {
   ages?: readonly [number, number, number];
   /** Share of patients who are women. Default 0.5. */
   femaleShare?: number;
+  /** Share of patients who are children (ages from PARAMS.childAges). Default 0. */
+  childShare?: number;
   /** Presenting complaints (what the patient says), chosen uniformly. */
   complaints?: readonly string[];
 }

@@ -276,3 +276,20 @@ describe('pre-emption (ESI 1)', () => {
     expect(all1.preemptions).toBe(0);
   });
 });
+
+describe('registration before triage', () => {
+  const cfg = { id: 'reg', durationMinutes: 5 * 1440, warmupMinutes: 1440, staffing: { doctors: 6, triageNurses: 2 } };
+  it('adds its minutes to walk-ins’ wait for a provider, not to ambulance arrivals, and 0 changes nothing', () => {
+    const off = new Simulation(cfg, 4);
+    const on = new Simulation({ ...cfg, triage: { registrationMinutes: 8 } }, 4);
+    off.run();
+    on.run();
+    const d2d = (sim: Simulation, amb: boolean) => {
+      const ps = sim.allPatients().filter((p) => p.arrivalTime >= 1440 && p.doctorStartTime !== undefined && !!p.byAmbulance === amb);
+      return ps.reduce((s, p) => s + (p.doctorStartTime! - p.arrivalTime), 0) / ps.length;
+    };
+    expect(d2d(on, false) - d2d(off, false)).toBeGreaterThan(6);
+    expect(Math.abs(d2d(on, true) - d2d(off, true))).toBeLessThan(3);
+    expect(JSON.stringify(new Simulation({ ...cfg, triage: { registrationMinutes: 0 } }, 4).run().metrics)).toBe(JSON.stringify(new Simulation(cfg, 4).run().metrics));
+  });
+});

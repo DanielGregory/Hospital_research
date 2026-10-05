@@ -193,6 +193,12 @@ export const PARAMS = {
     accuracy: 0.72, // PLACEHOLDER
     /** Of mistriaged patients, share assigned a less urgent level (under-triage); the rest are over-triaged. */
     underTriageShare: 0.5, // PLACEHOLDER
+    /**
+     * Minutes from walking in to joining the triage queue (registration, the walk to the desk).
+     * 0 keeps the model's original behaviour; calibration fits it so the wait to a provider matches
+     * the data, which counts from arrival. Ambulance and major-incident arrivals skip it.
+     */
+    registrationMinutes: 0,
   },
 
   fastTrack: {
@@ -216,27 +222,33 @@ export const PARAMS = {
    * patients say brings them in (complaint keys; several conditions share one, so a complaint
    * never gives the diagnosis away). Ages and complaints are PLACEHOLDER like the rest.
    */
+  /**
+   * Children (under 16) are 18% of US ED visits (NHAMCS 2021–2022): conditions with a `childShare`
+   * draw that share of their patients as children, set so each triage level matches the national
+   * child share. Child ages: triangular [min, most common, max]; national median 5.
+   */
+  childAges: [0, 4, 15] as const,
   conditions: [
     { id: 'cardiac-arrest', label: 'Cardiac arrest', acuity: 1, weight: 0.3, admit: 0.9, missRisk: 0.02, ages: [35, 68, 95], femaleShare: 0.35, complaints: ['collapsed'] }, // PLACEHOLDER
-    { id: 'major-trauma', label: 'Major trauma', acuity: 1, weight: 0.4, admit: 0.85, missRisk: 0.05, ages: [16, 34, 90], femaleShare: 0.3, complaints: ['roadCollision', 'fallFromHeight', 'assault'] }, // PLACEHOLDER
-    { id: 'septic-shock', label: 'Septic shock', acuity: 1, weight: 0.3, admit: 0.95, missRisk: 0.05, ages: [30, 74, 98], femaleShare: 0.45, complaints: ['confusedFever', 'collapsed'] }, // PLACEHOLDER
+    { id: 'major-trauma', label: 'Major trauma', acuity: 1, weight: 0.4, admit: 0.85, missRisk: 0.05, ages: [16, 34, 90], femaleShare: 0.3, childShare: 0.157, complaints: ['roadCollision', 'fallFromHeight', 'assault'] }, // PLACEHOLDER
+    { id: 'septic-shock', label: 'Septic shock', acuity: 1, weight: 0.3, admit: 0.95, missRisk: 0.05, ages: [30, 74, 98], femaleShare: 0.45, childShare: 0.157, complaints: ['confusedFever', 'collapsed'] }, // PLACEHOLDER
     { id: 'acs', label: 'Acute coronary syndrome', acuity: 2, weight: 0.25, admit: 0.75, missRisk: 0.12, ages: [38, 66, 95], femaleShare: 0.35, complaints: ['chestPain', 'breathless', 'unwell'] }, // PLACEHOLDER
     { id: 'stroke', label: 'Stroke', acuity: 2, weight: 0.15, admit: 0.8, missRisk: 0.08, ages: [40, 74, 98], femaleShare: 0.5, complaints: ['faceDroop', 'slurredSpeech', 'confused'] }, // PLACEHOLDER
-    { id: 'sepsis', label: 'Sepsis', acuity: 2, weight: 0.2, admit: 0.7, missRisk: 0.1, ages: [18, 70, 98], femaleShare: 0.5, complaints: ['fever', 'confusedFever', 'unwell'] }, // PLACEHOLDER
-    { id: 'overdose', label: 'Overdose', acuity: 2, weight: 0.15, admit: 0.4, missRisk: 0.05, ages: [15, 32, 80], femaleShare: 0.5, complaints: ['overdose', 'drowsy'] }, // PLACEHOLDER
+    { id: 'sepsis', label: 'Sepsis', acuity: 2, weight: 0.2, admit: 0.7, missRisk: 0.1, ages: [18, 70, 98], femaleShare: 0.5, childShare: 0.234, complaints: ['fever', 'confusedFever', 'unwell'] }, // PLACEHOLDER
+    { id: 'overdose', label: 'Overdose', acuity: 2, weight: 0.15, admit: 0.4, missRisk: 0.05, ages: [15, 32, 80], femaleShare: 0.5, childShare: 0.234, complaints: ['overdose', 'drowsy'] }, // PLACEHOLDER
     { id: 'chest-pain-benign', label: 'Chest pain, non-cardiac', acuity: 2, weight: 0.25, admit: 0.15, missRisk: 0.05, ages: [18, 42, 85], femaleShare: 0.5, complaints: ['chestPain', 'palpitations'] }, // PLACEHOLDER
-    { id: 'abdominal-pain', label: 'Abdominal pain', acuity: 3, weight: 0.3, admit: 0.3, missRisk: 0.12, ages: [16, 40, 90], femaleShare: 0.6, complaints: ['abdominalPain', 'vomiting'] }, // PLACEHOLDER
-    { id: 'pneumonia', label: 'Pneumonia', acuity: 3, weight: 0.15, admit: 0.45, missRisk: 0.08, ages: [18, 70, 98], femaleShare: 0.5, complaints: ['cough', 'breathless', 'fever'] }, // PLACEHOLDER
+    { id: 'abdominal-pain', label: 'Abdominal pain', acuity: 3, weight: 0.3, admit: 0.3, missRisk: 0.12, ages: [16, 40, 90], femaleShare: 0.6, childShare: 0.125, complaints: ['abdominalPain', 'vomiting'] }, // PLACEHOLDER
+    { id: 'pneumonia', label: 'Pneumonia', acuity: 3, weight: 0.15, admit: 0.45, missRisk: 0.08, ages: [18, 70, 98], femaleShare: 0.5, childShare: 0.125, complaints: ['cough', 'breathless', 'fever'] }, // PLACEHOLDER
     { id: 'kidney-stone', label: 'Kidney stone', acuity: 3, weight: 0.12, admit: 0.15, missRisk: 0.05, ages: [20, 45, 80], femaleShare: 0.35, complaints: ['flankPain', 'abdominalPain'] }, // PLACEHOLDER
-    { id: 'asthma', label: 'Asthma attack', acuity: 3, weight: 0.13, admit: 0.2, missRisk: 0.05, ages: [16, 28, 80], femaleShare: 0.55, complaints: ['breathless', 'wheeze'] }, // PLACEHOLDER
-    { id: 'appendicitis', label: 'Appendicitis', acuity: 3, weight: 0.1, admit: 0.6, missRisk: 0.15, ages: [16, 26, 75], femaleShare: 0.5, complaints: ['abdominalPain', 'vomiting'] }, // PLACEHOLDER
-    { id: 'influenza', label: 'Influenza', acuity: 3, weight: 0.2, admit: 0.1, missRisk: 0.04, ages: [16, 38, 92], femaleShare: 0.5, complaints: ['fever', 'cough', 'unwell'] }, // PLACEHOLDER
-    { id: 'sprain', label: 'Sprain', acuity: 4, weight: 0.35, admit: 0.01, missRisk: 0.03, ages: [16, 30, 80], femaleShare: 0.5, complaints: ['ankleInjury', 'wristInjury'] }, // PLACEHOLDER
-    { id: 'laceration', label: 'Laceration', acuity: 4, weight: 0.3, admit: 0.01, missRisk: 0.01, ages: [16, 33, 85], femaleShare: 0.35, complaints: ['cut'] }, // PLACEHOLDER
-    { id: 'uti', label: 'Urinary tract infection', acuity: 4, weight: 0.2, admit: 0.05, missRisk: 0.06, ages: [18, 48, 95], femaleShare: 0.8, complaints: ['urinaryPain', 'abdominalPain', 'fever'] }, // PLACEHOLDER
-    { id: 'minor-fracture', label: 'Minor fracture', acuity: 4, weight: 0.15, admit: 0.05, missRisk: 0.05, ages: [16, 45, 95], femaleShare: 0.55, complaints: ['wristInjury', 'ankleInjury', 'fall'] }, // PLACEHOLDER
-    { id: 'rash', label: 'Rash', acuity: 5, weight: 0.4, admit: 0, missRisk: 0.02, ages: [16, 30, 85], femaleShare: 0.55, complaints: ['rash'] }, // PLACEHOLDER
-    { id: 'sore-throat', label: 'Sore throat', acuity: 5, weight: 0.45, admit: 0, missRisk: 0.03, ages: [16, 27, 75], femaleShare: 0.55, complaints: ['soreThroat', 'fever'] }, // PLACEHOLDER
+    { id: 'asthma', label: 'Asthma attack', acuity: 3, weight: 0.13, admit: 0.2, missRisk: 0.05, ages: [16, 28, 80], femaleShare: 0.55, childShare: 0.125, complaints: ['breathless', 'wheeze'] }, // PLACEHOLDER
+    { id: 'appendicitis', label: 'Appendicitis', acuity: 3, weight: 0.1, admit: 0.6, missRisk: 0.15, ages: [16, 26, 75], femaleShare: 0.5, childShare: 0.125, complaints: ['abdominalPain', 'vomiting'] }, // PLACEHOLDER
+    { id: 'influenza', label: 'Influenza', acuity: 3, weight: 0.2, admit: 0.1, missRisk: 0.04, ages: [16, 38, 92], femaleShare: 0.5, childShare: 0.125, complaints: ['fever', 'cough', 'unwell'] }, // PLACEHOLDER
+    { id: 'sprain', label: 'Sprain', acuity: 4, weight: 0.35, admit: 0.01, missRisk: 0.03, ages: [16, 30, 80], femaleShare: 0.5, childShare: 0.301, complaints: ['ankleInjury', 'wristInjury'] }, // PLACEHOLDER
+    { id: 'laceration', label: 'Laceration', acuity: 4, weight: 0.3, admit: 0.01, missRisk: 0.01, ages: [16, 33, 85], femaleShare: 0.35, childShare: 0.301, complaints: ['cut'] }, // PLACEHOLDER
+    { id: 'uti', label: 'Urinary tract infection', acuity: 4, weight: 0.2, admit: 0.05, missRisk: 0.06, ages: [18, 48, 95], femaleShare: 0.8, childShare: 0.301, complaints: ['urinaryPain', 'abdominalPain', 'fever'] }, // PLACEHOLDER
+    { id: 'minor-fracture', label: 'Minor fracture', acuity: 4, weight: 0.15, admit: 0.05, missRisk: 0.05, ages: [16, 45, 95], femaleShare: 0.55, childShare: 0.301, complaints: ['wristInjury', 'ankleInjury', 'fall'] }, // PLACEHOLDER
+    { id: 'rash', label: 'Rash', acuity: 5, weight: 0.4, admit: 0, missRisk: 0.02, ages: [16, 30, 85], femaleShare: 0.55, childShare: 0.375, complaints: ['rash'] }, // PLACEHOLDER
+    { id: 'sore-throat', label: 'Sore throat', acuity: 5, weight: 0.45, admit: 0, missRisk: 0.03, ages: [16, 27, 75], femaleShare: 0.55, childShare: 0.375, complaints: ['soreThroat', 'fever'] }, // PLACEHOLDER
     { id: 'prescription', label: 'Prescription refill', acuity: 5, weight: 0.15, admit: 0, missRisk: 0.005, ages: [20, 55, 90], femaleShare: 0.5, complaints: ['prescription'] }, // PLACEHOLDER
   ] as readonly ConditionSpec[],
 

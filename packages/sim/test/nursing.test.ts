@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Simulation } from '../src/index';
+import { PARAMS, Simulation } from '../src/index';
 
 const base = { id: 'n', durationMinutes: 5 * 1440, warmupMinutes: 1440, modules: { nursing: true, boarding: true } };
 const run = (extra: object, seed = 2) => new Simulation({ ...base, ...extra }, seed).run().metrics;
@@ -18,7 +18,7 @@ describe('nursing module (staffed beds)', () => {
     for (let t = 1440; t < 5 * 1440; t += 97) {
       sim.runUntil(t);
       const inBeds = sim.snapshot().patients.filter((p) => p.lane === 'main' && p.bed !== undefined);
-      const load = inBeds.reduce((s, p) => s + 1 / ({ 1: 1, 2: 2, 3: 4, 4: 5, 5: 6 } as Record<number, number>)[p.assignedAcuity ?? p.trueAcuity]!, 0);
+      const load = inBeds.reduce((s, p) => s + 1 / PARAMS.nursing.patientsPerNurseByAcuity[(p.assignedAcuity ?? p.trueAcuity) as 1], 0);
       expect(load).toBeLessThanOrEqual(3 + 1e-9);
     }
   });

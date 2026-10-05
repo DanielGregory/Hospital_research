@@ -281,9 +281,24 @@ async function main() {
         await page.getByTestId('skip').click();
         if ((await page.getByTestId('result').textContent()) !== 'Goals met') fail('level 8: the best found plan should meet the goals');
 
+        // How it works, and the one-click demo.
+        await page.goto(`http://localhost:${PORT}/`);
+        await page.getByTestId('menu-about').click();
+        await page.getByTestId('about-accuracy').waitFor();
+        await shot(page, `about-${scheme}`);
+        await page.getByTestId('about-demo').click();
+        await page.getByTestId('results-table').waitFor({ timeout: 90_000 });
+        await page.getByTestId('bottlenecks').waitFor();
+        await shot(page, `demo-results-${scheme}`);
+
         // Planner: fit the model to the sample visits, run what-ifs, read results, watch one, print the report.
         await page.goto(`http://localhost:${PORT}/`);
+        await page.evaluate(() => localStorage.removeItem('er-planner-intro-done'));
         await page.getByTestId('planner-card').click();
+        await page.getByTestId('planner-intro').waitFor();
+        await shot(page, `planner-intro-${scheme}`);
+        await page.getByTestId('intro-close').click();
+        await page.getByTestId('tab-department').click();
         // Start from a real hospital's published figures (CMS).
         await page.getByTestId('hospital-search').fill('dothan');
         await page.getByTestId('pick-010001').click();

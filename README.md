@@ -30,6 +30,8 @@ The test suite checks the engine against theory, not just itself:
 
 Browser end-to-end tests (`pnpm e2e`) play levels, the planner and the 3D builder in headless Chromium, in light and dark mode and at mobile width.
 
+> **Try it:** the live app's menu has a one-click demo (also `/?demo`) and a [How it works and how accurate it is](docs/how-it-works.md) page.
+
 > **Calibration status.** The defaults use US national figures from the NHAMCS 2021–2022 emergency department survey (32,232 visits, weighted to about 148 million a year). These cover arrivals by hour and weekday, ambulance share, admitting unit (ICU, step-down, ward) and tests ordered by triage level, and the typical ward stay. The planner's example department is a typical US ED fitted to that survey: about 98 visits a day, 32 beds and a fast track. It matches 11 of 12 national checks, including the median wait to a provider, plus waits by triage level, test rates and 72-hour returns. 18% of patients are children, as nationally. The planner can also start from any of 4,130 US hospitals' published CMS figures. See [`docs/open-data.md`](docs/open-data.md). Staffing, costs, ICU stays and other numbers marked `// PLACEHOLDER` in `packages/sim/src/params.ts` are not calibrated yet. The story levels keep the arrival pattern they were balanced on.
 
 ## Getting started

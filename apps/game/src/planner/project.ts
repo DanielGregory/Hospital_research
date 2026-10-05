@@ -273,7 +273,7 @@ export function newProject(): Project {
     version: 1,
     department: exampleDepartment(),
     scenarios: [
-      { id: 's1', template: 'beds', params: { ...TEMPLATES.beds.defaults } },
+      { id: 's1', template: 'triageShift', params: { ...TEMPLATES.triageShift.defaults } },
       { id: 's2', template: 'doctorShift', params: { ...TEMPLATES.doctorShift.defaults } },
       { id: 's3', template: 'surge', params: { ...TEMPLATES.surge.defaults } },
     ],

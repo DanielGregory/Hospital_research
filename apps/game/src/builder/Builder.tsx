@@ -360,7 +360,7 @@ function StaffStep({ hospital, onChange, ready, problems }: { hospital: Hospital
           <ScheduleEditor role="triageNurse" shifts={schedule('triageNurse')} config={config as GameConfig} onChange={(s) => setSchedule('triageNurse', s)} />
           <ScheduleEditor role="nurse" shifts={schedule('nurse')} config={config as GameConfig} onChange={(s) => setSchedule('nurse', s)} />
           <p className="muted small">
-            Bedside nurses take patients at set ratios (ESI 1 one-to-one, ESI 2 two per nurse, then 4, 5 and 6). A bed with no nurse free stays empty.
+            Bedside nurses take patients at California’s legal minimum ratios (ESI 1 one-to-one, ESI 2 two per nurse, everyone else four per nurse). A bed with no nurse free stays empty.
           </p>
         </>
       )}

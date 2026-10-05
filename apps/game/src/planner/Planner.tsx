@@ -11,7 +11,7 @@ import type { GameConfig } from '../sandbox';
 import { exampleDepartment, loadProject, newProject, saveProject, service, TEMPLATES, unitsOf, toScenario, type Project, type ScenarioSpec, type TemplateId } from './project';
 import type { WorkerRequest, WorkerResponse } from './worker';
 import { planBeds } from '../builder/hospital';
-import { NATIONAL } from '../data/national';
+import { NATIONAL, NATIONAL_ROWS } from '../data/national';
 import { HospitalSearch } from '../data/HospitalSearch';
 import { titleCase } from '../data/cms';
 import type { CmsHospital } from '@er/sim';
@@ -216,6 +216,46 @@ function DepartmentTab(props: {
           typical US emergency department fitted to national data ({NATIONAL.name}: {NATIONAL.close} of {NATIONAL.checked} checks match national figures).
         </p>
       </section>
+
+      {!dept.hospital && !dept.calibration && (
+        <details className="card national" data-testid="national-check">
+          <summary>
+            <strong>How the starting department compares with US national figures</strong>{' '}
+            <span className="muted small">
+              ({NATIONAL.close} of {NATIONAL.checked} main checks close)
+            </span>
+          </summary>
+          <p className="muted small">
+            A typical mid-size US emergency department (about 98 visits a day, 32 beds, a fast track), fitted to {NATIONAL.name}. National figures are weighted
+            estimates for all US ED visits.
+          </p>
+          <table className="metrics">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>US national</th>
+                <th>Model</th>
+              </tr>
+            </thead>
+            <tbody>
+              {NATIONAL_ROWS.map((r) => (
+                <tr key={r.label} title={r.note}>
+                  <th scope="row">
+                    {r.label}
+                    {r.close === false && <span className="chip warn"> off</span>}
+                  </th>
+                  <td>{r.data === null ? '—' : unitFmt[r.unit](r.data)}</td>
+                  <td>{r.model === null ? '—' : unitFmt[r.unit](r.model)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted small">
+            Returns within 72 hours nationally are for any reason; the model only returns patients whose problem was missed. Boarding swings a lot with one ward
+            bed more or less when wards are nearly full.
+          </p>
+        </details>
+      )}
 
       <section className="card" data-testid="start-hospital">
         <h3>Start from a real hospital (US)</h3>

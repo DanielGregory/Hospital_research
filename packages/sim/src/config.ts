@@ -126,6 +126,8 @@ export interface SimConfig {
     meanMinutes?: number;
     accuracy?: number;
     underTriageShare?: number;
+    /** Minutes from walking in to joining the triage queue (registration). Default 0. */
+    registrationMinutes?: number;
   };
   queue?: {
     discipline?: QueueDiscipline;
@@ -218,7 +220,7 @@ export interface ResolvedConfig {
   serviceDistribution: ServiceDistribution;
   serviceMeanByAcuity: Record<Acuity, number>;
   lognormalCv: number;
-  triage: { enabled: boolean; meanMinutes: number; cv: number; accuracy: number; underTriageShare: number };
+  triage: { enabled: boolean; meanMinutes: number; cv: number; accuracy: number; underTriageShare: number; registrationMinutes: number };
   discipline: QueueDiscipline;
   dispositionFirst: boolean;
   preemptAcuity: number;
@@ -362,6 +364,7 @@ export function validateConfig(raw: unknown): SimConfig {
     field(t, 'triage', 'meanMinutes', positive, 'positive number', p);
     field(t, 'triage', 'accuracy', prob, 'probability in [0, 1]', p);
     field(t, 'triage', 'underTriageShare', prob, 'probability in [0, 1]', p);
+    field(t, 'triage', 'registrationMinutes', nonNeg, 'non-negative number of minutes', p);
   });
 
   section(c, 'queue', p, (q) => {
@@ -715,6 +718,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     cv: PARAMS.triage.cv,
     accuracy: c.triage?.accuracy ?? PARAMS.triage.accuracy,
     underTriageShare: c.triage?.underTriageShare ?? PARAMS.triage.underTriageShare,
+    registrationMinutes: c.triage?.registrationMinutes ?? PARAMS.triage.registrationMinutes,
   };
   const workup = {
     enabled: c.workup?.enabled ?? true,

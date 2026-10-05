@@ -12,11 +12,21 @@ describe('patient profiles', () => {
     const byId = new Map(PARAMS.conditions.map((c) => [c.id, c]));
     for (const p of patients) {
       const c = byId.get(p.conditionId)!;
-      expect(p.profile.age).toBeGreaterThanOrEqual(c.ages![0]);
-      expect(p.profile.age).toBeLessThanOrEqual(c.ages![2]);
+      // Adults in the condition's range; children (conditions with a child share) in the child range.
+      const [lo, , hi] = p.profile.age < c.ages![0] && c.childShare ? PARAMS.childAges : c.ages!;
+      expect(p.profile.age).toBeGreaterThanOrEqual(lo);
+      expect(p.profile.age).toBeLessThanOrEqual(hi);
       expect(c.complaints).toContain(p.profile.complaint);
       expect(['F', 'M']).toContain(p.profile.sex);
     }
+  });
+
+  it('includes children at about the national share, only for conditions children come in with', () => {
+    const kids = patients.filter((p) => p.profile.age < 16);
+    expect(kids.length / patients.length).toBeGreaterThan(0.12);
+    expect(kids.length / patients.length).toBeLessThan(0.25);
+    const byId = new Map(PARAMS.conditions.map((c) => [c.id, c]));
+    expect(kids.every((p) => (byId.get(p.conditionId)!.childShare ?? 0) > 0)).toBe(true);
   });
 
   it('bounce-backs are the same person coming back', () => {

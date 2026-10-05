@@ -80,6 +80,8 @@ representative one (NHAMCS).
 
 ## NHAMCS 2021–2022: what the simulator now uses (fetched 2026-10-04)
 
+`pnpm data:national` runs the full command (and `pnpm data:cms` refreshes the hospital list):
+
 ```sh
 pnpm headless open-data --source nhamcs-2021-2022 --fetch --set beds.main=32 --set fastTrack.enabled=true \
   --set fastTrack.minAcuity=4 --set beds.fastTrack=6 \
@@ -115,10 +117,20 @@ The fitted department is the typical US ED a planner starts from:
 - a fast track (6 chairs for ESI 4–5, a clinician 10:00–22:00), since most visits are to EDs with one; without it the model makes ESI 4 wait twice as long as ESI 3, unlike the national data
 - 72 provider-hours a day
 
-It matches 11 of 12 checks: visits, the slowest 10% of waits, length of stay overall and at every triage level, leaving unseen, admissions and boarding. Further national checks:
-- **Test rates:** all within 3 points.
-- **Returns within 72 hours:** 4.1% against 4.1% nationally. National returns are for any reason, so this is an upper bound for the model's missed-diagnosis returns.
-- **Wait to a provider:** the median is quicker than nationally (about 10 vs 16 min); the national figure includes registration before triage. By triage level, ESI 1 and 4 are seen sooner than nationally.
+It matches 11 of 12 checks:
+- **Matched:** visits, the median and 90th-percentile wait to a provider (16 against 16 min), length of stay overall and at every triage level, leaving unseen and admissions.
+- **Off:** boarding, 1.9 against 3.6 hours. With wards near full, one ward bed more or less swings it from over 5 hours to under 2.
+
+Calibration fits a **registration** time, minutes from walking in to joining the triage queue (`triage.registrationMinutes`), whenever the data has provider times: 6.5 minutes here. National waits count from arrival, and without it the model's waits were 6 minutes short.
+
+Further national checks:
+- **Wait to a provider by triage level:** within 4 minutes at every level.
+- **Test rates:** within 3 points.
+- **Returns within 72 hours:** 4.1% against 4.1%. National returns are for any reason, so this is an upper bound for the model's missed-diagnosis returns.
+
+The planner shows all of these under "How the starting department compares with US national figures".
+
+**Children:** 18% of US ED visits are under 16 (median age 5). Conditions children come in with have a `childShare`, set so each triage level matches its national child share. Child profiles are described as children and drawn smaller in 3D. Profiles come from their own random stream, so results are unchanged.
 
 Where it is used:
 - **`params.ts` defaults:** arrivals by hour and weekday, ambulance share and admitting unit by triage level, test orders by condition (`fitOrderRates` rescales the hand-made table so each triage level orders each test at the national rate; conditions keep their differences, and a prescription refill still gets none), and the typical ward stay (5.2 days). Each is labelled with the source.

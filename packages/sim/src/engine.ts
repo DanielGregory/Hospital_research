@@ -16,6 +16,7 @@ import { ArrivalProcess } from './arrivals.js';
 import { checkCommand, ConfigError, resolveConfig, resolveStep, type ResolvedConfig, type StepInput } from './config.js';
 import { EventQueue } from './eventQueue.js';
 import { computeMetrics, type Metrics } from './metrics.js';
+import { PARAMS } from './params.js';
 import { PatientQueue } from './patientQueue.js';
 import type { WalkTrip } from './layout.js';
 import { DIAGNOSTIC_KINDS, type RoutingRule, type StepDef } from './pipeline.js';
@@ -56,6 +57,7 @@ interface ArrivalSpec {
 
 type SimEvent =
   | { kind: 'arrival' }
+  | { kind: 'registered'; patientId: number }
   | { kind: 'specialArrival'; spec: ArrivalSpec }
   | { kind: 'taskEnd'; staffId: number; token: number }
   | { kind: 'turnaroundEnd'; patientId: number; step: number }
@@ -95,6 +97,7 @@ const PRIORITY: Record<SimEvent['kind'], number> = {
   abandon: 2,
   specialArrival: 3,
   arrival: 3,
+  registered: 3,
   command: 4,
 };
 
@@ -784,6 +787,9 @@ export class Simulation {
       case 'abandon':
         this.onAbandon(ev.patientId);
         break;
+      case 'registered':
+        if (!this.rt[ev.patientId]!.finished) this.advance(this.patients[ev.patientId]!);
+        break;
       case 'deteriorate':
         this.onDeteriorate(ev.patientId, ev.token);
         break;
@@ -917,7 +923,10 @@ export class Simulation {
         this.scheduleAgitation(p);
       }
     }
-    this.advance(p);
+    // Walk-ins register before they join the triage queue; ambulance and major-incident arrivals do not wait for it.
+    const reg = c.triage.registrationMinutes;
+    if (reg > 0 && spec.source !== 'massCasualty' && !byAmbulance && !spec.preTriaged) this.push(this.clock + reg, { kind: 'registered', patientId: p.id });
+    else this.advance(p);
   }
 
   // --- the step graph ----------------------------------------------------------
@@ -1977,5 +1986,13 @@ export function drawProfile(rng: Rng, c: ConditionSpec): PatientProfile {
   const x = u < f ? lo + Math.sqrt(u * (hi - lo) * (mode - lo)) : hi - Math.sqrt((1 - u) * (hi - lo) * (hi - mode));
   const sex = rng.next() < (c.femaleShare ?? 0.5) ? 'F' : 'M';
   const complaints = c.complaints?.length ? c.complaints : ['unwell'];
-  return { age: Math.floor(x), sex, complaint: complaints[rng.int(complaints.length)]! };
+  const complaint = complaints[rng.int(complaints.length)]!;
+  // A child: one more draw after the others, so adults keep exactly the profile they had.
+  if (c.childShare && rng.next() < c.childShare) {
+    const [clo, cmode, chi] = PARAMS.childAges;
+    const cf = (cmode - clo) / (chi - clo);
+    const age = u < cf ? clo + Math.sqrt(u * (chi - clo) * (cmode - clo)) : chi - Math.sqrt((1 - u) * (chi - clo) * (chi - cmode));
+    return { age: Math.floor(age), sex: rng.next() < 0.5 ? 'F' : 'M', complaint };
+  }
+  return { age: Math.floor(x), sex, complaint };
 }

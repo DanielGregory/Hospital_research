@@ -8,11 +8,19 @@
 import { applySettings, type SimConfig } from '@er/sim';
 import fit from '../../../../configs/calibration/nhamcs-2021-2022.fitted.json';
 
-type Row = { status: string };
+type Row = { status: string; label: string; unit: 'perDay' | 'min' | 'share' | 'hours'; data: number | null; model: { median: number | null } };
+type Extra = { label: string; unit: 'min' | 'share'; data: number | null; model: number | null; note?: string };
+
+/** Every comparison with national figures: the visit check, then waits and tests by level and 72-hour returns. */
+export const NATIONAL_ROWS: { label: string; unit: 'perDay' | 'min' | 'share' | 'hours'; data: number | null; model: number | null; close: boolean | null; note?: string }[] = [
+  ...(fit.check as Row[]).filter((c) => c.status !== 'no data').map((c) => ({ label: c.label, unit: c.unit, data: c.data, model: c.model.median, close: c.status === 'close' })),
+  ...((fit as { nationalCheck?: Extra[] }).nationalCheck ?? []).map((c) => ({ ...c, close: null })),
+];
 
 export const NATIONAL = {
   name: fit.source.name,
   citation: fit.source.citation,
+  retrieved: fit.retrieved,
   /** Checks that matched, of those with data. */
   close: (fit.check as Row[]).filter((c) => c.status === 'close').length,
   checked: (fit.check as Row[]).filter((c) => c.status !== 'no data').length,
